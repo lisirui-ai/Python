@@ -2333,11 +2333,788 @@ with tqdm(total=总步数) as pbar:
 
 
 
-## 十六、速查表
+## 十六、网络编程（UDP 与 TCP）
+
+网络编程的目的是让运行在**不同电脑**上的程序能够互相传递数据，即**进程间通信**。
+核心三要素：`协议 + IP地址 + 端口号`，三者共同唯一标识网络中的一个进程。
+
+> **通信模型类比**：
+>
+> - **UDP** 类似写信——无需建立连接，直接发送，速度快但不保证可达
+> - **TCP** 类似打电话——必须先建立连接，可靠传输，但有额外开销
 
 
 
-### 16.1 Python 关键字（33 个）
+### 16.1 网络通信基础
+
+
+
+#### 16.1.1 IP 地址
+
+
+| 类别    | 范围                                        | 说明            |
+| ----- | ----------------------------------------- | ------------- |
+| A 类   | `1.0.0.1` ~ `126.255.255.254`             | 网络位 1 字节      |
+| B 类   | `128.1.0.1` ~ `191.255.255.254`           | 网络位 2 字节      |
+| C 类   | `192.0.1.1` ~ `223.255.255.254`           | 网络位 3 字节      |
+| 私有 IP | `10.x.x.x`、`172.16-31.x.x`、`192.168.x.x` | 局域网使用，不在公网路由  |
+| 回环地址  | `127.0.0.1` ~ `127.255.255.255`           | 代表本机，用于本地测试   |
+
+
+```bash
+$ifconfig          # 查看网卡信息（Linux/macOS）
+$ping 192.168.1.1  # 测试目标主机连通性
+$netstat -an       # 查看端口占用状态（必考）
+```
+
+> **IP 地址的作用**：在网络中**唯一标识一台主机**；`IP地址 + 端口号` 唯一标识该主机上的一个进程
+
+
+
+#### 16.1.2 端口（Port）
+
+端口是进程与外界通信的"门"，每个需要收发网络数据的程序都需要一个端口。
+
+- 端口号范围：`0` ~ `65535`（共 2¹⁶ 个）
+- **知名端口**（Well Known Ports）：`0` ~ `1023`，使用需要 root 权限
+
+| 端口号 | 对应服务    |
+| --- | ------- |
+| 80  | HTTP    |
+| 443 | HTTPS   |
+| 21  | FTP     |
+| 22  | SSH     |
+| 23  | Telnet  |
+
+- **动态端口**（Dynamic Ports）：`1024` ~ `65535`，程序向系统申请，关闭后自动释放；自定义端口号通常要大于 1024
+
+```bash
+# 查看端口占用
+$netstat -an                    # 查看所有端口状态
+$sudo lsof -i tcp:22            # 查看哪个进程占用了 22 端口
+$ps -elf | grep udp_server      # 查看某进程是否还在运行
+
+# 端口被占用时，先查出进程 PID 再杀掉
+$ps -elf                        # 查看所有进程及其 PID
+$kill -9 进程id                 # 强制杀掉占用端口的进程
+```
+
+---
+
+
+
+### 16.2 Socket 简介
+
+**Socket**（套接字）是进程间通信的一种方式，能够实现**不同主机**之间的进程通信。
+浏览网页、QQ 聊天、收发邮件等网络服务，底层都是基于 Socket 完成的。
+
+```python
+import socket
+
+# 创建 TCP 套接字（流式套接字，面向连接）
+tcp_socket = socket.socket(socket.AF_INET,   # AF_INET：IPv4 网络通信（常用）
+                            socket.SOCK_STREAM)  # SOCK_STREAM：TCP 协议
+
+# 创建 UDP 套接字（数据报套接字，无连接）
+udp_socket = socket.socket(socket.AF_INET,   # AF_UNIX：同一台机器进程间通信
+                            socket.SOCK_DGRAM)   # SOCK_DGRAM：UDP 协议
+
+# 套接字使用流程（与文件使用流程类似）
+# 1. 创建套接字
+# 2. 使用套接字收/发数据
+# 3. 关闭套接字（关闭后端口会释放）
+udp_socket.close()
+tcp_socket.close()
+```
+
+---
+
+
+
+### 16.3 UDP 编程（User Datagram Protocol）
+
+UDP 是**无连接、不可靠**的传输协议，发送前不需要建立连接，速度快，适合实时性要求高的场景。
+
+
+
+#### 16.3.1 UDP 发送与接收数据
+
+```python
+import socket
+
+# ── 客户端（发送方）──────────────────────────────
+client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # 创建 UDP 套接字
+
+dest_addr = ('192.168.5.7', 2000)                          # 目标 IP 和端口号（元组）
+
+# sendto(数据, 目标地址)：发送数据；数据必须是 bytes 类型，字符串需 encode
+client.sendto('hello'.encode('utf-8'), dest_addr)          # 发送编码后的字节串
+
+# recvfrom(缓冲大小)：接收数据，返回 (data_bytes, sender_addr) 元组
+data, addr = client.recvfrom(1024)   # 1024 = 本次最大接收字节数；addr 是发送方地址
+print(data.decode('utf-8'))          # bytes → str：decode 解码
+print(addr)                          # ('192.168.3.28', 51404)：发送方的 IP 和端口
+
+client.close()                       # 关闭套接字，释放端口
+```
+
+> **注意**：`sendto` 与 `recvfrom` 的**次数必须完全对等**；`recvfrom` 缓冲大小若小于发送字节数，Windows 会报错，Linux 会丢弃多余数据
+
+
+
+#### 16.3.2 UDP 绑定端口（服务器端）
+
+客户端通常不绑定端口（系统随机分配），**服务器端需要绑定固定端口**，否则客户端无法找到它。
+
+```python
+from socket import *
+
+udp_socket = socket(AF_INET, SOCK_DGRAM)   # 创建 UDP 套接字
+
+# bind((ip, port))：绑定本地 IP 和端口；ip 填空字符串表示绑定本机所有 IP
+local_addr = ('', 7788)                    # ip 为空 = 本机任意网卡；端口固定
+udp_socket.bind(local_addr)               # 绑定；若端口已被占用则抛出 OSError
+
+# 等待接收（recvfrom 会阻塞直到有数据到达）
+recv_data = udp_socket.recvfrom(1024)      # recvfrom 返回元组
+print(recv_data[0].decode('utf-8'))        # 取索引 0 = 数据内容，解码为字符串
+print(recv_data[1])                        # 取索引 1 = 发送方地址元组
+
+udp_socket.close()
+```
+
+> **端口绑定原则**：
+>
+> - 客户端程序一般**不绑定**，系统随机分配；重启后端口可能变化
+> - 服务器程序**必须绑定**固定端口，如同报警电话 110 永不更改
+> - 端口被占用报错：`OSError: [Errno 98] Address already in use`
+
+
+
+#### 16.3.3 应用：UDP 聊天器
+
+```python
+import socket
+
+def send_msg(udp_socket):
+    """获取键盘数据并发送给对方
+
+    :param udp_socket: 已创建的 UDP 套接字对象
+    """
+    msg = input('\n请输入要发送的数据:')       # 从键盘读取消息
+    dest_ip = input('\n请输入对方的ip地址:')   # 读取目标 IP
+    dest_port = int(input('\n请输入对方的port:'))  # 读取目标端口，转为整型
+    udp_socket.sendto(msg.encode('utf-8'),      # 字符串编码为 bytes 后发送
+                      (dest_ip, dest_port))     # 目标地址元组
+
+def recv_msg(udp_socket):
+    """接收数据并显示到终端
+
+    :param udp_socket: 已创建的 UDP 套接字对象
+    """
+    recv_data = udp_socket.recvfrom(1024)       # 阻塞等待，返回 (data, addr)
+    recv_ip = recv_data[1]                      # 发送方 IP 和端口
+    recv_msg_str = recv_data[0].decode('utf-8') # bytes 解码为字符串
+    print('>>>%s:%s' % (str(recv_ip), recv_msg_str))  # 格式化输出
+
+def main():
+    """聊天器主函数：创建套接字，循环选择功能"""
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # 创建 UDP 套接字
+    udp_socket.bind(('', 7890))    # 绑定本机固定端口，便于对方发消息过来
+
+    while True:
+        print('=' * 30)
+        print('1:发送消息')
+        print('2:接收消息')
+        print('=' * 30)
+        op_num = input('请输入要操作的功能序号:')  # 读取用户选择
+
+        if op_num == '1':
+            send_msg(udp_socket)               # 选 1：发送
+        elif op_num == '2':
+            recv_msg(udp_socket)               # 选 2：接收
+        else:
+            print('输入有误，请重新输入...')    # 其他：提示重输
+
+if __name__ == '__main__':
+    main()
+```
+
+> **局限性**：选择接收功能时若无数据，程序会**堵塞**在 `recvfrom`；学完多任务/epoll 后可实现收发并行
+
+---
+
+
+
+### 16.4 TCP 编程（Transmission Control Protocol）
+
+TCP 是**面向连接、可靠**的传输协议。通信前必须先建立连接（三次握手），通信后断开连接（四次挥手）。
+
+**TCP 可靠性保证机制**：
+
+- **发送应答（ACK）**：每个报文段都必须得到接收方 ACK 确认
+- **超时重传**：发送后启动定时器，超时未收到 ACK 则重发
+- **序列号**：保证报文按序到达，接收方可排序重组
+- **错误校验**：发送和接收都计算校验和
+- **流量控制**：滑动窗口机制，防止发送过快压垮接收方
+
+
+
+#### 16.4.1 TCP 客户端
+
+```python
+from socket import *
+
+tcp_client_socket = socket(AF_INET, SOCK_STREAM)   # 创建 TCP 套接字（流式）
+
+server_ip = input('请输入服务器ip:')               # 读取服务器 IP
+server_port = int(input('请输入服务器port:'))       # 读取服务器端口，转整型
+
+# connect((ip, port))：向服务器发起连接（三次握手在这里完成）
+# TCP 客户端不需要 bind，系统自动分配端口
+tcp_client_socket.connect((server_ip, server_port))
+
+send_data = input('请输入要发送的数据：')            # 读取要发送的消息
+tcp_client_socket.send(send_data.encode('gbk'))     # send：只传数据，无需地址
+
+# recv(缓冲大小)：接收服务器回复，返回 bytes（TCP 无 from，因为连接已固定）
+recv_data = tcp_client_socket.recv(1024)
+print('接收到的数据为:', recv_data.decode('gbk'))   # bytes → str
+
+tcp_client_socket.close()                           # 关闭连接（四次挥手）
+```
+
+> **TCP 客户端 vs UDP 客户端**：
+>
+> - TCP 用 `connect` 建立连接，之后用 `send`/`recv`（无需每次指定地址）
+> - UDP 用 `sendto`/`recvfrom`（每次都需指定目标地址，无需建立连接）
+
+
+
+#### 16.4.2 TCP 服务器
+
+```python
+from socket import *
+
+# 1. 创建 TCP 套接字（默认是主动套接字）
+tcp_server_socket = socket(AF_INET, SOCK_STREAM)
+
+address = ('', 7788)                  # 绑定地址：ip 为空 = 本机所有网卡
+tcp_server_socket.bind(address)       # 2. 绑定本地 IP 和端口
+
+# 3. listen(backlog)：将主动套接字变为被动套接字（可接受连接请求）
+#    backlog = 允许排队等待的最大连接数（半连接队列长度）
+tcp_server_socket.listen(128)
+
+# 4. accept()：阻塞等待客户端连接；连接成功后返回新套接字和客户端地址
+#    tcp_server_socket：被动套接字，只负责"接电话"（等待新连接）
+#    client_socket：为这个客户端专门创建的新套接字，负责"通话"（收发数据）
+client_socket, client_addr = tcp_server_socket.accept()
+print(f'客户端 {client_addr} 已连接')
+
+# 5. recv/send：通过 client_socket 与该客户端通信
+recv_data = client_socket.recv(1024)          # 接收客户端发来的数据（bytes）
+print('接收到的数据为:', recv_data.decode('gbk'))
+
+client_socket.send('thank you !'.encode('gbk'))  # 回复客户端
+
+# 6. 关闭 client_socket：表示与该客户端通信结束；tcp_server_socket 仍可接受新连接
+client_socket.close()
+tcp_server_socket.close()             # 关闭监听套接字：新客户端无法再连接
+```
+
+> **两个套接字的分工**：
+>
+> - `tcp_server_socket`（监听套接字/被动套接字）：只用于接受新连接，`listen` 后不发数据
+> - `client_socket`（通信套接字）：`accept` 返回，专门负责与某个客户端收发数据，关闭后该客户端服务结束
+
+
+
+#### 16.4.3 TCP 注意事项
+
+| 注意点 | 说明 |
+|------|------|
+| 服务器必须绑定端口 | 否则客户端找不到它 |
+| 客户端不需要绑定端口 | 系统自动随机分配 |
+| `listen` 必须在 `accept` 前调用 | 将主动套接字变为被动套接字 |
+| 客户端必须 `connect` | TCP 必须先建立连接才能通信 |
+| `accept` 返回的是新套接字 | 每个客户端对应一个独立的通信套接字 |
+| 关闭监听套接字 | 新客户端无法再连接，已连接的客户端不受影响 |
+| 关闭 `accept` 返回的套接字 | 表示该客户端服务结束 |
+| 客户端 `close` 后 | 服务端 `recv` 解除阻塞，返回长度为 **0** 的数据；服务端可借此判断客户端是否下线 |
+
+
+
+#### 16.4.4 应用：文件下载器
+
+**协议设计**：`Client` 发文件名 → `Server` 读文件 → `Server` 发文件内容 → `Client` 写入本地
+
+```python
+# ── 服务器端 ──────────────────────────────
+from socket import *
+import sys
+
+def get_file_content(file_name):
+    """读取文件内容，返回二进制数据
+
+    :param file_name: 文件名（字符串）
+    :return: bytes 类型的文件内容；文件不存在时返回 None
+    """
+    try:
+        with open(file_name, 'rb') as f:  # 以二进制只读模式打开（兼容所有文件类型）
+            return f.read()               # 返回 bytes 对象
+    except:
+        print('没有该文件: %s' % file_name)
+        return None
+
+def main():
+    """文件下载服务器主函数"""
+    if len(sys.argv) != 2:               # sys.argv[0] 是脚本名，[1] 是端口号参数
+        print('请按照如下方式运行：python3 server.py 7890')
+        return
+
+    port = int(sys.argv[1])             # 从命令行获取端口号
+
+    tcp_server_socket = socket(AF_INET, SOCK_STREAM)
+    tcp_server_socket.bind(('', port))
+    tcp_server_socket.listen(128)
+
+    while True:                          # 循环接受多个客户端请求
+        client_socket, client_addr = tcp_server_socket.accept()
+
+        recv_data = client_socket.recv(1024)             # 接收客户端请求的文件名
+        file_name = recv_data.decode('utf-8')            # bytes → str
+        print('对方请求下载的文件名为: %s' % file_name)
+
+        file_content = get_file_content(file_name)       # 读取文件内容
+        if file_content:                                 # 文件存在才发送
+            client_socket.send(file_content)             # 发送 bytes（rb 模式无需 encode）
+
+        client_socket.close()                            # 关闭本次客户端连接
+
+    tcp_server_socket.close()
+
+if __name__ == '__main__':
+    main()
+```
+
+```python
+# ── 客户端 ──────────────────────────────
+from socket import *
+
+def main():
+    """文件下载客户端主函数"""
+    tcp_client_socket = socket(AF_INET, SOCK_STREAM)
+
+    server_ip = input('请输入服务器ip:')
+    server_port = int(input('请输入服务器port:'))
+    tcp_client_socket.connect((server_ip, server_port))  # 建立 TCP 连接
+
+    file_name = input('请输入要下载的文件名：')
+    tcp_client_socket.send(file_name.encode('utf-8'))    # 发送文件名请求
+
+    recv_data = tcp_client_socket.recv(1024)             # 接收文件内容（bytes）
+
+    if recv_data:                                        # 收到数据才创建文件
+        with open('[接收]' + file_name, 'wb') as f:     # 以二进制写模式创建本地文件
+            f.write(recv_data)                           # 写入接收到的 bytes 数据
+
+    tcp_client_socket.close()
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+
+
+### 16.5 编码转换（bytes 与 str）
+
+网络传输的数据必须是**字节流（bytes）**，Python 字符串需要编码后才能发送，接收到的字节流需要解码还原。
+
+```python
+text = '我是文本'           # str 类型（Python 内部用 Unicode 存储）
+
+# str → bytes：encode 编码（发送前）
+bytes_text = text.encode('utf-8')   # 返回 bytes 对象：b'\xe6\x88\x91...'
+bytes_text = text.encode()          # 默认 utf-8
+
+# bytes → str：decode 解码（接收后）
+text_back = bytes_text.decode('utf-8')  # 返回 str 对象：'我是文本'
+text_back = bytes_text.decode()         # 默认 utf-8
+
+# 编码方案说明
+# encode(encoding='utf-8', errors='strict')：errors 指定错误处理方案
+# decode(encoding='utf-8', errors='strict')：编解码方案必须一致，否则乱码
+```
+
+> **编码规则**：编码方案必须**收发两端一致**；常用 `utf-8`（支持中文），旧代码常见 `gbk`（Windows 默认中文编码）
+
+---
+
+
+
+### 16.6 TCP 连接原理
+
+
+
+#### 16.6.1 三次握手（建立连接）
+
+三次握手确保双方的发送和接收能力正常，并同步初始序列号（ISN）。
+
+```
+客户端 (A)                          服务器 (B)
+   |                                    |
+   |── SYN(SEQ=x) ──────────────────→  |  第1次：A 请求连接，发送同步序号 x
+   |                                    |
+   |  ← SYN+ACK(SEQ=y, ACK=x+1) ──── |  第2次：B 同意，回复自己的序号 y 和确认号 x+1
+   |                                    |
+   |── ACK(ACK=y+1) ─────────────────→ |  第3次：A 确认，连接建立
+   |                                    |
+```
+
+> **为什么需要三次而不是两次**：两次握手无法确认客户端的**接收能力**正常；
+> 且若历史连接请求延迟到达，服务器会误以为建立新连接，导致永久等待（死锁）
+
+
+
+#### 16.6.2 四次挥手（断开连接）
+
+TCP 是**全双工**（双向独立）通道，每个方向需要单独关闭，因此需要四次。
+
+```
+主动关闭方                          被动关闭方
+   |                                    |
+   |── FIN ───────────────────────────→ |  第1次：我发完了，请求关闭
+   |  ← ACK ──────────────────────────  |  第2次：收到，你可以关了（但我可能还有数据要发）
+   |                                    |
+   |  ← FIN ──────────────────────────  |  第3次：我也发完了，请求关闭
+   |── ACK ───────────────────────────→ |  第4次：收到，连接正式关闭
+   |（等待 2MSL 后进入 CLOSED 状态）     |
+```
+
+**TCP 连接状态**：
+
+| 状态 | 说明 |
+|------|------|
+| `LISTEN` | 服务器等待新连接（`listen` 后进入） |
+| `SYN_SENT` | 客户端已发 SYN，等待服务器响应 |
+| `SYN_RCVD` | 服务器收到 SYN，等待客户端最终确认 |
+| `ESTABLISHED` | 连接建立，可以传输数据 |
+| `FIN_WAIT_1/2` | 主动关闭方已发 FIN，等待对方响应 |
+| `TIME_WAIT` | 收到对方 FIN 并回复 ACK，等待 2MSL 后关闭 |
+| `CLOSE_WAIT` | 收到对方 FIN，等待本方应用层关闭 |
+| `LAST_ACK` | 被动关闭方已发 FIN，等待最后的 ACK |
+| `CLOSED` | 连接已关闭 |
+
+> **`TIME_WAIT` 状态**：等待 2MSL（最大报文生存时间，默认约 60 秒）是为了确保对方能收到最后的 ACK；
+> 此状态下端口不能被再次绑定（添加 `SO_REUSEADDR` 选项可解决）
+
+
+
+#### 16.6.3 长连接与短连接
+
+
+| 对比项 | 短连接 | 长连接 |
+|------|--------|--------|
+| 操作步骤 | 建立连接 → 传输 → 关闭连接（循环） | 建立连接 → 传输…传输 → 关闭连接 |
+| 优点 | 服务器管理简单，连接都是有效连接 | 省去重复握手开销，适合频繁通信 |
+| 缺点 | 频繁握手浪费时间和带宽 | 长期占用连接，服务器资源消耗大 |
+| 适用场景 | HTTP（高并发、低频操作的 Web 服务） | 数据库连接、游戏、即时通信 |
+
+---
+
+
+
+### 16.7 TCP/IP 协议族
+
+
+
+#### 16.7.1 协议分层模型
+
+
+| TCP/IP 四层模型 | 主要协议 | 功能 |
+|---------------|---------|------|
+| **应用层** | HTTP、FTP、SSH、SMTP、Telnet | 应用程序的网络访问，通过端口号区分进程 |
+| **传输层** | TCP、UDP | 端对端通信，连接管理与数据传输 |
+| **网络层** | IP、ICMP、IGMP、ARP、RARP | 主机寻址与路由，数据包转发 |
+| **网络接口层** | 以太网、MPLS | 将二进制流转换为数据帧，物理传输 |
+
+```
+发送数据时：应用层数据 → 加传输层头 → 加网络层头（IP包）→ 加链路层头（以太网帧）→ 物理传输
+接收数据时：逐层剥离头部，最终将数据交给对应应用程序
+```
+
+> **关键区分**：
+>
+> - **IP**：负责**点到点**（主机/路由器之间）的传输
+> - **TCP/UDP**：负责**端到端**（源主机进程到目标主机进程）的传输
+> - **端口号**：同一主机上区分不同进程；`IP地址 + 端口号` = 网络中唯一进程
+
+
+
+#### 16.7.2 TCP 与 UDP 对比
+
+
+| 特性 | TCP | UDP |
+|------|-----|-----|
+| 连接方式 | 面向连接（三次握手） | 无连接 |
+| 可靠性 | 可靠（ACK + 超时重传 + 序列号） | 不可靠（可能丢包） |
+| 速度 | 较慢（有握手/确认开销） | 快 |
+| 数据顺序 | 有序（序列号保证） | 无序 |
+| 流量控制 | 有（滑动窗口） | 无 |
+| 通信模式 | 一对一 | 支持广播/多播 |
+| 适用场景 | 文件传输、网页、邮件 | 视频直播、游戏、DNS |
+| 数据报头大小 | 20~60 字节 | 固定 8 字节 |
+
+> **协议选择原则**：
+>
+> - 对数据**可靠性**要求高（如密码、验证）→ 选 TCP
+> - 对**实时性**要求高（如 VOIP、视频监控）→ 选 UDP
+> - 网络状况**不稳定**（广域网）→ 选 TCP；**局域网**环境好 → 可选 UDP
+
+---
+
+
+
+### 16.8 高级网络编程
+
+
+
+#### 16.8.1 epoll 多路复用（Linux）
+
+`epoll` 是 Linux 下高效的 I/O 多路复用机制，解决了"同时监听多个 socket"的问题，广泛用于高并发服务器。
+
+```python
+import socket
+import select
+import sys
+
+# ── epoll 常用 API ──────────────────────────────
+epoll = select.epoll()                       # 创建 epoll 对象
+
+# register(文件描述符, 事件类型)：注册要监控的 socket 及事件
+epoll.register(server_fd, select.EPOLLIN)    # 注册可读事件
+# 常用事件类型：
+# select.EPOLLIN   可读事件（有数据可读 / 新连接到来）
+# select.EPOLLOUT  可写事件（缓冲区可写）
+# select.EPOLLERR  错误事件
+# select.EPOLLHUP  客户端断开事件
+
+epoll.unregister(fd)                         # 注销文件描述符的监控
+epoll.modify(fd, select.EPOLLOUT)            # 修改已注册 fd 的监控事件
+
+# poll(timeout)：轮询，返回 [(fd, 事件), ...] 列表；timeout=-1 表示一直等待
+events = epoll.poll(timeout=10)              # 10 秒超时，无事件返回空列表
+
+epoll.close()                                # 销毁 epoll 对象
+```
+
+**epoll 使用流程**：
+
+```python
+# 聊天室服务端（epoll 版）核心逻辑
+tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+tcp_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # 允许地址复用
+tcp_server_socket.bind(('192.168.1.111', 2000))
+tcp_server_socket.listen(100)
+
+epoll = select.epoll()
+epoll.register(tcp_server_socket.fileno(), select.EPOLLIN)  # 监听服务器 socket 的可读事件
+client_list = []                    # 存储所有已连接客户端的 socket
+
+while True:
+    epoll_list = epoll.poll()       # 阻塞等待，返回有事件的 (fd, event) 列表
+
+    for fd, event in epoll_list:
+        if fd == tcp_server_socket.fileno():          # 服务器 socket 可读 = 新连接到来
+            client_socket, client_addr = tcp_server_socket.accept()
+            print('{} 已连接'.format(client_addr))
+            client_list.append(client_socket)         # 加入客户端列表
+            epoll.register(client_socket.fileno(), select.EPOLLIN)  # 注册新客户端
+
+        for client in client_list:
+            if fd == client.fileno():                 # 某客户端 socket 可读 = 有消息
+                recv_data = client.recv(1024)
+                if not recv_data:                     # recv 返回空 = 客户端断开
+                    epoll.unregister(client.fileno())
+                    client_list.remove(client)
+                    client.close()
+                else:                                 # 收到消息，群发给其他所有客户端
+                    for other_client in client_list:
+                        if other_client is not client:
+                            other_client.send(recv_data)
+```
+
+> **TCP 断开检测**：对方断开时，内核将对应 socket 标记为可读；`recv` 读取返回**空字节串**（`b''`），通过 `if not recv_data` 判断断开
+
+
+
+#### 16.8.2 阻塞与非阻塞
+
+```python
+import socket
+
+# ── 1. 同步阻塞（默认）──────────────────────────────
+# recv、recvfrom 默认会阻塞，直到有数据到来才返回
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# ── 2. 同步非阻塞（轮询）──────────────────────────────
+# setblocking(False)：将 socket 设置为非阻塞模式
+# 非阻塞下，recv 没有数据时立即抛出异常而非等待
+sock.setblocking(False)
+
+try:
+    data = sock.recv(1024)          # 无数据时立即抛出 BlockingIOError
+except Exception:
+    pass                            # 捕获异常，继续执行其他逻辑（轮询）
+
+# ── 3. 非阻塞 send（MSG_DONTWAIT）──────────────────────────────
+# MSG_DONTWAIT：本次 send 不等待，缓冲区满时立即返回或抛出异常
+send_size = sock.send(data, socket.MSG_DONTWAIT)  # 返回实际发送的字节数
+```
+
+> **写（send）也会阻塞**：当发送缓冲区满时，`send` 也会阻塞；对方断开时 `send` 会抛出异常，需加 `try/except` 处理
+
+
+
+#### 16.8.3 粘包问题与 struct 模块
+
+**粘包**：TCP 是字节流协议，多次 `send` 的数据可能被合并成一个包发出，接收方无法分辨边界。
+
+**解决方案**：在数据前加固定长度的**报文头**，声明数据的字节长度，接收方先读头部再按长度读数据。
+
+```python
+import struct
+
+# struct.pack(格式字符串, 数值)：将数值打包为固定长度的 bytes（用于发送）
+# "I" = unsigned int（无符号整型，4 字节，小端序）
+length_bytes = struct.pack('I', 100)    # 将整数 100 打包为 4 字节的 bytes
+print(len(length_bytes))               # 4（固定 4 字节，接收方按此解析）
+
+# struct.unpack(格式字符串, bytes)：将 bytes 解包还原为数值元组（用于接收）
+length_tuple = struct.unpack('I', length_bytes)  # 返回元组
+length = length_tuple[0]               # 取第一个元素，还原为整数 100
+
+# ">I"：大端序；"I"（无前缀）：小端序；网络标准是大端序
+big_endian_bytes = struct.pack('>I', 100)   # 大端序打包
+
+# ── 发送文件（解决粘包）──────────────────────────────
+import struct
+
+file_name = 'Readme'
+b_file_name = file_name.encode('utf-8')
+
+# 先发文件名长度（固定 4 字节），再发文件名内容
+client_socket.send(struct.pack('I', len(b_file_name)))  # 发 4 字节头（文件名长度）
+client_socket.send(b_file_name)                          # 发文件名
+
+with open(file_name, 'rb') as f:
+    text_bytes = f.read()
+
+# 先发文件内容长度，再发文件内容
+client_socket.send(struct.pack('I', len(text_bytes)))    # 发 4 字节头（文件大小）
+client_socket.send(text_bytes)                           # 发文件内容
+
+# ── 接收文件（按协议解析）──────────────────────────────
+# 先收 4 字节头，解出长度，再按长度收数据，防止粘包
+name_len_bytes = tcp_client_socket.recv(4)                          # 收 4 字节头
+name_len = struct.unpack('I', name_len_bytes)[0]                    # 解出文件名长度
+file_name_bytes = tcp_client_socket.recv(name_len)                  # 按长度收文件名
+
+text_len_bytes = tcp_client_socket.recv(4)                          # 收 4 字节头
+text_len = struct.unpack('I', text_len_bytes)[0]                    # 解出文件内容长度
+text_bytes = tcp_client_socket.recv(text_len)                       # 按长度收文件内容
+```
+
+> **`struct` 与大小端**：x86、ARM 架构为**小端**（低字节在低地址），网络标准为**大端**；
+> 跨平台通信时使用 `>I`（大端序）确保一致；整型、浮点数在网络传输时都需考虑大小端问题
+
+
+
+#### 16.8.4 C/S 与 B/S 模式
+
+
+| 对比项 | C/S（Client/Server） | B/S（Browser/Server） |
+|------|---------------------|----------------------|
+| 客户端 | 独立客户端程序（需安装） | 浏览器（无需额外安装） |
+| 开发成本 | 高（需开发客户端 + 服务端） | 低（只需开发服务端） |
+| 性能 | 高（可本地缓存大量数据） | 较低（受浏览器限制） |
+| 协议灵活性 | 高（可自定义协议） | 低（必须遵循 HTTP） |
+| 移植性 | 差（依赖平台） | 好（浏览器跨平台） |
+| 适用场景 | 游戏、金融、直播、即时通信 | 电商、政企网站 |
+
+---
+
+
+
+### 16.9 DDos 攻击简介（SYN Flooding）
+
+**攻击原理**：攻击者伪造大量随机源 IP，向服务器发送 SYN 请求；服务器回复 SYN+ACK 后，因源 IP 是假的，永远收不到第三次握手的 ACK，导致大量**半连接**堆积在队列中，耗尽资源，正常连接无法响应。
+
+**防护手段**：
+
+```bash
+# Linux 内核参数（路径：/proc/sys/net/ipv4/）
+tcp_max_syn_backlog    # 半连接队列长度（增大以容纳更多合法半连接）
+tcp_synack_retries     # SYN+ACK 重传次数（减小以加速清理僵尸半连接）
+tcp_syncookies         # 启用 SYN Cookie（最有效）：在完成三次握手前不分配资源，
+                       # 通过带签名的序号屏蔽伪造请求，是防御 SYN Flood 的核心手段
+```
+
+---
+
+
+
+### 16.10 网络编程速查
+
+
+| 方法 | 所属协议 | 说明 |
+|------|--------|------|
+| `socket(AF_INET, SOCK_DGRAM)` | UDP | 创建 UDP 套接字 |
+| `socket(AF_INET, SOCK_STREAM)` | TCP | 创建 TCP 套接字 |
+| `bind((ip, port))` | UDP/TCP | 绑定本地地址和端口 |
+| `sendto(data, addr)` | UDP | 发送数据（含目标地址） |
+| `recvfrom(buf_size)` | UDP | 接收数据（返回数据+来源地址） |
+| `connect((ip, port))` | TCP | 客户端发起连接（三次握手） |
+| `listen(backlog)` | TCP | 开启监听，变为被动套接字 |
+| `accept()` | TCP | 阻塞等待客户端连接，返回新套接字 |
+| `send(data)` | TCP | 发送数据（bytes） |
+| `recv(buf_size)` | TCP | 接收数据（返回 bytes，空则表示对方断开） |
+| `close()` | UDP/TCP | 关闭套接字，释放资源 |
+| `setblocking(False)` | UDP/TCP | 设置非阻塞模式 |
+| `setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)` | TCP | 允许地址复用（解决 TIME_WAIT 不能绑定的问题） |
+
+```python
+# 最简 TCP 服务器模板（循环接受多个客户端）
+import socket
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # 允许地址复用
+server.bind(('', 8888))
+server.listen(128)
+
+while True:                              # 循环接受新连接
+    client, addr = server.accept()      # 阻塞等待
+    data = client.recv(1024)            # 接收数据
+    if data:
+        client.send(data)               # 回显（echo server）
+    client.close()
+
+server.close()
+```
+
+
+---
+
+
+
+## 十七、速查表
+
+
+
+### 17.1 Python 关键字（33 个）
 
 ```python
 # False  None  True  and  as  assert  async  await
@@ -2348,7 +3125,7 @@ with tqdm(total=总步数) as pbar:
 
 
 
-### 16.2 命名规范速查
+### 17.2 命名规范速查
 
 
 | 类型       | 命名方式    | 示例                      |
@@ -2360,7 +3137,7 @@ with tqdm(total=总步数) as pbar:
 
 
 
-### 16.3 常用内置函数速查
+### 17.3 常用内置函数速查
 
 
 | 函数                                         | 说明                          |
@@ -2395,7 +3172,7 @@ with tqdm(total=总步数) as pbar:
 
 
 
-### 16.4 推导式速查
+### 17.4 推导式速查
 
 ```python
 # 列表（过滤时 if 在循环的后面，三目时 if 在循环的前面）
@@ -2415,7 +3192,7 @@ with tqdm(total=总步数) as pbar:
 
 
 
-### 16.5 Jupyter Notebook 命令
+### 17.5 Jupyter Notebook 命令
 
 ```bash
 # Jupyter 快捷键
@@ -2443,7 +3220,7 @@ display(df)
 
 
 
-### 16.6 字符串常用操作速查
+### 17.6 字符串常用操作速查
 
 ```python
 s = 'Hello, Python!'
@@ -2460,7 +3237,7 @@ f'{pi:.4f}'                # 保留4位小数
 
 
 
-### 16.7 文件操作速查
+### 17.7 文件操作速查
 
 ```python
 # 读文件（推荐模板）
@@ -2483,7 +3260,7 @@ with open('src.png', 'rb') as src, open('dst.png', 'wb') as dst:
 
 
 
-### 16.8 常用正则表达式模板
+### 17.8 常用正则表达式模板
 
 
 | 用途             | pattern                          |
@@ -2498,7 +3275,7 @@ with open('src.png', 'rb') as src, open('dst.png', 'wb') as dst:
 
 
 
-### 16.9 环境与包管理速查
+### 17.9 环境与包管理速查
 
 ```bash
 # conda
@@ -2527,6 +3304,7 @@ where python   # Windows
 where pip
 ```
 
+
 ---
 
 > **学习建议**：
@@ -2536,4 +3314,8 @@ where pip
 > 3. 遵循 **PEP8 命名规范**，善用 `Ctrl+Alt+L`（PyCharm）自动格式化
 > 4. 调试三板斧：`print(type(x))`、`print(dir(x))`、`help(x)`
 > 5. **推导式、lambda、with 语句、f-string**是 Python 代码简洁优雅的核心语法糖，要熟练运用
+
+---
+
+
 
