@@ -2524,7 +2524,11 @@ udp_socket.bind(local_addr)               # 绑定；若端口已被占用则抛
 # 等待接收（recvfrom 会阻塞直到有数据到达）
 recv_data = udp_socket.recvfrom(1024)      # recvfrom 返回元组
 print(recv_data[0].decode('utf-8'))        # 取索引 0 = 数据内容，解码为字符串
-print(recv_data[1])                        # 取索引 1 = 发送方地址元组
+print(recv_data[1])                        # 取索引 1 = 发送方地址元组（ip, port）
+
+# sendto(数据, 目标地址)：向客户端回传应答
+# recv_data[1] 即 recvfrom 返回的发送方地址，服务器只有先收到才能知道对方地址
+udp_socket.sendto('已收到'.encode('utf-8'), recv_data[1])
 
 udp_socket.close()
 ```
