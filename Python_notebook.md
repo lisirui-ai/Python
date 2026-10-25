@@ -702,6 +702,22 @@ s3 = """多行
 字符串"""                # 三引号，保留原有格式
 s4 = 'I\'m a singer'    # 转义字符 \'；转义字符用 \
 
+# ── 特殊前缀字符串 ──────────────────────────────────────────
+# f 字符串（f-string）：格式化字符串，{} 内可直接嵌入变量或表达式，Python 3.6+
+name, age = 'Tom', 18
+s = f'我叫 {name}，今年 {age} 岁'       # '我叫 Tom，今年 18 岁'
+s = f'{1 + 2}'                          # '3'，{} 内可写表达式
+s = f'{3.14:.2f}'                       # '3.14'，支持格式规格说明符
+
+# r 字符串（raw string）：原始字符串，反斜杠 \ 不转义，常用于正则表达式和路径
+s = r'C:\Users\name\Desktop'            # 'C:\\Users\\name\\Desktop'，\ 不被转义
+s = r'\n\t'                             # 字面量 '\n\t'，而非换行+制表符
+
+# b 字符串（bytes literal）：字节串字面量，类型为 bytes 而非 str，用于网络/文件 IO
+b = b'hello'                            # b'hello'，类型 bytes，只能包含 ASCII 字符
+b = b'\xe4\xbd\xa0'                     # 十六进制字节值，表示 UTF-8 编码的 '你'
+# b 字符串不能直接包含中文，需用 encode：'你好'.encode('utf-8') → bytes
+
 # 下标（索引）：正向从 0 开始，逆向从 -1 开始
 s = 'hello'
 print(s[0])    # 'h'
@@ -778,6 +794,15 @@ s.center(width)  # 居中
 # int 整型转为字符串，使得可以快速按位访问
 str_num = str(12345)
 print(str_num[2])   # '3'
+
+# 编码与解码（网络传输必须用 bytes，不能直接传 str）
+# encode(编码格式)：str → bytes；编码格式默认 'utf-8'
+b = 'hello'.encode('utf-8')          # b'hello'，类型为 bytes
+b = '你好'.encode('utf-8')           # b'\xe4\xbd\xa0\xe5\xa5\xbd'，中文每字 3 字节
+
+# decode(编码格式)：bytes → str；编码格式须与 encode 一致，否则报 UnicodeDecodeError
+s = b'\xe4\xbd\xa0\xe5\xa5\xbd'.decode('utf-8')  # '你好'
+s = b'hello'.decode('utf-8')         # 'hello'
 ```
 
 
