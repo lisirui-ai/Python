@@ -2587,25 +2587,32 @@ TCP 是**面向连接、可靠**的传输协议。通信前必须先建立连接
 #### 16.4.1 TCP 客户端
 
 ```python
-from socket import *
+import socket  # 导入 socket 标准库模块
 
-tcp_client_socket = socket(AF_INET, SOCK_STREAM)   # 创建 TCP 套接字（流式）
+# socket.socket(地址族, 套接字类型)：创建套接字对象
+# AF_INET  = IPv4 地址族；AF_INET6 = IPv6
+# SOCK_STREAM = 流式套接字（TCP）；SOCK_DGRAM = 数据报套接字（UDP）
+tcp_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-server_ip = input('请输入服务器ip:')               # 读取服务器 IP
-server_port = int(input('请输入服务器port:'))       # 读取服务器端口，转整型
+server_ip   = input('请输入服务器ip:')               # 读取服务器 IP，字符串类型
+server_port = int(input('请输入服务器port:'))         # 读取服务器端口，必须转为整型
 
-# connect((ip, port))：向服务器发起连接（三次握手在这里完成）
-# TCP 客户端不需要 bind，系统自动分配端口
-tcp_client_socket.connect((server_ip, server_port))
+# connect((ip, port))：向服务器发起 TCP 连接（三次握手在此完成，阻塞直到连接成功或超时）
+# 客户端不需要 bind，操作系统会自动分配一个临时端口
+tcp_client_socket.connect((server_ip, server_port))  # 参数为 (ip, port) 元组
 
-send_data = input('请输入要发送的数据：')            # 读取要发送的消息
-tcp_client_socket.send(send_data.encode('utf-8'))   # send：只传数据，无需地址
+send_data = input('请输入要发送的数据：')              # 读取要发送的字符串
+# send(bytes)：发送数据；TCP 已建立连接，无需每次指定目标地址
+# encode('utf-8')：将 str 编码为 bytes，网络传输只能传 bytes
+tcp_client_socket.send(send_data.encode('utf-8'))
 
-# recv(缓冲大小)：接收服务器回复，返回 bytes（TCP 无 from，因为连接已固定）
+# recv(bufsize)：从连接的对端接收数据，返回 bytes 类型
+# bufsize = 1024：本次最多接收 1024 字节；TCP 是流式协议，大数据可能需多次 recv
 recv_data = tcp_client_socket.recv(1024)
-print('接收到的数据为:', recv_data.decode('utf-8'))  # bytes → str
+print('接收到的数据为:', recv_data.decode('utf-8'))    # decode：bytes → str
 
-tcp_client_socket.close()                           # 关闭连接（四次挥手）
+# close()：关闭连接，触发 TCP 四次挥手，释放端口和资源
+tcp_client_socket.close()
 ```
 
 > **TCP 客户端 vs UDP 客户端**：
@@ -2618,33 +2625,45 @@ tcp_client_socket.close()                           # 关闭连接（四次挥�
 #### 16.4.2 TCP 服务器
 
 ```python
-from socket import *
+import socket  # 导入 socket 标准库模块
 
-# 1. 创建 TCP 套接字（默认是主动套接字）
-tcp_server_socket = socket(AF_INET, SOCK_STREAM)
+# 1. 创建 TCP 套接字
+# SOCK_STREAM = 流式套接字（TCP）；刚创建时默认是"主动套接字"（可主动发起连接）
+tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-address = ('', 7788)                  # 绑定地址：ip 为空 = 本机所有网卡
-tcp_server_socket.bind(address)       # 2. 绑定本地 IP 和端口
+# 2. bind((ip, port))：绑定本地地址和端口
+# ip 为空字符串 '' 表示监听本机所有网卡（0.0.0.0）；服务器必须绑定固定端口
+address = ('', 7788)                         # 绑定地址元组：(ip, port)
+tcp_server_socket.bind(address)
 
-# 3. listen(backlog)：将主动套接字变为被动套接字（可接受连接请求）
-#    backlog = 允许排队等待的最大连接数（半连接队列长度）
+# 3. listen(backlog)：将主动套接字转为被动套接字，开始监听连接请求
+# backlog = 128：操作系统内核排队等待的最大半连接数（SYN_RECV 状态的连接数）
+# listen 之后服务器才能接受客户端的 connect 请求
 tcp_server_socket.listen(128)
 
-# 4. accept()：阻塞等待客户端连接；连接成功后返回新套接字和客户端地址
-#    tcp_server_socket：被动套接字，只负责"接电话"（等待新连接）
-#    client_socket：为这个客户端专门创建的新套接字，负责"通话"（收发数据）
+# 4. accept()：阻塞等待客户端连接，直到有客户端完成三次握手
+# 返回值：(client_socket, client_addr)
+#   client_socket：专为该客户端创建的新套接字，用于后续收发数据
+#   client_addr  ：客户端的 (ip, port) 元组
+# tcp_server_socket 只负责"接电话"（等待新连接），不直接传输数据
 client_socket, client_addr = tcp_server_socket.accept()
-print(f'客户端 {client_addr} 已连接')
+print(f'客户端 {client_addr} 已连接')         # client_addr 格式：('192.168.x.x', port)
 
-# 5. recv/send：通过 client_socket 与该客户端通信
-recv_data = client_socket.recv(1024)          # 接收客户端发来的数据（bytes）
-print('接收到的数据为:', recv_data.decode('utf-8'))
+# 5. recv(bufsize)：通过 client_socket 接收该客户端发来的数据，返回 bytes
+# TCP 是流式协议，若数据量大于 bufsize，需多次调用 recv 才能读完
+recv_data = client_socket.recv(1024)
+print('接收到的数据为:', recv_data.decode('utf-8'))  # bytes → str
 
-client_socket.send('thank you !'.encode('utf-8'))  # 回复客户端
+# send(bytes)：通过 client_socket 向该客户端回复数据
+# 只有先 recv 拿到 client_socket 后才能 send，否则不知道发给谁
+client_socket.send('thank you !'.encode('utf-8'))
 
-# 6. 关闭 client_socket：表示与该客户端通信结束；tcp_server_socket 仍可接受新连接
+# 6. close()：关闭与该客户端的连接（四次挥手），client_socket 释放
+# tcp_server_socket 未关闭，仍可继续 accept() 接受下一个客户端
 client_socket.close()
-tcp_server_socket.close()             # 关闭监听套接字：新客户端无法再连接
+
+# 关闭监听套接字：之后新客户端无法再连接
+tcp_server_socket.close()
 ```
 
 > **两个套接字的分工**：
