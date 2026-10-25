@@ -25,7 +25,8 @@ Python 是一门简洁、优雅的高级编程语言，由吉多·范·罗苏姆
 | 十三  | 文件操作：打开/读写/关闭、文本与二进制模式、with 语句                        |
 | 十四  | 正则表达式：re 模块、常用语法、match/search/findall/sub             |
 | 十五  | 常用标准库：os、sys、time、datetime、random、json、copy、tqdm      |
-| 十六  | 速查表：关键字、命名规范、推导式、常用内置函数、Jupyter 命令                    |
+| 十六  | 网络编程：协议、IP、端口、UDP 通信、TCP 通信、socket 编程                 |
+| 十七  | 速查表：关键字、命名规范、推导式、常用内置函数、Jupyter 命令                    |
 
 
 ---
