@@ -2599,11 +2599,11 @@ server_port = int(input('请输入服务器port:'))       # 读取服务器端�
 tcp_client_socket.connect((server_ip, server_port))
 
 send_data = input('请输入要发送的数据：')            # 读取要发送的消息
-tcp_client_socket.send(send_data.encode('gbk'))     # send：只传数据，无需地址
+tcp_client_socket.send(send_data.encode('utf-8'))   # send：只传数据，无需地址
 
 # recv(缓冲大小)：接收服务器回复，返回 bytes（TCP 无 from，因为连接已固定）
 recv_data = tcp_client_socket.recv(1024)
-print('接收到的数据为:', recv_data.decode('gbk'))   # bytes → str
+print('接收到的数据为:', recv_data.decode('utf-8'))  # bytes → str
 
 tcp_client_socket.close()                           # 关闭连接（四次挥手）
 ```
@@ -2638,9 +2638,9 @@ print(f'客户端 {client_addr} 已连接')
 
 # 5. recv/send：通过 client_socket 与该客户端通信
 recv_data = client_socket.recv(1024)          # 接收客户端发来的数据（bytes）
-print('接收到的数据为:', recv_data.decode('gbk'))
+print('接收到的数据为:', recv_data.decode('utf-8'))
 
-client_socket.send('thank you !'.encode('gbk'))  # 回复客户端
+client_socket.send('thank you !'.encode('utf-8'))  # 回复客户端
 
 # 6. 关闭 client_socket：表示与该客户端通信结束；tcp_server_socket 仍可接受新连接
 client_socket.close()
