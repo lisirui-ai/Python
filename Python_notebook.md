@@ -2561,61 +2561,10 @@ udp_socket.close()
 > **端口绑定原则**：
 >
 > - 客户端程序一般**不绑定**，系统随机分配；重启后端口可能变化
-> - 服务器程序**必须绑定**固定端口，如同报警电话 110 永不更改
+> - 服务器程序**必须绑定**端口
 > - 端口被占用报错：`OSError: [Errno 98] Address already in use`
 
 
-
-#### 16.3.3 应用：UDP 聊天器
-
-```python
-import socket
-
-def send_msg(udp_socket):
-    """获取键盘数据并发送给对方
-
-    :param udp_socket: 已创建的 UDP 套接字对象
-    """
-    msg = input('\n请输入要发送的数据:')       # 从键盘读取消息
-    dest_ip = input('\n请输入对方的ip地址:')   # 读取目标 IP
-    dest_port = int(input('\n请输入对方的port:'))  # 读取目标端口，转为整型
-    udp_socket.sendto(msg.encode('utf-8'),      # 字符串编码为 bytes 后发送
-                      (dest_ip, dest_port))     # 目标地址元组
-
-def recv_msg(udp_socket):
-    """接收数据并显示到终端
-
-    :param udp_socket: 已创建的 UDP 套接字对象
-    """
-    recv_data = udp_socket.recvfrom(1024)       # 阻塞等待，返回 (data, addr)
-    recv_ip = recv_data[1]                      # 发送方 IP 和端口
-    recv_msg_str = recv_data[0].decode('utf-8') # bytes 解码为字符串
-    print('>>>%s:%s' % (str(recv_ip), recv_msg_str))  # 格式化输出
-
-def main():
-    """聊天器主函数：创建套接字，循环选择功能"""
-    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # 创建 UDP 套接字
-    udp_socket.bind(('', 7890))    # 绑定本机固定端口，便于对方发消息过来
-
-    while True:
-        print('=' * 30)
-        print('1:发送消息')
-        print('2:接收消息')
-        print('=' * 30)
-        op_num = input('请输入要操作的功能序号:')  # 读取用户选择
-
-        if op_num == '1':
-            send_msg(udp_socket)               # 选 1：发送
-        elif op_num == '2':
-            recv_msg(udp_socket)               # 选 2：接收
-        else:
-            print('输入有误，请重新输入...')    # 其他：提示重输
-
-if __name__ == '__main__':
-    main()
-```
-
-> **局限性**：选择接收功能时若无数据，程序会**堵塞**在 `recvfrom`；学完多任务/epoll 后可实现收发并行
 
 ---
 
