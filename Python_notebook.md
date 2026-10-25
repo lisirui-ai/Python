@@ -2474,7 +2474,7 @@ tcp_socket = socket.socket(socket.AF_INET,   # AF_INET：IPv4 网络通信（常
                             socket.SOCK_STREAM)  # SOCK_STREAM：TCP 协议
 
 # 创建 UDP 套接字（数据报套接字，无连接）
-udp_socket = socket.socket(socket.AF_INET,   # AF_UNIX：同一台机器进程间通信
+udp_socket = socket.socket(socket.AF_INET,   # AF_INET：IPv4 网络通信（常用）
                             socket.SOCK_DGRAM)   # SOCK_DGRAM：UDP 协议
 
 # 套接字使用流程（与文件使用流程类似）
@@ -2637,7 +2637,7 @@ address = ('', 7788)                         # 绑定地址元组：(ip, port)
 tcp_server_socket.bind(address)
 
 # 3. listen(backlog)：将主动套接字转为被动套接字，开始监听连接请求
-# backlog = 128：操作系统内核排队等待的最大半连接数（SYN_RECV 状态的连接数）
+# backlog = 128：操作系统内核排队等待的最大全连接数（ESTABLISHED 状态、等待 accept() 取走的连接数）
 # listen 之后服务器才能接受客户端的 connect 请求
 tcp_server_socket.listen(128)
 
@@ -2657,7 +2657,9 @@ client_socket, client_addr = tcp_server_socket.accept()
 print(f'客户端 {client_addr} 已连接')         # client_addr 格式：('ip字符串', port整型)，如 ('10.0.0.5', 52341)
 
 # 5. recv(bufsize)：通过 client_socket 接收该客户端发来的数据，返回 bytes
-# TCP 是流式协议，若数据量大于 bufsize，需多次调用 recv 才能读完
+# TCP 是流式协议：数据是连续字节流，内核不保留发送时的消息边界
+# 例：对方 send("hello") + send("world")，recv(3) 可能只拿到 "hel"，下次才拿 "low"/"orld"
+# 因此若数据量大于 bufsize，需多次调用 recv 才能读完；若需区分消息边界须在应用层自定义协议
 recv_data = client_socket.recv(1024)
 print('接收到的数据为:', recv_data.decode('utf-8'))  # bytes → str
 
