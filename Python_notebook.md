@@ -2365,6 +2365,7 @@ with tqdm(total=总步数) as pbar:
 $ifconfig          # 查看网卡信息（Linux/macOS）
 $ping 192.168.1.1  # 测试目标主机连通性
 $netstat -an       # 查看端口占用状态（必考）
+$route -n          # 查看内核 IP 路由表（-n 以数字形式显示，不做 DNS 解析）
 ```
 
 > **IP 地址的作用**：在网络中**唯一标识一台主机**；`IP地址 + 端口号` 唯一标识该主机上的一个进程
