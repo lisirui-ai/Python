@@ -2641,7 +2641,14 @@ tcp_server_socket.bind(address)
 # listen 之后服务器才能接受客户端的 connect 请求
 tcp_server_socket.listen(128)
 
-# 4. accept()：阻塞等待客户端连接，直到有客户端完成三次握手
+# 4. accept()：从全连接队列中取出一个已完成三次握手的连接，返回新套接字和客户端地址
+# TCP 服务器内核维护两个队列：
+#   半连接队列（SYN_RECV）：收到客户端 SYN 但握手未完成的连接
+#   全连接队列（ESTABLISHED）：三次握手已完成、等待 accept() 取走的连接
+# accept() 每次从全连接队列取走一个连接，队列随即腾出一个槽位供新连接进入
+# 若全连接队列为空，调用 accept() 的进程进入阻塞状态，直到有客户端完成三次握手才被唤醒
+# 若全连接队列已满，新连接会被内核丢弃（客户端触发超时重传）
+# listen(backlog) 中的 backlog 影响全连接队列的最大容量
 # 返回值：(client_socket, client_addr)
 #   client_socket：专为该客户端创建的新套接字，用于后续收发数据
 #   client_addr  ：客户端的 (ip, port) 元组
