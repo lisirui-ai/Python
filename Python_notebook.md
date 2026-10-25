@@ -2391,7 +2391,7 @@ $netstat -an       # 查看端口占用状态（必考）
 ```bash
 # 查看端口占用
 $netstat -an                    # 查看所有端口状态
-$sudo lsof -i tcp:22            # 查看哪个进程占用了 22 端口
+$sudo lsof -i tcp:22            # 查看哪个进程占用了 22 端口 
 $ps -elf | grep udp_server      # 查看某进程是否还在运行
 
 # 端口被占用时，先查出进程 PID 再杀掉
