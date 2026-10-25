@@ -2368,6 +2368,34 @@ $netstat -an       # 查看端口占用状态（必考）
 $route -n          # 查看内核 IP 路由表（-n 以数字形式显示，不做 DNS 解析）
 ```
 
+**Ubuntu 固定 IP 设置（netplan）**：
+
+```bash
+$sudo vim /etc/netplan/01-network-manager-all.yaml   # 编辑网络配置文件
+```
+
+```yaml
+network:
+  version: 2
+  # renderer: NetworkManager   # GUI 环境（桌面版）使用
+  renderer: networkd            # 服务器/命令行环境使用
+  ethernets:
+    ens33:                      # 网卡名称（用 ifconfig 查看实际名称）
+      dhcp4: no                 # 关闭 DHCP 动态分配，改为静态 IP
+      addresses:
+        - 192.168.19.128/24     # 本机静态 IP 地址/子网掩码前缀长度（24 = 255.255.255.0）
+      routes:
+        - to: default           # 默认路由（所有流量）
+          via: 192.168.19.2     # 网关地址
+      nameservers:
+        addresses:
+          - 192.168.19.2        # DNS 服务器地址（通常与网关相同）
+```
+
+```bash
+$sudo netplan apply   # 使配置立即生效（无需重启）
+```
+
 > **IP 地址的作用**：在网络中**唯一标识一台主机**；`IP地址 + 端口号` 唯一标识该主机上的一个进程
 
 
