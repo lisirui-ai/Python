@@ -2647,7 +2647,7 @@ tcp_server_socket.listen(128)
 #   client_addr  ：客户端的 (ip, port) 元组
 # tcp_server_socket 只负责"接电话"（等待新连接），不直接传输数据
 client_socket, client_addr = tcp_server_socket.accept()
-print(f'客户端 {client_addr} 已连接')         # client_addr 格式：('192.168.x.x', port)
+print(f'客户端 {client_addr} 已连接')         # client_addr 格式：('ip字符串', port整型)，如 ('10.0.0.5', 52341)
 
 # 5. recv(bufsize)：通过 client_socket 接收该客户端发来的数据，返回 bytes
 # TCP 是流式协议，若数据量大于 bufsize，需多次调用 recv 才能读完
