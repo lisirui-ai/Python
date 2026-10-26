@@ -2853,6 +2853,39 @@ TCP 是**全双工**（双向独立）通道，每个方向需要单独关闭，
 > - 对**实时性**要求高（如 VOIP、视频监控）→ 选 UDP
 > - 网络状况**不稳定**（广域网）→ 选 TCP；**局域网**环境好 → 可选 UDP
 
+
+
+#### 16.7.3 各层协议常用命令
+
+```bash
+# ── 网络层（IP / ICMP / ARP）────────────────────────────────
+$ arp -a              # 查看本机 ARP 缓存表（IP → MAC 地址映射），跨平台
+$ arp -d 192.168.1.1  # 删除指定 IP 的 ARP 缓存条目（Windows 需管理员权限）
+$ ping 192.168.1.1          # 发送 ICMP Echo 请求，测试目标主机连通性，跨平台
+$ ping -c 4 192.168.1.1     # -c：指定发送次数（Linux/macOS；Windows 用 -n）
+$ traceroute 8.8.8.8        # 追踪数据包到目标的逐跳路由路径（Linux/macOS）
+$ tracert 8.8.8.8           # 同上，Windows 命令
+$ netstat -r                # 查看本机路由表，跨平台（与 route print/ip route 功能相同）
+$ route print               # 查看路由表（Windows）
+$ ip route                  # 查看路由表（Linux）
+
+# ── 传输层（TCP / UDP 端口）─────────────────────────────────
+$ netstat -an               # 查看所有网络连接及监听端口（含 TCP/UDP 状态），跨平台
+$ netstat -anp              # 同上，额外显示占用端口的进程 PID（Linux，需 sudo）
+$ ss -tnlp                  # 替代 netstat，查看 TCP 监听端口及进程（Linux）
+$ lsof -i :7788             # 查看占用指定端口的进程（Linux/macOS）
+
+# ── 应用层（DNS）────────────────────────────────────────────
+$ nslookup www.baidu.com          # 查询域名对应的 IP 地址（DNS 解析），跨平台
+$ nslookup www.baidu.com 8.8.8.8  # 指定使用 8.8.8.8 作为 DNS 服务器查询
+
+# ── 网络接口信息（OS 工具，不属于某一协议层）───────────────────
+$ ifconfig                  # 查看本机所有网卡的 IP、MAC 地址等信息（Linux/macOS）
+$ ipconfig                  # 同上，Windows 命令
+$ ipconfig /all             # 显示详细信息（含 MAC 地址、子网掩码、DNS 等）
+$ ipconfig /flushdns        # 清空本机 DNS 缓存（Windows）
+```
+
 ---
 
 
