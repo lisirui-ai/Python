@@ -2594,6 +2594,43 @@ UDP 也存在发送缓冲区，但意义很小——数据写入后**立即交�
 > - 多个发送方并发写入时，数据报在缓冲区中的顺序取决于到达时间，**不保证与发送顺序一致**
 > - 与 TCP 不同，UDP 没有"连接"概念，因此不存在"连接数"限制，理论上可接受无限多个来源的数据报
 
+**如何区分不同客户端？**
+
+`recvfrom()` 返回的 `addr`（IP + 端口）是**唯一的来源标识**，应用层需自行维护字典来区分：
+
+```python
+# recvfrom 返回值：(数据内容, 发送方地址)
+data, addr = udp_socket.recvfrom(1024)
+# addr = ('192.168.x.x', port)，IP + 端口共同唯一标识一个客户端
+```
+
+```python
+from socket import *
+
+server = socket(AF_INET, SOCK_DGRAM)          # 创建 UDP 套接字
+server.bind(('', 7788))                       # 绑定本地端口
+
+clients = {}  # 字典：{addr: [历史消息列表]}，用于记录各客户端状态
+
+while True:
+    data, addr = server.recvfrom(1024)        # 阻塞等待，addr 唯一标识来源客户端
+    if addr not in clients:
+        clients[addr] = []                    # 第一次收到该客户端消息，初始化列表
+    clients[addr].append(data.decode())       # 追加消息到对应客户端的历史记录
+    print(f'来自 {addr}：{data.decode()}')    # 打印来源地址和消息内容
+    server.sendto('已收到'.encode(), addr)    # 按 addr 定向回复，不会发错客户端
+```
+
+与 TCP 区分客户端方式的对比：
+
+| | TCP | UDP |
+|--|--|--|
+| 区分客户端的方式 | 每个连接有独立 `conn` socket，天然隔离 | 只有一个 socket，靠 `recvfrom` 返回的 `addr` 手动区分 |
+| 区分层级 | 操作系统层面自动隔离 | 应用层手动维护 `{addr: 状态}` 字典 |
+| 误混风险 | 无 | `addr` 相同才是同一客户端（IP + 端口均相同） |
+
+> **注意**：UDP 客户端每次重启后系统会随机分配新端口，导致 `addr` 变化，服务器会把它当成**新客户端**。若需稳定标识客户端，要么让客户端也 `bind()` 固定端口，要么在数据包内自带业务层 ID（如用户名、token）。
+
 
 
 ---
