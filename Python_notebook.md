@@ -2516,7 +2516,7 @@ import socket
 # ── 客户端（发送方）──────────────────────────────
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # 创建 UDP 套接字
 
-dest_addr = ('192.168.5.7', 2000)                          # 目标 IP 和端口号（元组）
+dest_addr = ('192.168.5.7', 7788)                          # 目标 IP 和端口号（元组）；必须与服务器 bind() 的端口一致
 
 # sendto(数据, 目标地址)：发送数据；数据必须是 bytes 类型，字符串需 encode
 client.sendto('hello'.encode('utf-8'), dest_addr)          # 发送编码后的字节串
