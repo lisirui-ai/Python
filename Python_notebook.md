@@ -3045,64 +3045,140 @@ $ ipconfig /flushdns        # 清空本机 DNS 缓存（Windows）
 `epoll` 是 Linux 下高效的 I/O 多路复用机制，解决了"同时监听多个 socket"的问题，广泛用于高并发服务器。
 
 ```python
-import socket
-import select
-import sys
+import socket   # 提供 BSD socket 接口，用于创建 TCP/UDP 套接字
+import select   # 提供 I/O 多路复用接口，epoll/select/poll 均在此模块
 
 # ── epoll 常用 API ──────────────────────────────
-epoll = select.epoll()                       # 创建 epoll 对象
 
-# register(文件描述符, 事件类型)：注册要监控的 socket 及事件
-epoll.register(server_fd, select.EPOLLIN)    # 注册可读事件
-# 常用事件类型：
-# select.EPOLLIN   可读事件（有数据可读 / 新连接到来）
-# select.EPOLLOUT  可写事件（缓冲区可写）
-# select.EPOLLERR  错误事件
-# select.EPOLLHUP  客户端断开事件
+# select.epoll()：创建一个 epoll 实例，返回 epoll 对象
+# 底层调用 Linux 系统调用 epoll_create1()，内核为其分配事件监听表
+epoll = select.epoll()
 
-epoll.unregister(fd)                         # 注销文件描述符的监控
-epoll.modify(fd, select.EPOLLOUT)            # 修改已注册 fd 的监控事件
+# epoll.register(fd, eventmask)：向内核注册需要监控的文件描述符及感兴趣的事件
+# 参数 fd        : int，文件描述符（socket.fileno() 返回值）
+# 参数 eventmask : int，事件掩码，可用 | 组合多个事件
+# 常用事件类型（均为 int 常量）：
+#   select.EPOLLIN   = 1   可读事件：有数据可读，或新连接到来（对服务器 socket）
+#   select.EPOLLOUT  = 4   可写事件：发送缓冲区有空间，可以写数据
+#   select.EPOLLERR  = 8   错误事件：fd 发生错误（无需主动注册，内核自动上报）
+#   select.EPOLLHUP  = 16  挂起事件：连接被重置（RST）或发生异常挂起（无需主动注册，内核自动上报）
+#                          注意：对端正常关闭（FIN）不会触发 EPOLLHUP，
+#                          而是触发 EPOLLIN，此时 recv() 返回 b'' 来表示连接已断开
+#   select.EPOLLRDHUP = 8192  对端关闭写端事件（Linux ≥ 2.6.17）：
+#                             对端调用 close() 或 shutdown(SHUT_WR) 时触发，
+#                             可直接检测"对端关闭连接"，无需再调用 recv() 判断
+epoll.register(server_fd, select.EPOLLIN)
 
-# poll(timeout)：轮询，返回 [(fd, 事件), ...] 列表；timeout=-1 表示一直等待
-events = epoll.poll(timeout=10)              # 10 秒超时，无事件返回空列表
+# epoll.unregister(fd)：从内核的监听表中移除该 fd，之后不再收到该 fd 的事件通知
+# 参数 fd : int，要注销的文件描述符
+# 注意：必须先 unregister 再 close(fd)，顺序不能颠倒
+#       若先 close(fd)，OS 可能将该 fd 号复用给新的 socket，
+#       导致 epoll 意外监听到新 socket 的事件（fd 复用问题）
+epoll.unregister(fd)
 
-epoll.close()                                # 销毁 epoll 对象
+# epoll.modify(fd, eventmask)：修改已注册 fd 的监听事件类型
+# 等价于先 unregister 再 register，但效率更高（底层调用 epoll_ctl EPOLL_CTL_MOD）
+# 参数 fd        : int，已注册的文件描述符
+# 参数 eventmask : int，新的事件掩码，替换原有事件
+epoll.modify(fd, select.EPOLLOUT)
+
+# epoll.poll(timeout=-1, maxevents=-1)：等待已注册 fd 上的事件发生
+# 参数 timeout   : float，超时秒数；-1 表示永久阻塞直到有事件；0 表示立即返回（非阻塞轮询）
+# 参数 maxevents : int，本次最多返回的事件数量；-1 表示不限制
+# 返回值         : list[tuple[int, int]]，每个元素为 (fd, event) 二元组
+#                  fd    - 发生事件的文件描述符
+#                  event - 发生的事件类型（EPOLLIN / EPOLLOUT / EPOLLERR 等）
+events = epoll.poll(timeout=10)   # 最多阻塞 10 秒，超时无事件则返回空列表 []
+
+# epoll.close()：关闭 epoll 实例，释放内核资源
+# 使用完毕后必须调用，避免文件描述符泄漏
+epoll.close()
 ```
 
 **epoll 使用流程**：
 
 ```python
 # 聊天室服务端（epoll 版）核心逻辑
+
+# socket.AF_INET     : 使用 IPv4 地址族
+# socket.SOCK_STREAM : 使用 TCP 协议（面向连接、可靠传输）
 tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-tcp_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # 允许地址复用
+
+# setsockopt(level, optname, value)：设置 socket 选项
+# socket.SOL_SOCKET  : 选项作用于 socket 层本身（而非 TCP/IP 层）
+# socket.SO_REUSEADDR: 允许地址复用——服务器重启时可立即绑定同一端口，
+#                      避免因 TIME_WAIT 状态导致 "Address already in use" 错误
+tcp_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+# bind((host, port))：将 socket 绑定到指定 IP 和端口
+# host : str，本机 IP 地址；填 '' 或 '0.0.0.0' 表示监听所有网卡
+# port : int，端口号（1024~65535 为用户端口，避免占用系统端口）
 tcp_server_socket.bind(('192.168.1.111', 2000))
+
+# listen(backlog)：开始监听，将 socket 置为被动连接模式
+# backlog : int，全连接队列（已完成三次握手、等待 accept 取走）的最大长度
+#           注意：backlog 仅控制全连接队列；半连接队列（SYN_RCVD 状态）
+#           由内核参数 tcp_max_syn_backlog 单独控制，两者相互独立（Linux ≥ 2.2）
 tcp_server_socket.listen(100)
 
+# 创建 epoll 实例，用于同时监听多个 fd 的 I/O 事件
 epoll = select.epoll()
-epoll.register(tcp_server_socket.fileno(), select.EPOLLIN)  # 监听服务器 socket 的可读事件
-client_list = []                    # 存储所有已连接客户端的 socket
+
+# 将服务器 socket 注册到 epoll，监听 EPOLLIN（可读）事件
+# fileno() 返回 socket 的底层文件描述符（int），内核通过 fd 识别 socket
+# 服务器 socket 可读 = 有新客户端发起了连接请求
+epoll.register(tcp_server_socket.fileno(), select.EPOLLIN)
+
+# 存储所有已连接客户端的 socket 对象，用于群发消息
+# 类型：list[socket.socket]
+client_list = []
 
 while True:
-    epoll_list = epoll.poll()       # 阻塞等待，返回有事件的 (fd, event) 列表
+    # epoll.poll()：阻塞等待，直到至少一个已注册 fd 上有事件发生
+    # 返回值 epoll_list : list[tuple[int, int]]，每项为 (fd, event)
+    epoll_list = epoll.poll()
 
+    # 遍历所有就绪事件
+    # fd    : int，发生事件的文件描述符
+    # event : int，事件类型（EPOLLIN / EPOLLOUT / EPOLLERR 等）
     for fd, event in epoll_list:
-        if fd == tcp_server_socket.fileno():          # 服务器 socket 可读 = 新连接到来
+
+        # 判断是否为服务器 socket 的 fd
+        # 服务器 socket 可读 → 有新客户端连接到来
+        if fd == tcp_server_socket.fileno():
+            # accept()：从全连接队列中取出一个已完成三次握手的连接
+            # 返回值 client_socket : socket.socket，与该客户端通信的新 socket
+            # 返回值 client_addr   : tuple[str, int]，客户端的 (IP, 端口)
             client_socket, client_addr = tcp_server_socket.accept()
             print('{} 已连接'.format(client_addr))
-            client_list.append(client_socket)         # 加入客户端列表
-            epoll.register(client_socket.fileno(), select.EPOLLIN)  # 注册新客户端
 
+            # 将新客户端 socket 加入列表，后续用于群发
+            client_list.append(client_socket)
+
+            # 向 epoll 注册新客户端 socket，监听其可读事件（即客户端发来消息）
+            epoll.register(client_socket.fileno(), select.EPOLLIN)
+
+        # 遍历所有已连接客户端，找到 fd 对应的 socket
         for client in client_list:
-            if fd == client.fileno():                 # 某客户端 socket 可读 = 有消息
+            # 某客户端 socket 可读 → 该客户端发来了数据，或已断开连接
+            if fd == client.fileno():
+                # recv(bufsize)：从缓冲区读取最多 bufsize 字节的数据
+                # 返回值 recv_data : bytes；对端正常断开时返回 b''（空字节串）
                 recv_data = client.recv(1024)
-                if not recv_data:                     # recv 返回空 = 客户端断开
-                    epoll.unregister(client.fileno())
-                    client_list.remove(client)
-                    client.close()
-                else:                                 # 收到消息，群发给其他所有客户端
+
+                # recv 返回 b'' 表示客户端已关闭连接（TCP 四次挥手完成）
+                if not recv_data:
+                    # 先从 epoll 注销，再关闭 socket，顺序不能颠倒
+                    epoll.unregister(client.fileno())   # 从内核监听表移除该 fd
+                    client_list.remove(client)          # 从客户端列表移除
+                    client.close()                      # 释放 socket 资源，发送 FIN
+
+                else:
+                    # 将收到的消息群发给除发送者以外的所有在线客户端
                     for other_client in client_list:
+                        # is not：判断是否为同一对象（非值比较），排除发送者自身
                         if other_client is not client:
-                            other_client.send(recv_data)
+                            other_client.send(recv_data)   # 原样转发字节数据
 ```
 
 > **TCP 断开检测**：对方断开时，内核将对应 socket 标记为可读；`recv` 读取返回**空字节串**（`b''`），通过 `if not recv_data` 判断断开
@@ -3157,25 +3233,39 @@ epoll 三个关键步骤：
 #### 16.8.2 阻塞与非阻塞
 
 ```python
-import socket
+import socket   # 提供套接字接口
 
-# ── 1. 同步阻塞（默认）──────────────────────────────
-# recv、recvfrom 默认会阻塞，直到有数据到来才返回
+# ── 1. 同步阻塞（默认模式）──────────────────────────────
+# socket 默认处于阻塞模式：
+#   recv / recvfrom：接收缓冲区为空时，线程挂起，直到数据到来才返回
+#   send / sendto  ：发送缓冲区满时，线程挂起，直到缓冲区有空间才返回
+# socket.AF_INET     : IPv4 地址族
+# socket.SOCK_STREAM : TCP 协议
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# ── 2. 同步非阻塞（轮询）──────────────────────────────
-# setblocking(False)：将 socket 设置为非阻塞模式
-# 非阻塞下，recv 没有数据时立即抛出异常而非等待
+# ── 2. 同步非阻塞（轮询模式）──────────────────────────────
+# setblocking(flag)：设置 socket 的阻塞模式
+# flag=False：切换为非阻塞模式；flag=True（默认）：阻塞模式
+# 非阻塞模式下，recv/send 若无法立即完成，不等待，直接抛出 BlockingIOError
 sock.setblocking(False)
 
 try:
-    data = sock.recv(1024)          # 无数据时立即抛出 BlockingIOError
-except Exception:
-    pass                            # 捕获异常，继续执行其他逻辑（轮询）
+    # recv(bufsize)：非阻塞模式下，接收缓冲区无数据时立即抛出 BlockingIOError
+    # 而非阻塞等待；有数据时正常返回 bytes，最多 bufsize 字节
+    data = sock.recv(1024)
+except BlockingIOError:
+    # 捕获"暂无数据"异常，不做处理，继续循环轮询
+    # 缺点：CPU 持续空转轮询，效率低（不推荐高并发场景使用）
+    pass
 
-# ── 3. 非阻塞 send（MSG_DONTWAIT）──────────────────────────────
-# MSG_DONTWAIT：本次 send 不等待，缓冲区满时立即返回或抛出异常
-send_size = sock.send(data, socket.MSG_DONTWAIT)  # 返回实际发送的字节数
+# ── 3. 单次非阻塞 send（MSG_DONTWAIT 标志）──────────────────────────────
+# send(data, flags)：发送数据
+# 参数 data           : bytes，要发送的字节数据
+# 参数 socket.MSG_DONTWAIT : int，标志位；仅对本次调用生效，不改变 socket 全局阻塞模式
+#                       发送缓冲区有空间 → 将数据写入缓冲区，返回实际写入字节数（int）
+#                       发送缓冲区已满  → 立即抛出 BlockingIOError，不等待
+# 注意：send 返回值可能小于 len(data)，需循环发送确保全部数据发出
+send_size = sock.send(data, socket.MSG_DONTWAIT)  # 返回值：int，实际发送的字节数
 ```
 
 > **写（send）也会阻塞**：当发送缓冲区满时，`send` 也会阻塞；对方断开时 `send` 会抛出异常，需加 `try/except` 处理
@@ -3189,46 +3279,82 @@ send_size = sock.send(data, socket.MSG_DONTWAIT)  # 返回实际发送的字节�
 **解决方案**：在数据前加固定长度的**报文头**，声明数据的字节长度，接收方先读头部再按长度读数据。
 
 ```python
-import struct
+import struct   # 提供 C 语言结构体与 Python bytes 之间的互转，常用于网络协议报文头的打包/解包
 
-# struct.pack(格式字符串, 数值)：将数值打包为固定长度的 bytes（用于发送）
-# "I" = unsigned int（无符号整型，4 字节，小端序）
-length_bytes = struct.pack('I', 100)    # 将整数 100 打包为 4 字节的 bytes
-print(len(length_bytes))               # 4（固定 4 字节，接收方按此解析）
+# struct.pack(fmt, v1, v2, ...)：按格式字符串将 Python 数值打包为 bytes
+# 参数 fmt : str，格式字符串，决定字节序和数据类型
+#   常用格式字符：
+#     'I'  → unsigned int，无符号 32 位整数，4 字节
+#     'i'  → int，有符号 32 位整数，4 字节
+#     'H'  → unsigned short，无符号 16 位整数，2 字节
+#     'B'  → unsigned char，无符号 8 位整数，1 字节
+#   字节序前缀（放在格式字符串最前面）：
+#     无前缀  → 本机字节序 + 本机原生大小（由 C 编译器决定，可能含对齐 padding）
+#     '='     → 本机字节序 + 标准大小（无 padding，'I' 固定 4 字节）
+#     '>'     → 大端序 + 标准大小（网络字节序，跨平台通信推荐）
+#     '<'     → 小端序 + 标准大小
+#     实用建议：网络传输统一用 '>'，本机序列化可用 '='；
+#              对 'I' 而言，在 x86/ARM 主流平台上无前缀与 '=' 结果相同（均 4 字节）
+# 参数 v1 : int，要打包的数值（与格式字符一一对应）
+# 返回值  : bytes，固定长度的字节串（'I' 固定返回 4 字节）
+length_bytes = struct.pack('I', 100)    # 将整数 100 打包为 4 字节小端序 bytes
 
-# struct.unpack(格式字符串, bytes)：将 bytes 解包还原为数值元组（用于接收）
-length_tuple = struct.unpack('I', length_bytes)  # 返回元组
-length = length_tuple[0]               # 取第一个元素，还原为整数 100
+# len() 验证：'I' 格式固定生成 4 字节，接收方也按 4 字节读取头部
+print(len(length_bytes))               # 输出：4
 
-# ">I"：大端序；"I"（无前缀）：小端序；网络标准是大端序
-big_endian_bytes = struct.pack('>I', 100)   # 大端序打包
+# struct.unpack(fmt, buffer)：按格式字符串将 bytes 解包还原为 Python 数值
+# 参数 fmt    : str，格式字符串（必须与 pack 时相同，否则解析出错）
+# 参数 buffer : bytes，待解包的字节串（长度必须与格式字符串要求的字节数完全匹配）
+# 返回值      : tuple，数值元组（即使只有一个值也是元组形式）
+length_tuple = struct.unpack('I', length_bytes)   # 返回 (100,)，类型为 tuple[int]
+length = length_tuple[0]               # 取第 0 个元素，还原为整数 100
 
-# ── 发送文件（解决粘包）──────────────────────────────
-import struct
+# 大端序（网络字节序）打包示例：跨平台通信时确保双端解析一致
+# '>' 前缀指定大端序，'I' 仍为无符号 32 位整数
+big_endian_bytes = struct.pack('>I', 100)   # 大端序 4 字节 bytes
 
-file_name = 'Readme'
-b_file_name = file_name.encode('utf-8')
+# ── 发送文件（解决粘包：先发长度头，再发内容）──────────────────────────────
+import struct   # 重复导入仅为示例完整性，实际项目顶部统一导入一次即可
 
-# 先发文件名长度（固定 4 字节），再发文件名内容
-client_socket.send(struct.pack('I', len(b_file_name)))  # 发 4 字节头（文件名长度）
-client_socket.send(b_file_name)                          # 发文件名
+file_name = 'Readme'   # str，要发送的文件名
 
+# str.encode(encoding)：将字符串编码为 bytes
+# 参数 encoding : str，编码方式；'utf-8' 支持中文，每个汉字占 3 字节
+# 返回值        : bytes，编码后的字节串
+b_file_name = file_name.encode('utf-8')   # bytes，文件名的 UTF-8 编码
+
+# 协议：先发 4 字节的"文件名长度"，接收方据此知道接下来要读多少字节的文件名
+# struct.pack('I', len(b_file_name)) 返回 bytes（4 字节），表示文件名的字节数
+client_socket.send(struct.pack('I', len(b_file_name)))  # 发送 4 字节报文头（文件名长度）
+client_socket.send(b_file_name)                          # 发送文件名内容（字节数 = 上面头部的值）
+
+# 以二进制模式读取文件全部内容
+# 'rb'：r=只读，b=二进制模式（不做换行符转换，适合所有文件类型）
 with open(file_name, 'rb') as f:
-    text_bytes = f.read()
+    text_bytes = f.read()   # bytes，文件的全部二进制内容
 
-# 先发文件内容长度，再发文件内容
-client_socket.send(struct.pack('I', len(text_bytes)))    # 发 4 字节头（文件大小）
-client_socket.send(text_bytes)                           # 发文件内容
+# 先发 4 字节的"文件内容长度"，再发文件内容，防止粘包
+client_socket.send(struct.pack('I', len(text_bytes)))    # 发送 4 字节报文头（文件大小，单位：字节）
+client_socket.send(text_bytes)                           # 发送文件的全部二进制内容
 
-# ── 接收文件（按协议解析）──────────────────────────────
-# 先收 4 字节头，解出长度，再按长度收数据，防止粘包
-name_len_bytes = tcp_client_socket.recv(4)                          # 收 4 字节头
-name_len = struct.unpack('I', name_len_bytes)[0]                    # 解出文件名长度
-file_name_bytes = tcp_client_socket.recv(name_len)                  # 按长度收文件名
+# ── 接收文件（按协议严格解析，防止粘包）──────────────────────────────
 
-text_len_bytes = tcp_client_socket.recv(4)                          # 收 4 字节头
-text_len = struct.unpack('I', text_len_bytes)[0]                    # 解出文件内容长度
-text_bytes = tcp_client_socket.recv(text_len)                       # 按长度收文件内容
+# 第一步：精确读取 4 字节头部，解出文件名的字节长度
+# recv(4) 精确读 4 字节（与发送端 struct.pack('I', ...) 对应）
+name_len_bytes = tcp_client_socket.recv(4)                    # bytes，4 字节，文件名长度的编码
+
+# struct.unpack 解包，[0] 取元组第一个元素，得到文件名的字节数（int）
+name_len = struct.unpack('I', name_len_bytes)[0]              # int，文件名占用的字节数
+
+# 第二步：按解出的长度精确读取文件名字节串
+file_name_bytes = tcp_client_socket.recv(name_len)            # bytes，文件名的 UTF-8 编码
+
+# 第三步：精确读取 4 字节头部，解出文件内容的字节长度
+text_len_bytes = tcp_client_socket.recv(4)                    # bytes，4 字节，文件大小的编码
+text_len = struct.unpack('I', text_len_bytes)[0]              # int，文件内容占用的字节数
+
+# 第四步：按解出的长度精确读取文件内容
+text_bytes = tcp_client_socket.recv(text_len)                 # bytes，文件的全部二进制内容
 ```
 
 > `struct` **与大小端**：x86、ARM 架构为**小端**（低字节在低地址），网络标准为**大端**；
