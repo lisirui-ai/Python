@@ -3211,7 +3211,7 @@ text_bytes = tcp_client_socket.recv(text_len)                       # 按长度�
 
 
 
-### 16.9 DDos 攻击简介（SYN Flooding）
+### 16.9 DDoS（Distributed Denial of Service，分布式拒绝服务）攻击简介（SYN Flooding）
 
 **攻击原理**：攻击者伪造大量随机源 IP，向服务器发送 SYN 请求；服务器回复 SYN+ACK 后，因源 IP 是假的，永远收不到第三次握手的 ACK，导致大量**半连接**堆积在队列中，耗尽资源，正常连接无法响应。
 
