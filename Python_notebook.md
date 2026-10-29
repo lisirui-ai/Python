@@ -398,6 +398,17 @@ age = int(input('请输入您的年龄：'))
 # print('hello')print('world')   # 报错
 ```
 
+> **阻塞说明**：`input()` 本质上是从**标准输入缓冲区**（`stdin`）读取一行数据。
+> - **缓冲区为空**：`input()` 阻塞，程序挂起，等待用户键盘输入并按下回车
+> - **缓冲区有数据**：`input()` 直接读取，**不阻塞**，立即返回（例如通过管道或重定向提前写入数据时）
+>
+> ```python
+> # 示例：通过管道向 stdin 传入数据，input() 不会阻塞
+> # echo "Alice" | python script.py
+> name = input()   # 直接读取管道中的 "Alice"，无需等待键盘
+> print(name)      # 输出：Alice
+> ```
+
 ---
 
 
