@@ -2240,12 +2240,51 @@ sys.path.insert(0, '...')             # 设置优先搜索的路径；默认第�
 sys.argv                              # 命令行传递的参数列表；第一个元素是进程的目录，后续是参数
                                       # 用于 python 文件名 来传递参数
 sys.stdin                             # 标准输入（可迭代对象，读取输入）
-sys.exit(1)                           # 结束进程（0=正常退出，非0=异常退出）
 sys.setrecursionlimit(调用次数+余量)   # 提高递归栈深度（默认约 1000）
 
 # sys.argv 在 shell 中通过 python 文件名 参数 传递
 # python 进程是子进程，shell 进程是父进程
 ```
+
+**`sys.exit()` / `exit()` 结束进程**：
+
+```python
+import sys
+
+# ── sys.exit(status) ──────────────────────────────────────────
+# 功能：立即终止当前 Python 进程
+# 参数 status : int 或 str
+#   0          → 正常退出（表示程序运行成功，shell 中 $? 为 0）
+#   非 0 整数  → 异常退出（表示程序出错，约定 1 表示通用错误）
+#   字符串     → 将字符串打印到 stderr，然后以退出码 1 退出
+# 原理：sys.exit() 实际上是抛出 SystemExit 异常；
+#       若外层有 try/except Exception 则不会被拦截（SystemExit 继承自 BaseException）
+#       若外层有 try/except BaseException 或 try/except SystemExit 则会被拦截
+sys.exit(0)    # 正常退出
+sys.exit(1)    # 异常退出（通用错误码）
+sys.exit('发生致命错误，程序终止')   # 打印错误信息到 stderr 并以退出码 1 退出
+
+# ── exit() / quit() ──────────────────────────────────────────
+# exit() 和 quit() 是交互式解释器（REPL）的便捷函数，
+# 本质上也是抛出 SystemExit，效果与 sys.exit() 相同，
+# 但不推荐在正式脚本中使用（依赖 site 模块，部分精简环境不可用）
+exit(0)    # 等价于 sys.exit(0)，但仅建议在交互式环境中使用
+
+# ── os._exit(status) ──────────────────────────────────────────
+# 功能：直接调用底层 C 函数 _exit()，立即终止进程，不抛出异常
+# 与 sys.exit() 的区别：
+#   sys.exit() → 抛出 SystemExit → 会执行 finally 块、with __exit__、atexit 注册的回调
+#   os._exit() → 直接杀进程   → 跳过所有清理操作，缓冲区也不会刷新
+# 使用场景：多进程编程中子进程退出时使用，避免子进程执行父进程的清理逻辑
+import os
+os._exit(0)   # 子进程中使用；慎用，不做任何清理
+```
+
+> **退出码约定（Exit Code）**：
+> - `0` → 成功
+> - `1` → 通用错误
+> - `2` → 命令行参数错误
+> - `非 0` → 失败（Shell 脚本可通过 `$?` 获取退出码判断程序是否成功）
 
 
 
