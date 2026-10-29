@@ -3044,6 +3044,18 @@ $ ipconfig /flushdns        # 清空本机 DNS 缓存（Windows）
 
 `epoll` 是 Linux 下高效的 I/O 多路复用机制，解决了"同时监听多个 socket"的问题，广泛用于高并发服务器。
 
+> **⚠️ 平台限制**：`epoll` 是 **Linux 专有**的系统调用，**Windows 不支持**，macOS 也不支持。
+> 各平台对应的 I/O 多路复用机制如下：
+>
+> | 平台 | 机制 | Python 接口 |
+> |---|---|---|
+> | Linux | `epoll` | `select.epoll()` |
+> | macOS / BSD | `kqueue` | `select.kqueue()` |
+> | Windows | `IOCP`（完成端口） | 无原生封装，需借助第三方库 |
+> | 全平台通用（性能较低） | `select` | `select.select()` |
+>
+> 如需编写跨平台高并发服务器，推荐使用封装了底层差异的框架，如 `asyncio`（Python 标准库）或 `Twisted`、`Tornado` 等。
+
 ```python
 import socket   # 提供 BSD socket 接口，用于创建 TCP/UDP 套接字
 import select   # 提供 I/O 多路复用接口，epoll/select/poll 均在此模块
