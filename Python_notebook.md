@@ -3106,7 +3106,11 @@ import select   # 提供 I/O 多路复用接口，epoll/select/poll 均在此模
 epoll = select.epoll()
 
 # epoll.register(fd, eventmask)：向内核注册需要监控的文件描述符及感兴趣的事件
-# 参数 fd        : int，文件描述符（socket.fileno() 返回值）
+# 参数 fd        : int，文件描述符；epoll 不限于 socket，凡是支持 poll 的 fd 均可注册，例如：
+#                  socket.fileno()  → 网络套接字（最常用）
+#                  sys.stdin.fileno() = 0  → 标准输入（监听键盘输入，无输入时不阻塞主循环）
+#                  sys.stdout.fileno() = 1 → 标准输出（监听是否可写，较少用）
+#                  os.pipe() 返回的管道 fd  → 进程间通信的管道
 # 参数 eventmask : int，事件掩码，可用 | 组合多个事件
 # 常用事件类型（均为 int 常量）：
 #   select.EPOLLIN   = 1   可读事件：有数据可读，或新连接到来（对服务器 socket）
