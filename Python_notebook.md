@@ -3350,17 +3350,24 @@ epoll 三个关键步骤：
 import socket   # 提供套接字接口
 
 # ── 1. 同步阻塞（默认模式）──────────────────────────────
-# socket 默认处于阻塞模式：
-#   recv / recvfrom：接收缓冲区为空时，线程挂起，直到数据到来才返回
-#   send / sendto  ：发送缓冲区满时，线程挂起，直到缓冲区有空间才返回
+# socket 默认处于阻塞模式，所有可能需要等待的操作都会挂起线程：
+#   recv / recvfrom ：接收缓冲区为空时挂起，直到数据到来才返回
+#   send / sendto   ：发送缓冲区满时挂起，直到缓冲区有空间才返回
+#   connect()       ：发起连接后挂起，直到 TCP 三次握手完成（或超时）才返回
+#   accept()        ：全连接队列为空时挂起，直到有新客户端完成握手才返回
 # socket.AF_INET     : IPv4 地址族
 # socket.SOCK_STREAM : TCP 协议
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # ── 2. 同步非阻塞（轮询模式）──────────────────────────────
-# setblocking(flag)：设置 socket 的阻塞模式
+# setblocking(flag)：设置 socket 的阻塞模式（影响该 socket 上所有 I/O 操作）
 # flag=False：切换为非阻塞模式；flag=True（默认）：阻塞模式
-# 非阻塞模式下，recv/send 若无法立即完成，不等待，直接抛出 BlockingIOError
+# 非阻塞模式下，以上所有操作若无法立即完成，不等待，直接抛出 BlockingIOError：
+#   recv()    → 接收缓冲区无数据时立即抛出 BlockingIOError
+#   send()    → 发送缓冲区已满时立即抛出 BlockingIOError
+#   connect() → 握手未完成时立即抛出 BlockingIOError（EINPROGRESS），
+#               需配合 epoll/select 等待 EPOLLOUT 事件确认连接建立
+#   accept()  → 全连接队列为空时立即抛出 BlockingIOError
 sock.setblocking(False)
 
 # 非阻塞轮询的完整结构必须配合 while 循环使用：
