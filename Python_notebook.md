@@ -2301,7 +2301,15 @@ gm_now = time.gmtime(now)      # 转换为 UTC 时间的 struct_time 对象
 mon = gm_now.tm_mon            # 从 UTC 时间的 struct_time 访问成员获得月份
 # struct_time 成员：tm_year, tm_mon, tm_mday, tm_hour, tm_min, tm_sec, tm_wday
 
-time.sleep(1)                  # 休眠 1 秒
+# time.sleep(secs)：阻塞当前线程 secs 秒，本质是将当前线程挂起放入 OS 等待队列，
+# 计时器到期后才重新放回就绪队列等待调度，期间不占用 CPU
+# 参数 secs : float，休眠秒数，支持小数（如 0.5 表示 500ms）
+# 单线程程序中等同于阻塞整个进程；多线程程序中只阻塞调用线程，其他线程继续运行
+# Python 多线程中 sleep() 期间会释放 GIL，其他 Python 线程可获得执行权
+# 阻塞类型对比：
+#   sleep()  → 定时器阻塞：等待固定时长，时间到自动唤醒，不响应外部事件
+#   recv()   → 事件阻塞  ：等待外部事件（网络数据到来），事件发生立即唤醒
+time.sleep(1)                  # 阻塞当前线程 1 秒
 ```
 
 
