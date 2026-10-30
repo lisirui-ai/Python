@@ -3329,14 +3329,19 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 # 非阻塞模式下，recv/send 若无法立即完成，不等待，直接抛出 BlockingIOError
 sock.setblocking(False)
 
-try:
-    # recv(bufsize)：非阻塞模式下，接收缓冲区无数据时立即抛出 BlockingIOError
-    # 而非阻塞等待；有数据时正常返回 bytes，最多 bufsize 字节
-    data = sock.recv(1024)
-except BlockingIOError:
-    # 捕获"暂无数据"异常，不做处理，继续循环轮询
-    # 缺点：CPU 持续空转轮询，效率低（不推荐高并发场景使用）
-    pass
+# 非阻塞轮询的完整结构必须配合 while 循环使用：
+# 无数据时捕获异常后继续循环，直到数据到来才跳出
+while True:
+    try:
+        # recv(bufsize)：非阻塞模式下，接收缓冲区无数据时立即抛出 BlockingIOError
+        # 而非阻塞等待；有数据时正常返回 bytes，最多 bufsize 字节
+        data = sock.recv(1024)
+        break                   # 成功收到数据，跳出轮询循环
+    except BlockingIOError:
+        # 缓冲区暂无数据（BlockingIOError 含义是"现在没数据，自行决定是否重试"）
+        # pass 后继续下一轮循环，再次尝试 recv()
+        # 缺点：CPU 持续空转轮询，效率极低（不推荐高并发场景使用，应改用 epoll）
+        pass
 
 # ── 3. 单次非阻塞 send（MSG_DONTWAIT 标志）──────────────────────────────
 # send(data, flags)：发送数据
