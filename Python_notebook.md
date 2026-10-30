@@ -3079,7 +3079,7 @@ $ ipconfig /flushdns        # 清空本机 DNS 缓存（Windows）
 
 
 
-#### 16.8.1 epoll 多路复用（Linux）
+#### 16.8.1 同步 I/O 多路复用：epoll（Linux）
 
 **多路复用**（Multiplexing）：**"多路"** 指多个 I/O 通道（多个 socket/fd），**"复用"** 指复用同一个线程/调用来监听它们。
 
