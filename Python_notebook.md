@@ -3111,6 +3111,24 @@ $ ipconfig /flushdns        # 清空本机 DNS 缓存（Windows）
 >
 > 如需编写跨平台高并发服务器，推荐使用封装了底层差异的框架，如 `asyncio`（Python 标准库）或 `Twisted`、`Tornado` 等。
 
+**epoll 是阻塞还是非阻塞？**
+
+epoll 两层含义不同，需要分开看：
+
+| 层面 | 是否阻塞 | 说明 |
+|---|---|---|
+| `epoll.poll()` 调用本身 | **阻塞**（默认） | `timeout=-1` 时永久阻塞，直到有 fd 就绪才返回；`timeout=0` 可改为非阻塞立即返回 |
+| 返回后调用 `recv()` | **等价于非阻塞** | epoll 已保证该 fd 缓冲区有数据，`recv()` 必然立即返回，不会等待 |
+
+与其他模式的本质区别：
+
+```
+纯阻塞 recv()          ：没数据 → 线程挂起等待 → 数据来了才返回（一次只等一个 fd）
+非阻塞轮询             ：没数据 → 立即抛异常 → CPU 空转继续问（效率低）
+epoll（同步多路复用）  ：epoll.poll() 阻塞等待 → 有 fd 就绪才返回 → recv() 立即取数据
+                        （以一个阻塞点换取对所有 fd 的监控，有数据才工作）
+```
+
 ```python
 import socket   # 提供 BSD socket 接口，用于创建 TCP/UDP 套接字
 import select   # 提供 I/O 多路复用接口，epoll/select/poll 均在此模块
