@@ -3154,6 +3154,8 @@ epoll.close()
 
 ```python
 # 聊天室服务端（epoll 版）核心逻辑
+# 依赖：顶部已导入 socket、select；此处补充导入 sys（用于获取 stdin 的文件描述符）
+import sys
 
 # socket.AF_INET     : 使用 IPv4 地址族
 # socket.SOCK_STREAM : 使用 TCP 协议（面向连接、可靠传输）
@@ -3179,14 +3181,18 @@ tcp_server_socket.listen(100)
 # 创建 epoll 实例，用于同时监听多个 fd 的 I/O 事件
 epoll = select.epoll()
 
-# 将服务器 socket 注册到 epoll，监听 EPOLLIN（可读）事件
+# 将服务器监听 socket 注册到 epoll，监听 EPOLLIN（可读）事件
 # fileno() 返回 socket 的底层文件描述符（int），内核通过 fd 识别 socket
 # 服务器 socket 可读 = 有新客户端发起了连接请求
 epoll.register(tcp_server_socket.fileno(), select.EPOLLIN)
 
-# 存储所有已连接客户端的 socket 对象，用于群发消息
-# 类型：list[socket.socket]
-client_list = []
+# 将标准输入（fd=0）也注册到 epoll，监听键盘输入
+# 有输入时触发 EPOLLIN，无输入时不阻塞主循环
+epoll.register(sys.stdin.fileno(), select.EPOLLIN)
+
+# 用字典存储 fd → socket 的映射，替代列表，实现 O(1) 查找
+# 类型：dict[int, socket.socket]；key 为 fileno()，value 为对应的 socket 对象
+fd_to_socket = {}
 
 while True:
     # epoll.poll()：阻塞等待，直到至少一个已注册 fd 上有事件发生
@@ -3198,8 +3204,9 @@ while True:
     # event : int，事件类型（EPOLLIN / EPOLLOUT / EPOLLERR 等）
     for fd, event in epoll_list:
 
-        # 判断是否为服务器 socket 的 fd
-        # 服务器 socket 可读 → 有新客户端连接到来
+        # ── 分支一：接受新连接 ──────────────────────────────────────────
+        # 触发条件：服务器监听 socket 可读，即有新客户端发起了 TCP 连接请求
+        # 行为：accept() 接入新客户端，将其 fd 加入字典并注册到 epoll，开始监听其消息
         if fd == tcp_server_socket.fileno():
             # accept()：从全连接队列中取出一个已完成三次握手的连接
             # 返回值 client_socket : socket.socket，与该客户端通信的新 socket
@@ -3207,33 +3214,49 @@ while True:
             client_socket, client_addr = tcp_server_socket.accept()
             print('{} 已连接'.format(client_addr))
 
-            # 将新客户端 socket 加入列表，后续用于群发
-            client_list.append(client_socket)
+            # 将新客户端的 fd → socket 映射存入字典，后续 O(1) 查找
+            fd_to_socket[client_socket.fileno()] = client_socket
 
             # 向 epoll 注册新客户端 socket，监听其可读事件（即客户端发来消息）
             epoll.register(client_socket.fileno(), select.EPOLLIN)
 
-        # 遍历所有已连接客户端，找到 fd 对应的 socket
-        for client in client_list:
-            # 某客户端 socket 可读 → 该客户端发来了数据，或已断开连接
-            if fd == client.fileno():
-                # recv(bufsize)：从缓冲区读取最多 bufsize 字节的数据
-                # 返回值 recv_data : bytes；对端正常断开时返回 b''（空字节串）
-                recv_data = client.recv(1024)
+        # ── 分支二：服务器群发 ──────────────────────────────────────────
+        # 触发条件：stdin 可读，即服务器在终端输入了一行消息并按下回车
+        # 行为：读取服务器输入的消息，群发给所有已连接的客户端
+        elif fd == sys.stdin.fileno():
+            # readline()：从 stdin 缓冲区读取一行（含末尾 \n），不阻塞（epoll 已确认有数据）
+            # 返回值 msg : str，服务器在终端输入的消息字符串
+            msg = sys.stdin.readline().strip()        # strip() 去除首尾空白和换行符
+            # encode()：将 str 编码为 bytes，才能通过 socket.send() 发送
+            msg_bytes = ('[服务器] ' + msg).encode('utf-8')
+            # 将服务器消息群发给所有已连接的客户端
+            for client in fd_to_socket.values():
+                client.send(msg_bytes)                # 原样转发字节数据
 
-                # recv 返回 b'' 表示客户端已关闭连接（TCP 四次挥手完成）
-                if not recv_data:
-                    # 先从 epoll 注销，再关闭 socket，顺序不能颠倒
-                    epoll.unregister(client.fileno())   # 从内核监听表移除该 fd
-                    client_list.remove(client)          # 从客户端列表移除
-                    client.close()                      # 释放 socket 资源，发送 FIN
+        # ── 分支三：群转发 ──────────────────────────────────────────────
+        # 触发条件：某个客户端 socket 可读，即该客户端发来了消息，或已断开连接
+        # 行为：收到消息则转发给除发送者以外的所有其他客户端；收到空字节则处理断开
+        else:
+            # 通过字典 O(1) 直接找到对应的客户端 socket，无需遍历
+            client = fd_to_socket[fd]
 
-                else:
-                    # 将收到的消息群发给除发送者以外的所有在线客户端
-                    for other_client in client_list:
-                        # is not：判断是否为同一对象（非值比较），排除发送者自身
-                        if other_client is not client:
-                            other_client.send(recv_data)   # 原样转发字节数据
+            # recv(bufsize)：从缓冲区读取最多 bufsize 字节的数据
+            # 返回值 recv_data : bytes；对端正常断开时返回 b''（空字节串）
+            recv_data = client.recv(1024)
+
+            # recv 返回 b'' 表示客户端已关闭连接（TCP 四次挥手完成）
+            if not recv_data:
+                # 先从 epoll 注销，再关闭 socket，顺序不能颠倒（避免 fd 复用问题）
+                epoll.unregister(fd)              # 从内核监听表移除该 fd
+                del fd_to_socket[fd]              # 从字典中移除映射
+                client.close()                    # 释放 socket 资源，发送 FIN
+
+            else:
+                # 将收到的消息群发给除发送者以外的所有在线客户端
+                for other_fd, other_client in fd_to_socket.items():
+                    # 排除发送者自身（通过 fd 比较，比 is not 更明确）
+                    if other_fd != fd:
+                        other_client.send(recv_data)   # 原样转发字节数据
 ```
 
 > **TCP 断开检测**：对方断开时，内核将对应 socket 标记为可读；`recv` 读取返回**空字节串**（`b''`），通过 `if not recv_data` 判断断开
