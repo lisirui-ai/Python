@@ -3150,7 +3150,7 @@ events = epoll.poll(timeout=10)   # 最多阻塞 10 秒，超时无事件则返�
 epoll.close()
 ```
 
-**epoll 使用流程**：
+**epoll 实现聊天室服务端**：
 
 ```python
 # 聊天室服务端（epoll 版）核心逻辑
@@ -3310,7 +3310,7 @@ epoll 三个关键步骤：
 
 ---
 
-#### 16.8.2 阻塞与非阻塞
+#### 16.8.2 套接字的阻塞与非阻塞模式
 
 ```python
 import socket   # 提供套接字接口
