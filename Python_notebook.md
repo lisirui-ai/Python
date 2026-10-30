@@ -3539,7 +3539,7 @@ text_bytes = tcp_client_socket.recv(text_len)                 # bytes，文件�
 
 - 两个阶段**全部由内核完成**，程序不阻塞、不参与读取
 - 程序收到通知时，数据已经复制好，直接使用即可
-- Linux 现代实现：`io_uring`（内核 5.1+）；Python 中 `asyncio` 的 `await` 对外表现为异步
+- Linux 现代实现：`io_uring`（内核 5.1+）/ `libaio`（旧）；Python 标准库目前暂无完整的 OS 级真正 AIO 封装
 
 ---
 
@@ -3551,7 +3551,7 @@ text_bytes = tcp_client_socket.recv(text_len)                 # bytes，文件�
 | 第二阶段（复制数据） | **程序自己调用 `recv()`** | **内核自动完成** |
 | 收到通知时数据在哪 | 还在内核缓冲区，需调用 `recv()` 取 | 已经在用户内存，直接用 |
 | Linux 实现 | `epoll` | `io_uring`（现代）/ `libaio`（旧） |
-| Python 中的体现 | `select.epoll()` 手动调用 | `asyncio` 的 `await`（底层封装 epoll） |
+| Python 中的体现 | `select.epoll()` 手动调用；`asyncio`（底层封装 epoll，提供异步编程模型） | 目前 Python 标准库暂无完整的 OS 级真正 AIO 封装 |
 | 编程复杂度 | 中等 | 较高（通常借助框架） |
 | 适用场景 | 高并发服务器、自定义网络框架 | 极高性能 I/O、数据库存储引擎 |
 
