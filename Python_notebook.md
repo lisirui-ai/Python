@@ -3431,7 +3431,8 @@ import struct   # 提供 C 语言结构体与 Python bytes 之间的互转，常
 #              对 'I' 而言，在 x86/ARM 主流平台上无前缀与 '=' 结果相同（均 4 字节）
 # 参数 v1 : int，要打包的数值（与格式字符一一对应）
 # 返回值  : bytes，固定长度的字节串（'I' 固定返回 4 字节）
-length_bytes = struct.pack('I', 100)    # 将整数 100 打包为 4 字节小端序 bytes
+length_bytes = struct.pack('I', 100)    # 无字节序前缀：使用本机字节序（x86/ARM 为小端序，4 字节）
+                                        # 注意：网络传输应改用 '>I'（大端序）确保跨平台一致
 
 # len() 验证：'I' 格式固定生成 4 字节，接收方也按 4 字节读取头部
 print(len(length_bytes))               # 输出：4
