@@ -3882,11 +3882,11 @@ $ grep -c processor /proc/cpuinfo
 # 无参数：只显示当前终端、当前用户启动的进程；输出列：PID 进程号、TTY 终端、TIME 累计 CPU 时间、CMD 命令名
 $ ps
 # 选项 a=显示所有用户的进程（含终端的）；u=以用户导向格式输出（USER、PID、%CPU、%MEM、VSZ、RSS、STAT、START、COMMAND）；
-# x=同时显示没有控制终端的进程（如守护进程）；注意：aux 是 BSD 风格写法，前面通常不加 -
-$ ps -aux
+# x=同时显示没有控制终端的进程（如守护进程）；注意：aux 是 BSD 风格写法，前面不加 -（写成 -aux 虽能运行但会提示警告）
+$ ps aux
 # |：管道符，把左边命令的输出作为右边命令的输入；grep 'python'：只保留含 'python' 的行（参数为匹配的关键字）
 # 注意：结果里会包含 grep 进程自身，可改用 grep '[p]ython' 排除
-$ ps -aux | grep 'python'
+$ ps aux | grep 'python'
 # 选项 -e=显示所有进程；-l=长格式（多出 S 状态、PRI 优先级、NI nice 值等列）；-f=完整格式（多出 UID、PPID、C、STIME 等列）
 # 其中 PPID 是父进程号，通过 PID 与 PPID 的对应关系即可看出进程的父子关系
 $ ps -elf
@@ -3935,6 +3935,21 @@ $ crontab -e
 # -l=list，列出当前用户的所有定时任务（只读，不修改）
 $ crontab -l
 ```
+
+**`ps aux` 与 `ps -elf` 的区别**
+
+| 对比项 | `ps aux` | `ps -elf` |
+|---|---|---|
+| 参数风格 | BSD 风格，选项前不加 `-` | UNIX/POSIX（System V）风格，选项前要加 `-` |
+| 选项含义 | `a` 所有用户的进程；`u` 用户导向格式；`x` 包含无终端进程 | `-e` 所有进程；`-l` 长格式；`-f` 完整格式 |
+| 主要输出列 | `USER` `PID` `%CPU` `%MEM` `VSZ` `RSS` `TTY` `STAT` `START` `TIME` `COMMAND` | `F` `S` `UID` `PID` `PPID` `C` `PRI` `NI` `ADDR` `SZ` `WCHAN` `STIME` `TTY` `TIME` `CMD` |
+| 资源占用 | 有 `%CPU`、`%MEM`、`VSZ`（虚拟内存）、`RSS`（常驻内存） | 无 `%CPU`、`%MEM`，仅有 `C`（CPU 利用率）和 `SZ`（内存页数） |
+| 父子关系 | 无 `PPID`，看不出父进程 | 有 `PPID`（父进程号），可追溯父子关系 |
+| 调度信息 | 无优先级信息 | 有 `PRI`（优先级）、`NI`（nice 值）、`WCHAN`（等待的内核函数） |
+| 状态列 | `STAT`：状态字母加附加标记（如 `Ss`、`R+`、`<`、`N`） | `S`：仅单个状态字母 |
+| 适用场景 | 查看哪个进程占用 CPU/内存多，常配合 `grep` 查找进程 | 查看父子关系、优先级，或查找僵尸进程的父进程 |
+
+---
 
 > **`top` 输出字段说明**：
 > - `load average`：系统 1/5/15 分钟的平均负载，单核 CPU 正常值应 ≤ 1.0
