@@ -3900,7 +3900,7 @@ $ ps -eo pid,stat,psr,comm
 $ top
 
 # 进程信号与终止
-# -l：list，列出所有信号的编号与名称（共 64 个，如 1) SIGHUP 2) SIGINT 9) SIGKILL 15) SIGTERM）
+# -l：list，列出所有信号的编号与名称（编号范围 1~64，其中 32、33 为内核保留不显示，实际列出 62 个；如 1) SIGHUP 2) SIGINT 9) SIGKILL 15) SIGTERM）
 $ kill -l
 # kill [-信号编号] <PID>：向进程发送信号；-9 对应 SIGKILL，不能被进程捕获或忽略，强制终止；
 # <PID> 为 int，进程号（可由 ps 查得）；省略 -9 时默认发送 SIGTERM（15），允许进程做清理后退出
