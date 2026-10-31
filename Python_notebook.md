@@ -3839,12 +3839,7 @@ server.close()
 
 #### 17.1.3 进程的三种状态
 
-```
-就绪态 ──────(获得CPU)──────→ 执行态
-  ↑                              │
-  │          (IO完成/事件就绪)   │(发生IO/等待事件)
-  └──────────────────────────── 等待态
-```
+<img src="images/process_states.jpg" alt="进程三态转换图" width="480">
 
 | 状态 | 说明 | `ps` 中显示 |
 |---|---|---|
@@ -3856,12 +3851,17 @@ server.close()
 
 | 维度 | 进程 | 线程 | 协程 |
 |---|---|---|---|
-| 资源单位 | OS 分配资源的基本单元 | CPU 调度的基本单元 | 用户态执行单元（无 OS 调度） |
+| **本质** | 资源分配容器 | **内核级线程**（KLT）：由操作系统内核创建、调度和销毁，内核可见 | **用户级线程**（ULT）：完全在用户空间实现，内核不感知，由程序自身调度 |
+| 资源单位 | OS 分配资源的基本单元 | CPU 调度的基本单元（内核负责） | 用户态执行单元（无 OS 调度，程序自己切换） |
 | 内存 | 独立内存空间（不共享全局变量） | 共享进程内存（共享全局变量） | 同线程内，共享一切 |
-| 切换开销 | 最大（需保存/恢复大量上下文） | 中等 | 最小（仅切换 CPU 寄存器上下文） |
+| 切换开销 | 最大（需保存/恢复大量上下文） | 中等（需陷入内核，保存内核栈、寄存器等） | 最小（纯用户态切换，仅保存/恢复少量寄存器，无需系统调用） |
 | 并发方式 | 并行（多核）或并发 | 并发（受 GIL 限制） | 并发（单线程内） |
 | 适合场景 | CPU 密集型（绕过 GIL） | IO 密集型 | 高并发 IO（网络爬虫、服务器） |
-| 创建销毁 | 代价最大 | 中等 | 极小 |
+| 创建销毁 | 代价最大 | 中等（需系统调用） | 极小（用户态分配栈空间，无系统调用） |
+
+> **用户级线程 vs 内核级线程**：
+> - **内核级线程（KLT）**：`threading.Thread` 创建的线程由操作系统内核管理，线程切换需要**系统调用**（用户态 → 内核态 → 用户态），开销较大；但内核可以将不同线程调度到不同 CPU 核上真正并行（Python 因 GIL 限制实际无法并行）
+> - **用户级线程（ULT）**：协程完全在用户空间实现，切换由程序代码控制（`yield` / `switch()` / gevent 事件循环），**内核完全不感知**，切换不需要系统调用，开销极低；缺点是一个协程阻塞时整个线程都会阻塞（gevent 通过非阻塞 IO + 事件循环规避了这一点）
 
 ---
 
@@ -3919,68 +3919,88 @@ $ crontab -l                 # 列出当前用户的所有定时任务
 #### 17.3.1 Process 类基本用法
 
 ```python
-from multiprocessing import Process  # 导入 Process 类，用于创建子进程
-import os       # 提供 getpid()、getppid() 等操作系统接口
-import time     # 提供 sleep() 用于模拟耗时操作
+from multiprocessing import Process  # 导入 Process 类，用于创建和管理子进程
+import os       # os 模块：提供与操作系统交互的接口，如 getpid()、getppid()
+import time     # time 模块：提供 sleep() 等时间相关功能，用于模拟耗时操作
 
-# ── Process 构造函数签名 ──────────────────────────────────────────────
+# ── Process 构造函数完整签名 ──────────────────────────────────────────
 # Process(group=None, target=None, name=None, args=(), kwargs={})
-# 参数 group  : 进程组，几乎不用，保持 None 即可
-# 参数 target : 子进程要执行的函数引用（注意传引用而非调用：run_proc 而非 run_proc()）
-# 参数 name   : 给进程起个别名，默认为 Process-N（N 从 1 起递增）
-# 参数 args   : 以元组形式传递给 target 函数的位置参数
-# 参数 kwargs : 以字典形式传递给 target 函数的关键字参数
+# 参数 group  : NoneType，进程组（预留参数，实际开发几乎不使用，始终传 None）
+# 参数 target : callable，子进程要执行的函数引用（传函数名本身，不要加括号调用）
+#               正确：target=run_proc   错误：target=run_proc()
+# 参数 name   : str，给进程起别名，方便调试；默认自动命名为 Process-N（N 从 1 递增）
+# 参数 args   : tuple，以位置参数元组的形式传递给 target 函数的参数
+# 参数 kwargs : dict，以关键字参数字典的形式传递给 target 函数的参数
 
 def run_proc(name, age, **kwargs):
-    """子进程执行的任务函数。"""
-    # os.getpid()  : 返回当前进程的 PID（Process ID），int 类型
-    # os.getppid() : 返回当前进程的父进程 PID，int 类型
+    """
+    子进程执行的任务函数。
+    参数 name   : str，进程名称
+    参数 age    : int，年龄
+    参数 kwargs : dict，额外关键字参数
+    """
+    # os.getpid()  : 无参数，返回当前进程的 PID（Process Identifier，进程标识符），int 类型
+    # os.getppid() : 无参数，返回当前进程的父进程 PID，int 类型；子进程的父 PID 即主进程 PID
     print(f'子进程 PID={os.getpid()}, 父进程 PID={os.getppid()}')
-    print(f'name={name}, age={age}, 额外参数={kwargs}')
+    print(f'name={name}, age={age}, 额外参数={kwargs}')  # 打印收到的所有参数
 
-if __name__ == '__main__':          # 多进程代码必须放在此判断内（Windows 必须，Linux 建议）
-    print(f'父进程 PID={os.getpid()}')
+# if __name__ == '__main__'：Windows 下必须有此保护，否则子进程 import 主模块时
+# 会再次执行顶层代码，导致无限递归创建进程；Linux/macOS 使用 fork() 不受此影响但建议保留
+if __name__ == '__main__':
+    print(f'父进程 PID={os.getpid()}')  # os.getpid() 返回主进程 PID，int 类型
 
-    # 创建子进程对象（此时子进程尚未启动）
+    # Process(...) 仅创建进程对象，子进程此时尚未启动，不消耗额外资源
     p = Process(target=run_proc, args=('test', 18), kwargs={'m': 20})
 
-    p.start()       # 启动子进程（真正创建并开始执行子进程）
-    p.join()        # 阻塞父进程，等待子进程执行完毕后再继续（同时回收子进程资源）
-    # p.terminate() # 立即终止子进程（不管任务是否完成，发送 SIGTERM 信号）
-    # p.is_alive()  # 返回 bool，判断子进程是否仍在运行
-    # p.name        # 读取进程名称属性
-    # p.pid         # 读取子进程的 PID（start() 后才有值）
+    p.start()     # start()：真正创建子进程并开始执行，立即返回（不等待子进程完成）
+                  # 返回值：None；底层在 Linux 调用 fork()，在 Windows 调用 spawn()
+    p.join()      # join(timeout=None)：阻塞主进程，等待子进程执行完毕后才继续
+                  # 参数 timeout : float|None，最长等待秒数；None 表示永久等待直到结束
+                  # 返回值：None；同时会回收子进程的 PCB 资源，避免产生僵尸进程
+    # p.terminate()  # terminate()：向子进程发送终止信号（Unix=SIGTERM，Windows=TerminateProcess）
+                     # 不等任务完成，立即请求操作系统终止该进程；返回值 None
+    # p.is_alive()   # is_alive()：判断子进程是否仍在运行，返回 bool（True=运行中）
+    # p.name         # name 属性：str，进程名称；start() 前后均可读取
+    # p.pid          # pid 属性：int|None，子进程 PID；调用 start() 之后才有值，之前为 None
 ```
 
 #### 17.3.2 进程不共享全局变量
 
 ```python
-from multiprocessing import Process
-import os
+from multiprocessing import Process  # Process：创建子进程的类
+import os                            # os：提供 getpid() 获取进程 PID
 
-nums = [11, 22]     # 父进程中的全局变量（列表，可变类型）
+nums = [11, 22]  # 父进程中定义的全局变量（list，可变类型）；子进程 fork 时会复制一份
 
 def work1():
-    """子进程1：向 nums 追加元素。"""
-    print(f'work1 PID={os.getpid()}, nums 初始={nums}')
-    for i in range(3):
-        nums.append(i)      # 修改的是子进程自己内存空间中的 nums 副本
-    print(f'work1 PID={os.getpid()}, nums 修改后={nums}')
+    """
+    子进程1：向 nums 追加元素，验证修改是否影响其他进程。
+    """
+    # os.getpid()：返回当前进程 PID（int），用于区分父子进程
+    print(f'work1 PID={os.getpid()}, nums 初始值={nums}')  # 打印初始值 [11, 22]
+    for i in range(3):          # range(3)：生成 0、1、2 三个整数的迭代器
+        nums.append(i)          # list.append(x)：将 x 追加到列表末尾，返回 None
+                                # 注意：修改的是子进程自己内存空间中的 nums 副本，不影响父进程
+    print(f'work1 PID={os.getpid()}, nums 修改后={nums}')  # 打印 [11, 22, 0, 1, 2]
 
 def work2():
-    """子进程2：仅读取 nums，验证是否受 work1 影响。"""
-    print(f'work2 PID={os.getpid()}, nums={nums}')  # 结果：[11, 22]，未被影响
+    """
+    子进程2：读取 nums，验证是否受 work1 修改影响。
+    """
+    # 结果仍为 [11, 22]，证明进程间内存相互隔离，work1 的修改对 work2 不可见
+    print(f'work2 PID={os.getpid()}, nums={nums}')
 
 if __name__ == '__main__':
-    p1 = Process(target=work1)
-    p1.start()
-    p1.join()       # 等待 p1 执行完再启动 p2，确保 p1 的修改已完成
+    p1 = Process(target=work1)  # 创建子进程1对象，target=work1 表示子进程执行 work1 函数
+    p1.start()                  # start()：启动子进程1，立即返回 None，不等待子进程完成
+    p1.join()                   # join()：阻塞主进程，等待 p1 执行完毕；返回 None
+                                # 必须先等 p1 完成，再启动 p2，否则 p2 可能读不到 work1 的打印
 
-    p2 = Process(target=work2)
-    p2.start()
-    p2.join()
-# 结论：子进程在 fork 时会复制父进程的内存空间（写时拷贝，COW），
-# 各子进程的修改不影响父进程及其他子进程的同名变量
+    p2 = Process(target=work2)  # 创建子进程2对象
+    p2.start()                  # 启动子进程2
+    p2.join()                   # 等待子进程2执行完毕
+# 结论：子进程通过 写时拷贝（COW, Copy-On-Write）获得父进程内存的独立副本，
+# 各子进程对全局变量的修改互不影响，也不影响父进程
 ```
 
 > **孤儿进程 vs 僵尸进程**：
@@ -3992,57 +4012,71 @@ if __name__ == '__main__':
 进程间**内存隔离**，不能直接共享变量，需借助 IPC 机制。`multiprocessing.Queue` 是基于管道 + 锁实现的**线程/进程安全**的消息队列。
 
 ```python
-from multiprocessing import Process, Queue  # Queue：进程安全的消息队列
-import time
+from multiprocessing import Process, Queue  # Queue：底层基于 Pipe + Lock 实现的进程安全消息队列
+import time                                 # time：提供 sleep() 模拟 IO 耗时
 
-# ── Queue 常用 API ──────────────────────────────────────────────────────
-# Queue(maxsize=0)：创建队列，maxsize=0 表示容量无上限（受内存限制）
-q = Queue(3)        # 最大容量为 3 条消息
+# ── Queue 构造与常用 API ────────────────────────────────────────────────
+# Queue(maxsize=0)：创建进程安全的消息队列
+# 参数 maxsize : int，队列最大容量；0 或负数表示无上限（受物理内存限制）
+# 返回值       : Queue 对象
+q = Queue(3)        # 创建最大容量为 3 条消息的队列
 
-# put(item, block=True, timeout=None)：向队列写入消息
-# 参数 block   : True=队列满时阻塞等待（默认）；False=队列满时立即抛出 Queue.Full
-# 参数 timeout : 阻塞超时秒数，超时后抛出 Queue.Full（仅 block=True 时有效）
-q.put('消息1')
-q.put('消息2')
-q.put('消息3')
-# q.put_nowait('消息4')  # 等价于 put(item, block=False)，队列满时立即抛异常
+# put(item, block=True, timeout=None)：向队列尾部写入一条消息
+# 参数 item    : any，要写入的消息内容（任意可序列化对象）
+# 参数 block   : bool，True=队列已满时阻塞等待空位（默认）；False=队列满时立即抛 queue.Full
+# 参数 timeout : float|None，block=True 时最大等待秒数；超时抛 queue.Full；None=永久等待
+# 返回值       : None
+q.put('消息1')                  # 队列当前：['消息1']，共 1 条
+q.put('消息2')                  # 队列当前：['消息1', '消息2']，共 2 条
+q.put('消息3')                  # 队列当前满（3 条），再 put 会阻塞或抛异常
+# q.put_nowait('消息4')         # put_nowait(item)：等价于 put(item, block=False)
+                                # 队列满时立即抛 queue.Full，不阻塞
 
-# get(block=True, timeout=None)：从队列取出并移除一条消息
-# 参数 block   : True=队列空时阻塞等待（默认）；False=队列空时立即抛出 Queue.Empty
-# get_nowait() : 等价于 get(block=False)
-msg = q.get()   # 取出 '消息1'，队列中剩余 2 条
+# get(block=True, timeout=None)：从队列头部取出并移除一条消息
+# 参数 block   : bool，True=队列空时阻塞等待（默认）；False=队列空时立即抛 queue.Empty
+# 参数 timeout : float|None，block=True 时最大等待秒数；超时抛 queue.Empty；None=永久等待
+# 返回值       : any，被取出的消息内容（与写入时类型一致）
+msg = q.get()       # 取出队列头部消息 '消息1'，返回 str；队列中剩余 2 条
+# q.get_nowait()    # get_nowait()：等价于 get(block=False)，队列空时立即抛 queue.Empty
 
-# 状态查询
-q.qsize()       # 返回当前队列中的消息数量（int）
-q.empty()       # 队列为空时返回 True（bool）
-q.full()        # 队列已满时返回 True（bool）
+# 状态查询方法（均返回实时状态，多进程下仅供参考，不保证原子性）
+q.qsize()           # qsize()：返回当前队列中的消息数量，int 类型；注意：macOS 下不可用
+q.empty()           # empty()：队列为空返回 True，否则 False；bool 类型
+q.full()            # full()：队列已满返回 True，否则 False；bool 类型（maxsize=0 时永远 False）
 
 
-# ── 父进程创建 Queue，传递给子进程，实现生产者-消费者通信 ──────────────
+# ── 生产者-消费者模型：父进程创建 Queue，传给子进程实现跨进程通信 ──────
 def write(q):
-    """生产者：依次写入 A/B/C。"""
-    for value in ['A', 'B', 'C']:
-        print(f'Put {value} to queue...')
-        q.put(value)        # 写入队列（队列满则阻塞）
-        time.sleep(0.5)     # 模拟生产耗时
+    """
+    生产者进程：依次向队列写入 A、B、C 三条消息。
+    参数 q : Queue，进程安全的消息队列对象
+    """
+    for value in ['A', 'B', 'C']:           # 遍历要写入的消息列表
+        print(f'Put {value} to queue...')   # 打印写入提示，str 格式化
+        q.put(value)                        # put()：写入消息（队列满则阻塞），返回 None
+        time.sleep(0.5)                     # sleep(0.5)：暂停 0.5 秒，模拟生产耗时，返回 None
 
 def read(q):
-    """消费者：队列非空时持续读取。"""
-    while not q.empty():
-        value = q.get(block=True)   # 取出消息（队列空则阻塞，默认 block=True）
-        print(f'Get {value} from queue.')
-        time.sleep(1)               # 模拟消费耗时
+    """
+    消费者进程：从队列中持续取出消息直到队列为空。
+    参数 q : Queue，进程安全的消息队列对象
+    """
+    while not q.empty():                    # empty()：队列为空返回 True；此处非空时循环继续
+        value = q.get(block=True)           # get(block=True)：取出消息（空则阻塞）；返回消息内容
+        print(f'Get {value} from queue.')   # 打印取出的消息内容
+        time.sleep(1)                       # sleep(1)：模拟消费耗时 1 秒
 
 if __name__ == '__main__':
-    q = Queue()                 # 创建无限容量的进程安全队列
+    q = Queue()     # 创建无容量限制的进程安全队列（maxsize=0 表示无上限），返回 Queue 对象
 
-    pw = Process(target=write, args=(q,))   # 生产者进程
-    pr = Process(target=read,  args=(q,))   # 消费者进程
+    pw = Process(target=write, args=(q,))   # 创建生产者子进程，args=(q,) 中逗号不可省略（单元素元组）
+    pr = Process(target=read,  args=(q,))   # 创建消费者子进程
 
-    pw.start()
-    pw.join()       # 等待生产者写完后，消费者再开始读（确保队列中有数据）
-    pr.start()
-    pr.join()
+    pw.start()      # 启动生产者子进程，立即返回 None
+    pw.join()       # 阻塞主进程，等待生产者写完所有消息后才继续；返回 None
+                    # 必须等生产者结束，再启动消费者，确保队列中已有数据可读
+    pr.start()      # 启动消费者子进程
+    pr.join()       # 等待消费者读完所有消息
     print('所有数据写入并读取完毕')
 ```
 
@@ -4051,66 +4085,92 @@ if __name__ == '__main__':
 当需要创建大量子进程时，手动管理效率低下。`Pool` 预先创建指定数量的进程，任务提交后由空闲进程执行，实现**进程复用**。
 
 ```python
-from multiprocessing.pool import Pool  # Pool：进程池，管理多个工作进程
-import os, time, random
+from multiprocessing.pool import Pool  # Pool：进程池类，预先创建指定数量的工作进程并复用
+import os       # os.getpid()：获取当前进程 PID（int）
+import time     # time.time()：返回当前时间戳（float，单位秒）；time.sleep()：暂停执行
+import random   # random.random()：返回 [0.0, 1.0) 范围内的随机浮点数
 
 def worker(msg):
-    """进程池中每个工作进程执行的任务。"""
-    t_start = time.time()
-    print(f'{msg} 开始执行，PID={os.getpid()}')
-    time.sleep(random.random() * 2)     # 模拟随机耗时的 IO 操作
-    t_stop = time.time()
-    print(f'{msg} 执行完毕，耗时 {t_stop - t_start:.2f}s')
+    """
+    进程池中工作进程执行的任务函数。
+    参数 msg : any，任务标识，用于打印区分不同任务
+    """
+    t_start = time.time()                           # time.time()：返回当前 Unix 时间戳，float 类型
+    print(f'{msg} 开始执行，PID={os.getpid()}')     # os.getpid()：返回当前进程 PID，int 类型
+    time.sleep(random.random() * 2)                 # random.random()：返回 [0.0,1.0) 随机浮点数
+                                                    # *2 将范围扩展到 [0.0, 2.0)，模拟随机耗时
+    t_stop = time.time()                            # 记录结束时间戳，float 类型
+    # :.2f 格式说明符：将浮点数格式化为保留 2 位小数的字符串
+    print(f'{msg} 执行完毕，耗时 {t_stop - t_start:.2f}s')  # 打印任务耗时
 
 if __name__ == '__main__':
     # Pool(processes=None)：创建进程池
-    # 参数 processes : 进程池中的最大进程数；None 表示使用 CPU 核心数
-    po = Pool(3)        # 最多同时运行 3 个子进程
+    # 参数 processes : int|None，池中最大并发进程数；None 表示自动使用当前机器 CPU 核心数
+    # 返回值         : Pool 对象
+    po = Pool(3)    # 创建包含 3 个工作进程的进程池；任何时刻最多 3 个任务并发运行
 
-    for i in range(10):
-        # apply_async(func, args=(), kwds={})：以非阻塞方式提交任务（异步）
-        # 参数 func  : 要执行的目标函数
-        # 参数 args  : 传递给 func 的位置参数元组
-        # 任务提交后立即返回，不等待子进程完成，父进程继续提交下一个任务
+    for i in range(10):  # 共提交 10 个任务，但池中只有 3 个进程，多余任务排队等待
+        # apply_async(func, args=(), kwds={}, callback=None)：异步（非阻塞）提交任务
+        # 参数 func     : callable，工作进程要执行的函数
+        # 参数 args     : tuple，传给 func 的位置参数；(i,) 中逗号不可省略（单元素元组）
+        # 参数 kwds     : dict，传给 func 的关键字参数
+        # 参数 callback : callable|None，任务完成后在主进程中调用的回调函数
+        # 返回值        : AsyncResult 对象（可调用 .get() 获取函数返回值，会阻塞）
         po.apply_async(worker, (i,))
-        # apply() 为阻塞版本：必须等当前任务完成后才能提交下一个（一般不用）
+        # apply(func, args)：同步（阻塞）版本，等当前任务完成才返回，串行执行，一般不用
 
-    print('---- 所有任务已提交 ----')
-    po.close()  # 关闭进程池，禁止再提交新任务；必须在 join() 前调用
-    po.join()   # 阻塞主进程，等待所有子进程执行完毕
-    # po.terminate() # 立即终止所有子进程（不等任务完成）
+    print('---- 所有任务已提交（任务在后台并发执行中）----')
+    po.close()      # close()：关闭进程池，禁止继续提交新任务；返回 None
+                    # 注意：必须先 close() 再 join()，顺序不能颠倒
+    po.join()       # join()：阻塞主进程，等待池中所有子进程执行完毕后才继续；返回 None
+    # po.terminate()  # terminate()：立即终止所有子进程，不等任务完成；返回 None（紧急情况用）
     print('---- 所有任务执行完毕 ----')
 ```
 
 > **进程池中使用 Queue**：`Pool` 创建的进程不能使用 `multiprocessing.Queue`，须改用 `multiprocessing.Manager().Queue()`，否则会抛出 `RuntimeError: Queue objects should only be shared between processes through inheritance`。
 
 ```python
-from multiprocessing import Manager, Pool
-import os, time
+from multiprocessing import Manager, Pool  # Manager：提供托管共享对象（代理模式）；Pool：进程池
+import os    # os.getpid()：当前进程 PID（int）；os.getppid()：父进程 PID（int）
+import time  # time.sleep()：暂停执行，返回 None
 
 def writer(q):
-    """写入数据到 Manager Queue。"""
+    """
+    写入数据到 Manager Queue 的工作进程函数。
+    参数 q : Manager.Queue，Manager 托管的代理队列，支持跨进程（含进程池）传递
+    """
+    # os.getpid()：返回当前工作进程 PID（int）；os.getppid()：返回进程池管理进程 PID（int）
     print(f'writer PID={os.getpid()}, 父进程 PID={os.getppid()}')
-    for char in 'python':
-        q.put(char)     # 写入单个字符
-        time.sleep(0.5)
+    for char in 'python':           # 遍历字符串 'python'，每次迭代得到单个字符（str）
+        q.put(char)                 # put(char)：将字符写入代理队列，返回 None；队列满时阻塞
+        time.sleep(0.5)             # sleep(0.5)：模拟写入间隔 0.5 秒，返回 None
 
 def reader(q):
-    """从 Manager Queue 读取数据。"""
+    """
+    从 Manager Queue 读取数据的工作进程函数。
+    参数 q : Manager.Queue，Manager 托管的代理队列
+    """
     print(f'reader PID={os.getpid()}, 父进程 PID={os.getppid()}')
-    for _ in range(q.qsize()):
-        print(f'读取到：{q.get(True)}')    # block=True，队列空时阻塞
+    # 注意：q.qsize() 返回调用瞬间的队列长度（int），在读取过程中队列长度可能变化
+    # 此处 writer 已完成写入，队列长度固定，所以用 qsize() 做范围是安全的
+    for _ in range(q.qsize()):      # range(n)：生成 0..n-1 的整数序列，控制循环次数
+        # q.get(True)：从队列取出一条消息，block=True 表示队列空时阻塞等待
+        # 返回值：写入时的原始数据类型（此处为 str 字符）
+        print(f'读取到：{q.get(True)}')
 
 if __name__ == '__main__':
-    q = Manager().Queue()   # 使用 Manager 提供的代理 Queue，支持跨进程传递
-    po = Pool()             # 进程数默认为 CPU 核心数
+    # Manager()：创建进程管理器上下文，返回 SyncManager 对象
+    # .Queue()：通过 Manager 创建托管代理队列，支持 Pool 进程间传递（普通 Queue 不支持）
+    q = Manager().Queue()
+    po = Pool()             # Pool()：进程数默认为 CPU 核心数（os.cpu_count()）
 
-    po.apply_async(writer, (q,))
-    time.sleep(2)           # 等待 writer 写完数据后，reader 再开始读
-    po.apply_async(reader, (q,))
+    po.apply_async(writer, (q,))    # 异步提交 writer 任务，立即返回 AsyncResult 对象
+    time.sleep(2)                   # 等待 2 秒，确保 writer 已将所有数据写入队列
+                                    # 生产环境应使用 AsyncResult.get() 或 Event 同步，而非 sleep
+    po.apply_async(reader, (q,))    # 异步提交 reader 任务
 
-    po.close()
-    po.join()
+    po.close()   # close()：关闭进程池，不再接受新任务，返回 None
+    po.join()    # join()：等待所有任务完成，返回 None（必须在 close() 之后调用）
     print('完成')
 ```
 
@@ -4121,58 +4181,69 @@ if __name__ == '__main__':
 #### 17.4.1 Thread 类基本用法
 
 ```python
-import threading    # Python 多线程标准库，对底层 _thread 模块的高级封装
-import time
+import threading    # threading 模块：Python 多线程标准库，对底层 _thread 模块的高级封装
+import time         # time 模块：提供 sleep() 等时间功能
 
 # ── 方式一：直接传入函数创建线程 ──────────────────────────────────────
 def sing():
-    """模拟唱歌任务。"""
-    for i in range(3):
-        print(f'正在唱歌...{i}')
-        time.sleep(1)
+    """模拟唱歌任务：循环打印 3 次。"""
+    for i in range(3):          # range(3)：生成 0、1、2，控制循环 3 次
+        print(f'正在唱歌...{i}')  # 打印当前循环轮次
+        time.sleep(1)           # sleep(1)：当前线程暂停 1 秒（让出 GIL），返回 None
 
 def dance():
-    """模拟跳舞任务。"""
-    for i in range(3):
-        print(f'正在跳舞...{i}')
-        time.sleep(1)
+    """模拟跳舞任务：循环打印 3 次。"""
+    for i in range(3):          # range(3)：同上，控制循环 3 次
+        print(f'正在跳舞...{i}')  # 打印当前循环轮次
+        time.sleep(1)           # 暂停 1 秒，同期间唱歌线程可能正在运行
 
 # threading.Thread(target, name=None, args=(), kwargs={}, daemon=None)
-# 参数 target : 线程执行的函数引用
-# 参数 name   : 线程名称，默认为 Thread-N
-# 参数 args   : 传递给 target 的位置参数元组
-# 参数 kwargs : 传递给 target 的关键字参数字典
-# 参数 daemon : 是否为守护线程（True=主线程结束时自动终止该线程）
-t1 = threading.Thread(target=sing)
-t2 = threading.Thread(target=dance)
+# 参数 target : callable，线程启动后调用的函数引用（不加括号，仅传函数对象）
+# 参数 name   : str|None，线程名称；None 时自动命名为 Thread-N（N 从 1 递增）
+# 参数 args   : tuple，传给 target 的位置参数；单参数时写 (val,) 不可省略逗号
+# 参数 kwargs : dict，传给 target 的关键字参数字典
+# 参数 daemon : bool|None，True=守护线程（主线程退出时自动销毁）；None=继承父线程设置
+# 返回值      : Thread 对象（线程尚未启动）
+t1 = threading.Thread(target=sing)   # 创建唱歌线程对象，target 指向 sing 函数
+t2 = threading.Thread(target=dance)  # 创建跳舞线程对象，target 指向 dance 函数
 
-t1.start()      # 启动线程（真正创建线程并开始执行），立即返回，不等待线程完成
-t2.start()      # 两个线程并发执行
+t1.start()  # start()：真正创建操作系统线程并开始执行，立即返回 None（不阻塞主线程）
+t2.start()  # 同上，t1 和 t2 此后并发执行（交替获得 CPU 时间片）
 
-# 主线程默认会等待所有非守护子线程结束后才退出
-# threading.enumerate() : 返回当前所有活跃线程对象列表（list[Thread]）
+# threading.enumerate()：返回当前所有存活线程的列表，list[Thread] 类型
+# 包括主线程（MainThread）和所有子线程；len() 返回存活线程总数（int）
 print(f'当前活跃线程数：{len(threading.enumerate())}')
+# 主线程打印后继续向下，但不会退出，因为默认会等待所有非守护子线程结束
 ```
 
 ```python
 # ── 方式二：继承 threading.Thread，重写 run() 方法 ────────────────────
-import threading
-import time
+# 适用场景：线程逻辑复杂、需要携带状态属性、或希望面向对象封装时
+import threading  # 导入多线程模块
+import time       # 导入时间模块
 
 class MyThread(threading.Thread):
-    """自定义线程类，通过重写 run() 方法定义线程执行逻辑。"""
+    """
+    自定义线程类，通过继承 threading.Thread 并重写 run() 方法定义执行逻辑。
+    说明：调用 start() 后，Python 调度器在合适时机自动调用 run()，不要直接调用 run()
+    """
 
     def run(self):
-        """线程启动后自动调用的入口方法（覆盖父类 run）。"""
-        # self.name : 线程名称属性，Thread-N 格式，Thread 基类自动赋值
-        for i in range(3):
-            time.sleep(1)
-            msg = f"I'm {self.name} @ {i}"
-            print(msg)
+        """
+        线程的入口方法，覆盖父类 Thread.run()。
+        线程调度器在该线程获得 CPU 时间片时自动调用此方法，无需手动调用。
+        """
+        # self.name : str 属性，线程名称，由父类 Thread 自动赋值为 Thread-N（N 从 1 递增）
+        #             也可以在 MyThread(name='自定义名') 时指定
+        for i in range(3):              # range(3)：控制循环 3 次，i 依次为 0、1、2
+            time.sleep(1)               # 暂停 1 秒，模拟耗时操作；期间其他线程可运行
+            msg = f"I'm {self.name} @ {i}"  # 拼接当前线程名和循环轮次，str 类型
+            print(msg)                  # 打印到标准输出，多线程下输出可能交错
 
 if __name__ == '__main__':
-    t = MyThread()
-    t.start()       # 调用 start() 后，调度器在合适时机调用 t.run()
+    t = MyThread()  # 创建自定义线程对象；也可传 name='mythread' 指定线程名
+    t.start()       # start()：启动线程，触发调度器在合适时机调用 t.run()，立即返回 None
+                    # 注意：直接调用 t.run() 不会创建新线程，仅在主线程中串行执行
 ```
 
 > **线程执行顺序不确定**：多个线程的调度由操作系统决定，无法预测哪个线程先执行、何时切换；每次运行结果可能不同，这是并发编程的基本特性。
@@ -4180,30 +4251,37 @@ if __name__ == '__main__':
 #### 17.4.2 线程共享全局变量
 
 ```python
-from threading import Thread
-import time
+from threading import Thread  # 直接从 threading 导入 Thread 类，避免每次写 threading.Thread
+import time                   # 提供 sleep()：使当前线程休眠，让出 CPU 时间片
 
-g_num = 100     # 进程级全局变量，同一进程内所有线程均可访问（共享内存）
+g_num = 100  # 模块级全局变量（int），同一进程内的所有线程共享同一块内存，均可读写
 
 def work1():
-    """线程1：修改全局变量 g_num。"""
-    global g_num        # 声明使用全局变量（而非局部变量）
-    for i in range(3):
-        g_num += 1      # 修改全局变量（直接影响共享内存，其他线程可见）
-    print(f'work1 中 g_num = {g_num}')
+    """
+    线程1：对全局变量 g_num 累加，展示多线程共享内存的特性。
+    """
+    global g_num        # global 声明：告知解释器此处 g_num 是模块级变量而非局部变量
+                        # 若不声明 global，直接赋值会创建局部变量，无法修改全局变量
+    for i in range(3):  # range(3)：生成 0、1、2，循环 3 次
+        g_num += 1      # g_num 自增 1；由于所有线程共享内存，修改对其他线程立即可见
+    print(f'work1 中 g_num = {g_num}')  # 预期打印 103（初始 100 + 3）
 
 def work2():
-    """线程2：读取 work1 修改后的 g_num。"""
-    global g_num
-    print(f'work2 中 g_num = {g_num}')  # 读取到 work1 修改后的值：103
+    """
+    线程2：读取 g_num，验证 work1 的修改是否对本线程可见。
+    """
+    global g_num                                  # 声明访问全局变量
+    print(f'work2 中 g_num = {g_num}')            # 若 t1 已完成，此处读到 103
 
-t1 = Thread(target=work1)
-t1.start()
-time.sleep(1)       # 延时确保 t1 已完成修改（生产环境应使用 join 或锁）
+t1 = Thread(target=work1)  # 创建线程1对象，执行 work1 函数，返回 Thread 对象
+t1.start()                 # start()：启动线程1，立即返回 None，线程开始并发执行
+time.sleep(1)              # sleep(1)：主线程暂停 1 秒，等待 t1 完成（简单粗暴）
+                           # 生产环境应使用 t1.join() 精确等待，而非 sleep 估时
 
-t2 = Thread(target=work2)
-t2.start()
-# 结论：与多进程不同，多线程共享全局变量，修改对所有线程可见
+t2 = Thread(target=work2)  # 创建线程2对象，执行 work2 函数
+t2.start()                 # 启动线程2；此时 g_num 已被 t1 修改为 103
+# 结论：同一进程的多个线程共享全局变量，一个线程的修改对其他线程立即可见
+# 这是多线程与多进程的核心区别之一（多进程各自有独立内存副本）
 ```
 
 #### 17.4.3 资源竞争与互斥锁
@@ -4211,49 +4289,64 @@ t2.start()
 多个线程同时修改共享变量时会产生**竞态条件**（Race Condition），导致结果不可预期。`threading.Lock` 通过**互斥锁**保证同一时刻只有一个线程访问临界区。
 
 ```python
-import threading
-import time
+import threading  # 多线程模块，提供 Thread、Lock 等类
+import time       # time.sleep()：使当前线程休眠，返回 None
 
-g_num = 0   # 共享全局变量，初始值为 0
+g_num = 0  # 共享全局变量（int），初始为 0；两个线程将各自累加 100 万次
 
-# 问题演示：两个线程各自加 1,000,000 次，理论结果应为 2,000,000
-# 实际结果往往小于 2,000,000——因为 g_num += 1 不是原子操作，
-# 底层分为：LOAD g_num → ADD 1 → STORE g_num 三步，线程可能在任意步骤间被切换
+# ── 竞态条件说明 ────────────────────────────────────────────────────────
+# g_num += 1 看似一步，实际在 CPU 层面分为三条指令（非原子操作）：
+#   ① LOAD：从内存读取 g_num 当前值到寄存器
+#   ② ADD ：寄存器值加 1
+#   ③ STORE：将寄存器值写回内存
+# 线程切换可发生在任意指令之间，导致两个线程读到同一旧值，最终结果偏小
 
-# ── 互斥锁解决竞态条件 ──────────────────────────────────────────────────
-# threading.Lock()：创建互斥锁对象，初始状态为「未锁定」（unlocked）
+# ── threading.Lock()：创建互斥锁，初始为「未锁定」（unlocked）状态 ──────
+# 同一时刻最多只有一个线程持有该锁，其余线程在 acquire() 处阻塞排队
+# 返回值：Lock 对象
 mutex = threading.Lock()
 
 def test1(num):
-    """线程1：加锁后对 g_num 累加。"""
-    global g_num
-    for i in range(num):
-        # acquire()：尝试获取锁
-        # 若锁「未锁定」→ 立即上锁并继续执行
-        # 若锁「已锁定」→ 阻塞当前线程，直到锁被 release() 释放
-        mutex.acquire()     # 上锁（进入临界区）
-        g_num += 1          # 临界区：一次只有一个线程执行
-        mutex.release()     # 解锁（离开临界区，让其他线程有机会获取锁）
-    print(f'test1 完成，g_num = {g_num}')
+    """
+    线程1：使用互斥锁保护，对 g_num 安全累加。
+    参数 num : int，累加次数
+    """
+    global g_num                    # 声明修改全局变量
+    for i in range(num):            # 循环 num 次，range(num) 返回 range 对象（惰性迭代器）
+        # acquire(blocking=True, timeout=-1)：尝试获取锁
+        # 参数 blocking : bool，True=锁被占用时阻塞等待（默认）；False=立即返回（不阻塞）
+        # 参数 timeout  : float，blocking=True 时最大等待秒数；-1 表示永久等待
+        # 返回值        : bool；True=成功获得锁；False=未获得（仅 blocking=False 或超时时）
+        mutex.acquire()             # 上锁：进入临界区，其他线程将在此处阻塞
+        g_num += 1                  # 临界区：受锁保护，同一时刻仅此线程执行，保证原子性
+        mutex.release()             # release()：解锁，释放临界区；返回 None
+                                    # 其他阻塞在 acquire() 的线程将被唤醒，竞争获取锁
+    print(f'test1 完成，g_num = {g_num}')  # 打印 test1 完成时的 g_num（可能 test2 也在运行）
 
 def test2(num):
-    """线程2：同样加锁后对 g_num 累加。"""
+    """
+    线程2：与 test1 结构相同，使用同一把锁保护 g_num 的累加。
+    参数 num : int，累加次数
+    """
     global g_num
     for i in range(num):
-        mutex.acquire()
-        g_num += 1
-        mutex.release()
+        mutex.acquire()   # 上锁，若 test1 持有锁则在此阻塞，确保互斥
+        g_num += 1        # 临界区
+        mutex.release()   # 解锁
     print(f'test2 完成，g_num = {g_num}')
 
-p1 = threading.Thread(target=test1, args=(1_000_000,))
-p2 = threading.Thread(target=test2, args=(1_000_000,))
-p1.start()
-p2.start()
+# 1_000_000：Python 3.6+ 支持数字字面量中使用下划线分隔，等价于 1000000，提高可读性
+p1 = threading.Thread(target=test1, args=(1_000_000,))  # 创建线程1，累加 100 万次
+p2 = threading.Thread(target=test2, args=(1_000_000,))  # 创建线程2，同样累加 100 万次
+p1.start()   # 启动线程1，立即返回 None
+p2.start()   # 启动线程2，与线程1 并发执行
 
-# 等待两个线程结束（轮询方式，生产中优先使用 join）
+# threading.enumerate()：返回所有存活线程列表（list[Thread]），含主线程
+# len() == 1 表示只剩主线程（子线程全部结束）
+# 轮询等待（不精确），生产环境应使用 p1.join(); p2.join() 精确等待
 while len(threading.enumerate()) != 1:
-    time.sleep(1)
-print(f'最终结果：{g_num}')     # 加锁后结果稳定为 2,000,000
+    time.sleep(1)   # 每隔 1 秒检查一次是否所有子线程已结束
+print(f'最终结果：{g_num}')  # 加锁后两线程串行操作，结果稳定为 2,000,000
 ```
 
 > **锁的优缺点**：
@@ -4265,40 +4358,48 @@ print(f'最终结果：{g_num}')     # 加锁后结果稳定为 2,000,000
 当两个（或更多）线程相互等待对方持有的锁时，就会产生**死锁**——所有线程永久阻塞，程序停止响应。
 
 ```python
-import threading
-import time
+import threading  # 提供 Thread、Lock
+import time       # time.sleep()：暂停线程执行，返回 None
 
-# 两把互斥锁
-mutexA = threading.Lock()  # 锁 A
-mutexB = threading.Lock()  # 锁 B
+# 两把相互独立的互斥锁，各自控制不同的共享资源
+mutexA = threading.Lock()  # 锁 A：控制资源 A 的访问权，初始为未锁定
+mutexB = threading.Lock()  # 锁 B：控制资源 B 的访问权，初始为未锁定
 
 class MyThread1(threading.Thread):
-    """线程1：先获取 A，再获取 B。"""
+    """
+    线程1：加锁顺序 A → B（先获取 A，再获取 B）。
+    死锁触发条件：线程1 持有 A 等待 B，线程2 持有 B 等待 A，互相等待形成环路。
+    """
     def run(self):
-        mutexA.acquire()            # 获取锁 A（成功）
-        print(f'{self.name} 获得锁A，等待锁B...')
-        time.sleep(1)               # 让线程2 有时间获取锁 B
-        mutexB.acquire()            # 等待锁 B（此时 B 已被线程2 持有）→ 永久阻塞
-        print(f'{self.name} 同时持有A和B')
-        mutexB.release()
-        mutexA.release()
+        mutexA.acquire()                            # 成功获取锁 A（此时 B 尚未被线程2 锁定）
+        print(f'{self.name} 已持有锁A，等待锁B...')  # self.name：Thread-N 格式的线程名，str
+        time.sleep(1)                               # 故意暂停 1 秒，让线程2 有时间锁定 B
+        mutexB.acquire()                            # 尝试获取锁 B → 此时 B 已被线程2 持有
+                                                    # → 线程1 在此永久阻塞（死锁发生）
+        print(f'{self.name} 同时持有A和B（死锁时此行不会打印）')
+        mutexB.release()   # release()：释放锁 B，返回 None（死锁时不会执行到此）
+        mutexA.release()   # release()：释放锁 A，返回 None（死锁时不会执行到此）
 
 class MyThread2(threading.Thread):
-    """线程2：先获取 B，再获取 A。"""
+    """
+    线程2：加锁顺序 B → A（先获取 B，再获取 A）。
+    与线程1 加锁顺序相反，是导致死锁的根本原因。
+    """
     def run(self):
-        mutexB.acquire()            # 获取锁 B（成功）
-        print(f'{self.name} 获得锁B，等待锁A...')
-        time.sleep(1)               # 让线程1 有时间获取锁 A
-        mutexA.acquire()            # 等待锁 A（此时 A 已被线程1 持有）→ 永久阻塞
-        print(f'{self.name} 同时持有B和A')
-        mutexA.release()
-        mutexB.release()
+        mutexB.acquire()                            # 成功获取锁 B
+        print(f'{self.name} 已持有锁B，等待锁A...')  # self.name：线程名，str 类型
+        time.sleep(1)                               # 故意暂停，让线程1 有时间锁定 A
+        mutexA.acquire()                            # 尝试获取锁 A → 此时 A 已被线程1 持有
+                                                    # → 线程2 在此永久阻塞（死锁发生）
+        print(f'{self.name} 同时持有B和A（死锁时此行不会打印）')
+        mutexA.release()   # 释放锁 A（死锁时不会执行到此）
+        mutexB.release()   # 释放锁 B（死锁时不会执行到此）
 
-t1 = MyThread1()
-t2 = MyThread2()
-t1.start()
-t2.start()
-# 运行后程序将永久阻塞，需 Ctrl+C 强制退出
+t1 = MyThread1()   # 创建线程1 对象，返回 MyThread1 实例
+t2 = MyThread2()   # 创建线程2 对象，返回 MyThread2 实例
+t1.start()         # 启动线程1，开始并发执行 run()，立即返回 None
+t2.start()         # 启动线程2，与线程1 并发执行 run()，立即返回 None
+# 运行后两线程相互等待对方的锁，程序永久阻塞，需 Ctrl+C 强制中断退出
 ```
 
 > **避免死锁的方法**：
@@ -4309,42 +4410,66 @@ t2.start()
 #### 17.4.5 案例：多线程 UDP 聊天器
 
 ```python
-import socket       # 提供 UDP/TCP 套接字接口
-import threading    # 提供多线程支持
+import socket       # socket 模块：提供 BSD 套接字接口，支持 UDP/TCP 网络通信
+import threading    # threading 模块：提供多线程支持，Thread 类创建子线程
 
 def send_msg(udp_socket):
-    """发送线程：循环读取键盘输入并通过 UDP 发送。"""
-    while True:
-        msg = input('\n请输入要发送的内容：')       # 阻塞等待键盘输入
-        dest_ip   = input('请输入对方 IP 地址：')
-        dest_port = int(input('请输入对方端口号：'))
-        # sendto(data, address)：UDP 发送
-        # data    : bytes，需提前编码
-        # address : (ip, port) 元组
-        udp_socket.sendto(msg.encode('utf-8'), (dest_ip, dest_port))
+    """
+    发送线程入口：循环读取键盘输入，通过 UDP 发送给指定目标。
+    参数 udp_socket : socket.socket，已创建并绑定端口的 UDP 套接字对象
+    """
+    while True:                                              # 无限循环，持续等待用户输入
+        msg       = input('\n请输入要发送的内容：')          # input()：阻塞等待键盘输入，返回 str
+        dest_ip   = input('请输入对方 IP 地址：')            # 返回 str，如 '192.168.1.100'
+        dest_port = int(input('请输入对方端口号：'))          # int()：将 str 转为 int，如 7890
+        # str.encode(encoding)：将字符串编码为 bytes（网络传输必须用 bytes）
+        # 参数 encoding : str，编码方案；'utf-8' 支持中英文；返回 bytes 对象
+        encoded_msg = msg.encode('utf-8')
+        # sendto(data, address)：UDP 无连接发送，每次需指定目标地址
+        # 参数 data    : bytes，要发送的字节序列
+        # 参数 address : tuple(str, int)，目标地址 (IP字符串, 端口整数)
+        # 返回值       : int，实际发送的字节数
+        udp_socket.sendto(encoded_msg, (dest_ip, dest_port))
 
 def recv_msg(udp_socket):
-    """接收线程：循环阻塞等待接收数据并打印。"""
-    while True:
-        # recvfrom(bufsize)：阻塞接收 UDP 数据
-        # 返回值 : (data: bytes, address: tuple)
+    """
+    接收线程入口：循环阻塞等待接收 UDP 数据并打印到屏幕。
+    参数 udp_socket : socket.socket，已绑定端口的 UDP 套接字对象
+    """
+    while True:                                  # 无限循环，持续监听接收
+        # recvfrom(bufsize)：阻塞等待接收 UDP 数据（无数据时该线程挂起，不占 CPU）
+        # 参数 bufsize : int，单次最大接收字节数（此处 1024 字节，超出部分丢弃）
+        # 返回值       : tuple(bytes, tuple)，即 (数据字节序列, (来源IP:str, 来源端口:int))
         recv_data, recv_addr = udp_socket.recvfrom(1024)
-        recv_str = recv_data.decode('utf-8')    # bytes → str
-        print(f'>>> {recv_addr}: {recv_str}')   # 显示来源地址和消息内容
+        # bytes.decode(encoding)：将字节序列解码为字符串，返回 str
+        # 参数 encoding : str，编解码方案必须与发送方一致，否则乱码或抛异常
+        recv_str = recv_data.decode('utf-8')
+        # recv_addr：tuple(str, int)，形如 ('192.168.1.100', 54321)
+        print(f'>>> {recv_addr}: {recv_str}')    # 打印来源地址和消息内容
 
 def main():
-    """主函数：创建 UDP 套接字，启动收发线程。"""
-    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # 创建 UDP 套接字
-    udp_socket.bind(('', 7890))     # 绑定本地端口（空字符串=监听所有网卡）
+    """
+    主函数：创建 UDP 套接字，启动接收子线程，主线程负责发送。
+    """
+    # socket.socket(family, type)：创建套接字对象
+    # 参数 family : socket.AF_INET    = IPv4 地址族（32 位 IP 地址，如 192.168.x.x）
+    # 参数 type   : socket.SOCK_DGRAM = UDP 协议（无连接、不保证可靠，但低延迟）
+    # 返回值      : socket.socket 对象
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # bind((host, port))：绑定本机监听地址和端口，返回 None
+    # 参数 host : str，'' 或 '0.0.0.0' 表示监听本机所有网卡接口
+    # 参数 port : int，本地监听端口（1024~65535 为用户端口，避免占用系统保留端口）
+    udp_socket.bind(('', 7890))
 
-    # 创建接收子线程（daemon=True：主线程退出时自动销毁此线程）
+    # daemon=True：守护线程，主线程退出时该线程自动终止，无需调用 join()
+    # args=(udp_socket,)：单元素元组，尾部逗号不可省略
     t_recv = threading.Thread(target=recv_msg, args=(udp_socket,), daemon=True)
-    t_recv.start()
+    t_recv.start()         # start()：启动接收线程，开始阻塞监听；立即返回 None
 
-    send_msg(udp_socket)    # 主线程负责发送（阻塞在键盘输入上）
+    send_msg(udp_socket)   # 主线程进入发送循环（阻塞在 input()，与接收线程并发运行）
 
 if __name__ == '__main__':
-    main()
+    main()  # 程序入口
 ```
 
 ---
@@ -4356,35 +4481,47 @@ if __name__ == '__main__':
 #### 17.5.1 基于 yield 的简单协程
 
 ```python
-import time
+import time  # time.sleep()：使当前协程（线程）休眠，返回 None
 
 def work1():
-    """协程任务1：每次被 next() 唤醒执行一步，遇到 yield 挂起。"""
-    while True:
-        print('---- work1 ---')
-        yield           # 在此处挂起，将控制权交还给调用者
-        time.sleep(0.5)
+    """
+    协程任务1：使用 yield 实现挂起与恢复，每次被 next() 唤醒执行一步。
+    注意：含有 yield 关键字的函数是生成器函数，调用后不立即执行，而是返回生成器对象。
+    """
+    while True:                      # 无限循环，使协程持续可被唤醒
+        print('---- work1 ---')      # 每次被唤醒时打印标识
+        yield                        # yield：①暂停当前函数执行，②将控制权交还给调用者
+                                     # 此处 yield 不返回值（等价 yield None）
+        time.sleep(0.5)              # 恢复执行后，暂停 0.5 秒（模拟 IO 等待）
 
 def work2():
-    """协程任务2：结构同 work1。"""
-    while True:
-        print('---- work2 ---')
-        yield           # 挂起点
-        time.sleep(0.5)
+    """
+    协程任务2：结构与 work1 相同，与 work1 交替执行。
+    """
+    while True:                      # 无限循环
+        print('---- work2 ---')      # 每次被唤醒时打印标识
+        yield                        # 挂起点：将控制权交还给调用者
+        time.sleep(0.5)              # 恢复后暂停 0.5 秒
 
 def main():
-    """主函数：手动交替驱动两个协程。"""
-    # 调用含 yield 的函数，不执行函数体，而是返回一个生成器（generator）对象
-    w1 = work1()    # 返回生成器对象 w1
-    w2 = work2()    # 返回生成器对象 w2
+    """主函数：手动交替驱动两个协程，模拟协程切换。"""
+    # 调用生成器函数：不执行函数体，而是返回一个生成器（Generator）对象
+    # 生成器对象实现了 __iter__ 和 __next__ 协议，是迭代器的一种
+    w1 = work1()    # 返回 Generator 对象 w1（work1 函数体尚未开始执行）
+    w2 = work2()    # 返回 Generator 对象 w2（work2 函数体尚未开始执行）
 
-    while True:
-        next(w1)    # 唤醒 w1，执行到下一个 yield 处挂起
-        next(w2)    # 唤醒 w2，执行到下一个 yield 处挂起
+    while True:                      # 无限循环，交替唤醒两个协程
+        # next(generator)：驱动生成器从上次暂停处（yield）继续执行，直到下一个 yield
+        # 参数 generator : Generator 对象
+        # 返回值         : yield 表达式右侧的值（此处 yield 无右侧值，返回 None）
+        # 若生成器已耗尽（函数执行完毕），抛出 StopIteration 异常
+        next(w1)    # 唤醒 w1，从上次 yield 处继续，执行到下一个 yield 处再次挂起
+        next(w2)    # 唤醒 w2，同上
 
 if __name__ == '__main__':
     main()
-# 效果：work1 和 work2 交替打印，但切换由程序手动控制（yield 是基础，不够自动化）
+# 效果：work1 和 work2 交替打印；但切换时机由主循环控制，不够灵活
+# 缺点：必须手动调用 next()，且 time.sleep() 会真正阻塞当前线程，无法自动切换
 ```
 
 #### 17.5.2 greenlet——手动切换协程
@@ -4397,29 +4534,41 @@ $ pip install greenlet  # Windows / macOS / Linux 通用
 ```
 
 ```python
-from greenlet import greenlet   # greenlet：轻量级协程实现，提供 switch() 手动切换
-import time
+from greenlet import greenlet   # greenlet 类：轻量级协程实现，提供显式的 switch() 切换
+import time                    # time.sleep()：暂停执行，返回 None
 
 def test1():
-    """greenlet 协程1。"""
-    while True:
-        print('--- A ---')
-        gr2.switch()    # 手动切换到 gr2 协程执行
-        time.sleep(0.5)
+    """
+    greenlet 协程1：打印 A，然后主动切换到协程2。
+    """
+    while True:                         # 无限循环
+        print('--- A ---')              # 打印协程1 标识
+        # switch()：主动将 CPU 控制权切换给指定协程
+        # 参数：可选，传入要发送给目标协程的值（目标协程 switch() 的返回值）
+        # 返回值：目标协程再次 switch() 回来时传入的值
+        gr2.switch()                    # 切换到 gr2 执行，当前协程在此挂起
+        time.sleep(0.5)                 # gr2 切换回来后，继续执行此行：暂停 0.5 秒
 
 def test2():
-    """greenlet 协程2。"""
-    while True:
-        print('--- B ---')
-        gr1.switch()    # 手动切换回 gr1 协程执行
-        time.sleep(0.5)
+    """
+    greenlet 协程2：打印 B，然后主动切换回协程1。
+    """
+    while True:                         # 无限循环
+        print('--- B ---')              # 打印协程2 标识
+        gr1.switch()                    # 切换回 gr1 执行，当前协程在此挂起
+        time.sleep(0.5)                 # gr1 切换回来后，继续执行此行
 
-# greenlet(run)：创建一个 greenlet 协程对象，run 为该协程执行的函数
-gr1 = greenlet(test1)
-gr2 = greenlet(test2)
+# greenlet(run, parent=None)：创建 greenlet 协程对象
+# 参数 run    : callable，该协程要执行的函数引用
+# 参数 parent : greenlet|None，父协程（协程结束时切换到父协程），None=切换到主协程
+# 返回值      : greenlet 对象（协程尚未启动）
+gr1 = greenlet(test1)  # 创建协程1 对象，绑定 test1 函数
+gr2 = greenlet(test2)  # 创建协程2 对象，绑定 test2 函数
 
-gr1.switch()    # 启动：切换到 gr1 开始执行（首次调用 switch() 相当于启动协程）
-# 输出：A B A B A B ... （手动交替）
+# switch()：首次调用相当于启动协程（从函数头开始执行）
+# 之后每次调用：从上次 switch() 挂起处继续执行
+gr1.switch()    # 启动并切换到 gr1，程序从 test1 开头开始执行
+# 输出顺序：A → B → A → B → ...（手动交替，比 yield 直观但仍需显式切换）
 ```
 
 #### 17.5.3 gevent——自动切换协程（推荐）
@@ -4448,19 +4597,34 @@ import gevent           # gevent：基于 greenlet 的高性能协程库，自�
 # gevent.killall(greenlets)：终止列表中所有协程
 
 def task(n):
-    """演示协程任务：循环打印并通过 gevent.sleep 触发协程切换。"""
-    for i in range(n):
-        # gevent.getcurrent()：返回当前 Greenlet 对象（含内存地址，用于区分不同协程）
+    """
+    演示协程任务：循环打印并通过 gevent.sleep() 触发协程自动切换。
+    参数 n : int，循环次数（每个协程执行 n 步）
+    """
+    for i in range(n):      # range(n)：生成 0..n-1 的整数序列，控制循环次数
+        # gevent.getcurrent()：返回当前正在执行的 Greenlet 对象
+        # 返回值：Greenlet 对象，repr 包含内存地址，可区分不同协程
         print(f'{gevent.getcurrent()} 执行第 {i} 步')
-        gevent.sleep(0.5)   # 模拟 IO 等待，此处触发协程自动切换
+        # gevent.sleep(seconds)：使当前协程休眠 seconds 秒，并自动切换到其他就绪协程
+        # 参数 seconds : float，休眠秒数（0 也会触发切换，让出当前执行权）
+        # 返回值       : None
+        # 区别于 time.sleep()：time.sleep() 阻塞整个线程，gevent.sleep() 仅挂起当前协程
+        gevent.sleep(0.5)   # 触发协程自动切换，其他协程趁机运行
 
-g1 = gevent.spawn(task, 5)  # 创建协程1，传入参数 n=5
-g2 = gevent.spawn(task, 5)  # 创建协程2
-g3 = gevent.spawn(task, 5)  # 创建协程3
+# gevent.spawn(func, *args, **kwargs)：创建并立即调度协程（不阻塞，立即返回）
+# 参数 func : callable，协程要执行的函数
+# 参数 args : 传给 func 的位置参数（直接展开，不用元组）
+# 返回值    : Greenlet 对象（协程句柄，可用于 join、kill 等操作）
+g1 = gevent.spawn(task, 5)  # 创建协程1，n=5，该协程将执行 5 步
+g2 = gevent.spawn(task, 5)  # 创建协程2，n=5
+g3 = gevent.spawn(task, 5)  # 创建协程3，n=5
 
-# joinall：等待 g1/g2/g3 全部执行完毕
+# gevent.joinall(greenlets, timeout=None)：阻塞当前线程，等待列表中所有协程完成
+# 参数 greenlets : list[Greenlet]，要等待的协程对象列表
+# 参数 timeout   : float|None，最长等待秒数；None=永久等待
+# 返回值         : list[Greenlet]，已完成的协程列表
 gevent.joinall([g1, g2, g3])
-# 输出：g1 g2 g3 交替打印（遇到 gevent.sleep 自动切换到下一个就绪协程）
+# 输出：g1 g2 g3 交替打印——每遇到 gevent.sleep() 自动切换到下一个就绪协程
 ```
 
 #### 17.5.4 monkey patch——让标准库自动触发协程切换
@@ -4479,10 +4643,16 @@ import random
 monkey.patch_all()
 
 def coroutine_work(name):
-    """协程任务：使用标准库 time.sleep（已被 patch，会触发协程切换）。"""
-    for i in range(5):
-        print(f'{name} 执行第 {i} 步')
-        time.sleep(random.random())     # 打补丁后，此处会自动切换协程
+    """
+    协程任务：使用标准库 time.sleep（已被 monkey.patch_all() 替换，会触发协程切换）。
+    参数 name : str，协程名称标识，用于区分不同协程的打印输出
+    """
+    for i in range(5):                          # range(5)：生成 0..4，循环 5 步
+        print(f'{name} 执行第 {i} 步')          # 打印当前协程名和执行步骤，str 格式化
+        # random.random()：返回 [0.0, 1.0) 范围内的随机浮点数（float），模拟随机 IO 耗时
+        # time.sleep()：经 monkey.patch_all() 替换后变为 gevent 的非阻塞版本，
+        #               调用时自动挂起当前协程并切换到其他就绪协程执行，返回 None
+        time.sleep(random.random())
 
 # gevent.joinall 等价于：spawn 多个协程并等待全部完成
 gevent.joinall([
@@ -4505,19 +4675,30 @@ import requests     # HTTP 客户端库（pip install requests）
 monkey.patch_all()  # 必须最先调用，让 requests 的网络 IO 触发协程切换
 
 def download(url):
-    """协程任务：下载指定 URL 的内容并打印大小。"""
-    print(f'GET: {url}')
-    response = requests.get(url)    # 发起 HTTP GET 请求（阻塞 IO，被 patch 后自动切换协程）
-    data = response.text            # response.text : str，响应体文本内容
-    print(f'{len(data)} bytes received from {url}')
+    """
+    协程任务：发起 HTTP GET 请求下载指定 URL 的内容并打印大小。
+    参数 url : str，目标网址，如 'http://www.baidu.com/'
+    """
+    print(f'GET: {url}')               # 打印请求开始标识
+    # requests.get(url)：发起同步 HTTP GET 请求
+    # 参数 url   : str，目标 URL
+    # 返回值     : requests.Response 对象（包含状态码、响应头、响应体等信息）
+    # 注意：正常情况下该调用会阻塞；打了 monkey.patch_all() 后，
+    #       底层 socket IO 被替换为 gevent 非阻塞版本，阻塞时自动切换协程
+    response = requests.get(url)
+    # response.text : str 属性，响应体内容（自动根据响应头编码解码为字符串）
+    data = response.text
+    # len(data)：返回字符串长度（int），此处近似表示响应体字节量
+    print(f'{len(data)} bytes received from {url}')  # 打印接收到的数据量和来源
 
-# 并发下载三个网站（三个协程同时发起请求，谁先完成谁先打印）
+# 三个协程几乎同时发出 GET 请求（遇到网络 IO 自动切换到下一个就绪协程）
+# 总耗时 ≈ max(各个请求耗时)，而非 sum(各个请求耗时)，效率大幅提升
 gevent.joinall([
-    gevent.spawn(download, 'http://www.baidu.com/'),
-    gevent.spawn(download, 'http://www.qq.com/'),
-    gevent.spawn(download, 'http://www.python.org/'),
+    gevent.spawn(download, 'http://www.baidu.com/'),   # 创建协程1 并调度
+    gevent.spawn(download, 'http://www.qq.com/'),      # 创建协程2 并调度
+    gevent.spawn(download, 'http://www.python.org/'),  # 创建协程3 并调度
 ])
-# 关键：三个 GET 请求几乎同时发出，总耗时 ≈ max(单个请求耗时)，而非三者之和
+# joinall 阻塞直到三个下载协程全部完成，返回 list[Greenlet]（此处结果不使用）
 ```
 
 ---
@@ -4571,11 +4752,12 @@ t.name                                      # 线程名称属性
 threading.enumerate()                       # 返回所有活跃线程列表（list[Thread]）
 threading.current_thread()                  # 返回当前线程对象
 
-threading.Lock()                            # 创建互斥锁（初始未锁定）
-mutex.acquire([blocking=True, timeout=-1])  # 上锁（已锁则阻塞；timeout 超时返回 False）
-mutex.release()                             # 解锁
-with mutex:                                 # 推荐用 with 语法，自动上锁/解锁（等价 try/finally）
-    pass                                    # 临界区代码
+threading.Lock()                             # 创建互斥锁对象，初始状态为未锁定，返回 Lock 对象
+mutex.acquire(blocking=True, timeout=-1)     # 上锁；blocking=True 锁被占用时阻塞；
+                                             # timeout=-1 永不超时；返回 bool（True=成功获锁）
+mutex.release()                              # 解锁，唤醒等待该锁的其他线程；返回 None
+with mutex:                                  # 上下文管理器语法：等价于 acquire()+try/finally+release()
+    pass                                     # 临界区代码（推荐使用 with，自动保证解锁，防止异常遗漏）
 
 # ── 协程（gevent）───────────────────────────────────────────────────────
 from gevent import monkey
