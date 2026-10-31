@@ -3417,11 +3417,28 @@ import struct   # 提供 C 语言结构体与 Python bytes 之间的互转，常
 
 # struct.pack(fmt, v1, v2, ...)：按格式字符串将 Python 数值打包为 bytes
 # 参数 fmt : str，格式字符串，决定字节序和数据类型
-#   常用格式字符：
-#     'I'  → unsigned int，无符号 32 位整数，4 字节
-#     'i'  → int，有符号 32 位整数，4 字节
-#     'H'  → unsigned short，无符号 16 位整数，2 字节
-#     'B'  → unsigned char，无符号 8 位整数，1 字节
+#   常用格式字符（对应 C 类型 → Python 类型，标准大小）：
+#     'x'  → pad byte（填充字节），无对应 Python 值，占 1 字节；常用于字节对齐
+#     'b'  → signed char，有符号 8 位整数，1 字节，Python type: int
+#     'B'  → unsigned char，无符号 8 位整数，1 字节，Python type: int
+#     '?'  → _Bool，布尔值，1 字节，Python type: bool
+#     'h'  → short，有符号 16 位整数，2 字节，Python type: int
+#     'H'  → unsigned short，无符号 16 位整数，2 字节，Python type: int
+#     'i'  → int，有符号 32 位整数，4 字节，Python type: int
+#     'I'  → unsigned int，无符号 32 位整数，4 字节，Python type: int
+#     'l'  → long，有符号整数，Python type: int
+#             标准模式（加 >/</= 前缀）固定 4 字节；
+#             原生模式（无前缀）：Windows 64 位 = 4 字节，Linux/macOS 64 位 = 8 字节
+#     'L'  → unsigned long，无符号整数，Python type: int
+#             与 'l' 同理：标准模式固定 4 字节；原生模式大小因平台而异
+#             跨平台建议：加字节序前缀时 'I'/'L' 等价均为 4 字节；
+#                         不加前缀时优先用 'I'，因其在所有平台均固定 4 字节
+#     'q'  → long long，有符号 64 位整数，8 字节，Python type: int
+#     'Q'  → unsigned long long，无符号 64 位整数，8 字节，Python type: int
+#     'f'  → float，单精度浮点数，4 字节，Python type: float
+#     'd'  → double，双精度浮点数，8 字节，Python type: float
+#     's'  → char[]，字节串，需在前面加长度前缀（如 '4s' 表示 4 字节字节串），Python type: bytes
+#             实际网络编程中几乎不用：字符串直接 .encode() 即可，无需借助 struct
 #   字节序前缀（放在格式字符串最前面）：
 #     无前缀  → 本机字节序 + 本机原生大小（由 C 编译器决定，可能含对齐 padding）
 #     '='     → 本机字节序 + 标准大小（无 padding，'I' 固定 4 字节）
