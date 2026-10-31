@@ -3844,8 +3844,10 @@ server.close()
 | 状态 | 说明 | `ps` 中显示 |
 |---|---|---|
 | **就绪态** | 所有条件已满足，等待 CPU 调度 | `R`（Running/Runnable） |
-| **执行态** | CPU 正在执行该进程 | `R` |
+| **执行态** | CPU 正在执行该进程 | `R`（与就绪态相同） |
 | **等待态** | 等待某个条件（如 IO、sleep），暂不占用 CPU | `S`（Sleeping） |
+
+> 说明：Linux 内核中就绪态与执行态都对应同一个状态值 `TASK_RUNNING`，因此在 `ps` 里都显示为 `R`，无法仅凭状态区分。可用 `ps -eo pid,stat,psr,comm` 查看 `psr` 列（进程所在的 CPU 编号）辅助判断。
 
 #### 17.1.4 进程 vs 线程 vs 协程对比
 
@@ -3871,38 +3873,67 @@ server.close()
 
 ```bash
 # 查看 CPU 核数
-$ cat /proc/cpuinfo          # 查看 CPU 详细信息（Linux）
+# 输出：文本，每个逻辑 CPU 对应一段信息（processor 编号、model name 型号、cpu MHz 主频、cache size 缓存等）
+$ cat /proc/cpuinfo          # cat：打印文件内容；/proc/cpuinfo：内核提供的虚拟文件，无需参数（仅 Linux）
+# grep -c：统计匹配行数（-c=count）；processor 行数 = 逻辑 CPU 核数，返回 int
+$ grep -c processor /proc/cpuinfo
 
 # 查看活动进程
-$ ps                         # 查看当前终端启动的进程
-$ ps -aux                    # 查看所有进程（a=所有用户, u=用户格式, x=无终端进程）
-$ ps -aux | grep 'python'    # 过滤指定进程名（grep 后跟进程名关键字）
-$ ps -elf                    # 显示父子进程关系（elf=详细格式，含 PPID 父进程号）
+# 无参数：只显示当前终端、当前用户启动的进程；输出列：PID 进程号、TTY 终端、TIME 累计 CPU 时间、CMD 命令名
+$ ps
+# 选项 a=显示所有用户的进程（含终端的）；u=以用户导向格式输出（USER、PID、%CPU、%MEM、VSZ、RSS、STAT、START、COMMAND）；
+# x=同时显示没有控制终端的进程（如守护进程）；注意：aux 是 BSD 风格写法，前面通常不加 -
+$ ps -aux
+# |：管道符，把左边命令的输出作为右边命令的输入；grep 'python'：只保留含 'python' 的行（参数为匹配的关键字）
+# 注意：结果里会包含 grep 进程自身，可改用 grep '[p]ython' 排除
+$ ps -aux | grep 'python'
+# 选项 -e=显示所有进程；-l=长格式（多出 S 状态、PRI 优先级、NI nice 值等列）；-f=完整格式（多出 UID、PPID、C、STIME 等列）
+# 其中 PPID 是父进程号，通过 PID 与 PPID 的对应关系即可看出进程的父子关系
+$ ps -elf
+# -e=显示所有进程；-o=自定义输出列，列名用逗号分隔：pid 进程号、stat 进程状态（R/S/D/T/Z）、psr 进程当前所在的 CPU 编号、comm 命令名
+$ ps -eo pid,stat,psr,comm
 
 # 动态监控进程（按 q 退出）
-$ top                        # 实时显示进程列表，默认按 CPU 使用率排序
-                             # 按 H 切换为线程视图
+# 无参数：每 3 秒刷新一次，默认按 CPU 使用率降序排序；顶部依次是系统时间/运行时长/登录用户/load average、Tasks 进程统计、%Cpu、内存与 Swap
+# 交互按键：H=切换线程视图；f=打开字段管理（用方向键选中 P（Last Used CPU）后按空格勾选，显示进程所在 CPU 编号，按 q 返回）；
+# M=按内存排序；P=按 CPU 排序；k=输入 PID 发送信号终止进程；1=分别显示每个 CPU 核的使用率
+$ top
 
 # 进程信号与终止
-$ kill -l                    # 列出系统所有信号编号（共 64 个）
-$ kill -9 <PID>              # 向指定 PID 的进程发送 SIGKILL（9号）信号，强制终止
-$ pkill -f python            # 杀死所有名称含 'python' 的进程（-f 匹配完整命令行）
+# -l：list，列出所有信号的编号与名称（共 64 个，如 1) SIGHUP 2) SIGINT 9) SIGKILL 15) SIGTERM）
+$ kill -l
+# kill [-信号编号] <PID>：向进程发送信号；-9 对应 SIGKILL，不能被进程捕获或忽略，强制终止；
+# <PID> 为 int，进程号（可由 ps 查得）；省略 -9 时默认发送 SIGTERM（15），允许进程做清理后退出
+$ kill -9 <PID>
+# pkill：按进程名发送信号（默认 SIGTERM）；-f=匹配完整命令行而不仅是进程名；'python' 为匹配的关键字
+$ pkill -f python
 
 # 后台与前台控制
-$ python script.py &         # & 让进程在后台运行，不占用当前终端
-                             # Ctrl+Z 暂停当前前台进程，转为后台挂起（stopped 状态）
-$ jobs                       # 查看当前 shell 的后台任务列表及作业 ID
-$ bg <作业ID>                # 将已暂停的进程在后台继续运行（background）
-$ fg <作业ID>                # 将后台进程拉到前台运行（foreground）
+# &：加在命令末尾，让进程在后台运行，不占用当前终端；终端会打印 [作业ID] PID
+$ python script.py &
+# Ctrl+Z：向前台进程发送 SIGTSTP 信号，进程暂停（stopped 状态）并转入后台挂起
+# jobs：无参数，列出当前 shell 的后台任务，显示 [作业ID]、状态（Running/Stopped）和命令；-l 可额外显示 PID
+$ jobs
+# bg：让已暂停的作业在后台继续运行（background）；<作业ID> 为 jobs 显示的编号，如 bg %1（% 表示作业号而非 PID）
+$ bg <作业ID>
+# fg：把后台作业拉到前台运行（foreground），之后可用 Ctrl+C 终止或 Ctrl+Z 再次暂停；<作业ID> 用法同 bg
+$ fg <作业ID>
 
 # 磁盘与内存查看
-$ free                       # 查看物理内存及 Swap 使用情况
-$ df -h                      # 查看磁盘剩余空间（human-readable 格式）
-$ fdisk -l                   # 查看磁盘及分区情况
+# free：显示内存使用情况，默认单位 KB；列含义：total 总量、used 已用、free 空闲、shared 共享、buff/cache 缓冲与缓存、available 可用；
+# 可加 -h 以 KB/MB/GB 自动换算易读单位；Swap 行为交换分区（磁盘上的虚拟内存）
+$ free
+# df：显示文件系统的磁盘空间；-h=human-readable，自动换算为 K/M/G；列含义：Filesystem 文件系统、Size 总大小、Used 已用、Avail 可用、Use% 使用率、Mounted on 挂载点
+$ df -h
+# fdisk：磁盘分区工具；-l=只列出各磁盘及其分区信息，不做修改；通常需要 root 权限（前加 sudo）
+$ fdisk -l
 
 # 定时任务（运维常用）
-$ crontab -e                 # 编辑当前用户的定时任务
-$ crontab -l                 # 列出当前用户的所有定时任务
+# crontab：管理定时任务；-e=edit，用默认编辑器编辑当前用户的任务表
+# 每行格式：分(0-59) 时(0-23) 日(1-31) 月(1-12) 周(0-7) 命令，例如 0 2 * * * python /home/a.py 表示每天 02:00 执行
+$ crontab -e
+# -l=list，列出当前用户的所有定时任务（只读，不修改）
+$ crontab -l
 ```
 
 > **`top` 输出字段说明**：
@@ -4328,11 +4359,11 @@ def test2(num):
     线程2：与 test1 结构相同，使用同一把锁保护 g_num 的累加。
     参数 num : int，累加次数
     """
-    global g_num
-    for i in range(num):
-        mutex.acquire()   # 上锁，若 test1 持有锁则在此阻塞，确保互斥
-        g_num += 1        # 临界区
-        mutex.release()   # 解锁
+    global g_num                    # 声明 g_num 是模块级全局变量，否则 += 会被当作局部变量而报错
+    for i in range(num):            # range(num)：生成 0..num-1 的整数序列，循环 num 次
+        mutex.acquire()   # 上锁，若 test1 持有锁则在此阻塞，确保互斥；返回 bool（默认阻塞，成功时为 True）
+        g_num += 1        # 临界区：读-加-写三步，受锁保护，同一时刻只有一个线程执行
+        mutex.release()   # 解锁，唤醒等待该锁的线程；返回 None
     print(f'test2 完成，g_num = {g_num}')
 
 # 1_000_000：Python 3.6+ 支持数字字面量中使用下划线分隔，等价于 1000000，提高可读性
@@ -4371,6 +4402,7 @@ class MyThread1(threading.Thread):
     死锁触发条件：线程1 持有 A 等待 B，线程2 持有 B 等待 A，互相等待形成环路。
     """
     def run(self):
+        # acquire()：上锁，参数 blocking=True 默认阻塞等待；返回 bool（True=成功获得锁）
         mutexA.acquire()                            # 成功获取锁 A（此时 B 尚未被线程2 锁定）
         print(f'{self.name} 已持有锁A，等待锁B...')  # self.name：Thread-N 格式的线程名，str
         time.sleep(1)                               # 故意暂停 1 秒，让线程2 有时间锁定 B
@@ -4386,6 +4418,7 @@ class MyThread2(threading.Thread):
     与线程1 加锁顺序相反，是导致死锁的根本原因。
     """
     def run(self):
+        # acquire()：上锁，默认阻塞等待；返回 bool（True=成功获得锁）
         mutexB.acquire()                            # 成功获取锁 B
         print(f'{self.name} 已持有锁B，等待锁A...')  # self.name：线程名，str 类型
         time.sleep(1)                               # 故意暂停，让线程1 有时间锁定 A
@@ -4395,8 +4428,8 @@ class MyThread2(threading.Thread):
         mutexA.release()   # 释放锁 A（死锁时不会执行到此）
         mutexB.release()   # 释放锁 B（死锁时不会执行到此）
 
-t1 = MyThread1()   # 创建线程1 对象，返回 MyThread1 实例
-t2 = MyThread2()   # 创建线程2 对象，返回 MyThread2 实例
+t1 = MyThread1()   # 创建线程1 对象（未启动），返回 MyThread1 实例；未传 name 时线程名自动为 Thread-N
+t2 = MyThread2()   # 创建线程2 对象（未启动），返回 MyThread2 实例
 t1.start()         # 启动线程1，开始并发执行 run()，立即返回 None
 t2.start()         # 启动线程2，与线程1 并发执行 run()，立即返回 None
 # 运行后两线程相互等待对方的锁，程序永久阻塞，需 Ctrl+C 强制中断退出
@@ -4632,10 +4665,10 @@ gevent.joinall([g1, g2, g3])
 默认情况下，`time.sleep`、`socket` 等**标准库的 IO 操作**不会触发 gevent 协程切换。`monkey.patch_all()` 在程序启动时将这些标准库**动态替换**为 gevent 的非阻塞版本，使现有代码无需修改即可享受协程自动切换。
 
 ```python
-from gevent import monkey   # monkey：提供猴子补丁工具函数
-import gevent
-import time
-import random
+from gevent import monkey   # monkey：提供猴子补丁工具函数（动态替换标准库实现）
+import gevent               # gevent：协程库，提供 spawn()、joinall() 等接口
+import time                 # time：标准库时间模块，其 sleep() 将被 monkey.patch_all() 替换
+import random               # random：标准库随机数模块，random.random() 返回 [0.0, 1.0) 的 float
 
 # !! 必须在导入其他标准库之前调用 !!
 # monkey.patch_all()：将 socket、time、threading 等标准库中的阻塞 IO 操作
@@ -4654,10 +4687,10 @@ def coroutine_work(name):
         #               调用时自动挂起当前协程并切换到其他就绪协程执行，返回 None
         time.sleep(random.random())
 
-# gevent.joinall 等价于：spawn 多个协程并等待全部完成
+# gevent.joinall(greenlets)：阻塞当前线程，等待列表中所有协程执行完毕；返回 list[Greenlet]
 gevent.joinall([
-    gevent.spawn(coroutine_work, 'work1'),
-    gevent.spawn(coroutine_work, 'work2'),
+    gevent.spawn(coroutine_work, 'work1'),  # spawn(func, *args)：创建并调度协程1，args 为 'work1'（str），返回 Greenlet
+    gevent.spawn(coroutine_work, 'work2'),  # 创建并调度协程2，返回 Greenlet 对象
 ])
 # 打补丁后：work1/work2 交替输出（遇 sleep 自动切换）
 # 未打补丁时：work1 全部输出完，再输出 work2（顺序串行）
@@ -4668,11 +4701,11 @@ gevent.joinall([
 利用 gevent 协程并发发起多个 HTTP 请求，相比串行大幅提升效率。
 
 ```python
-from gevent import monkey
-import gevent
-import requests     # HTTP 客户端库（pip install requests）
-
-monkey.patch_all()  # 必须最先调用，让 requests 的网络 IO 触发协程切换
+from gevent import monkey   # monkey：猴子补丁工具模块
+# monkey.patch_all()：把 socket 等阻塞 IO 替换为 gevent 非阻塞版本，使后续导入的 requests 的网络 IO 能触发协程切换；返回 None
+monkey.patch_all()          # 必须在导入 requests 之前调用，否则 requests 可能已绑定未打补丁的 socket
+import gevent               # gevent：协程库，提供 spawn()、joinall()
+import requests             # requests：HTTP 客户端库（pip install requests），底层使用 socket
 
 def download(url):
     """
@@ -4718,59 +4751,64 @@ gevent.joinall([
 
 ```python
 # ── 多进程 ──────────────────────────────────────────────────────────────
-from multiprocessing import Process, Queue, Pool, Manager
-import os
+from multiprocessing import Process, Queue, Pool, Manager  # Process 子进程类；Queue 进程安全队列；Pool 进程池；Manager 托管共享对象
+import os                                   # os：提供 getpid()/getppid() 获取进程号
 
-Process(target=func, args=(), kwargs={})    # 创建子进程
-p.start()                                   # 启动子进程
-p.join([timeout])                           # 等待子进程结束（可选超时秒数）
-p.terminate()                               # 强制终止子进程
-p.is_alive()                                # 判断子进程是否仍在运行，返回 bool
-p.pid                                       # 子进程 PID（start() 后才有值）
-os.getpid()                                 # 当前进程 PID
-os.getppid()                                # 父进程 PID
+# Process(group=None, target=None, name=None, args=(), kwargs={})：创建子进程对象（尚未启动），返回 Process 对象
+# target=callable 子进程执行的函数（不加括号）；args=tuple 位置参数；kwargs=dict 关键字参数
+p = Process(target=func, args=(), kwargs={})
+p.start()                                   # 启动子进程（Linux fork / Windows spawn），立即返回 None，不等待子进程
+p.join(timeout=None)                        # 阻塞等待子进程结束并回收资源；timeout=float|None 最长等待秒数；返回 None
+p.terminate()                               # 向子进程发送终止信号（Unix=SIGTERM），强制结束；返回 None
+p.is_alive()                                # 判断子进程是否仍在运行，返回 bool（True=运行中）
+p.pid                                       # 属性：子进程 PID，int；start() 之前为 None
+os.getpid()                                 # 返回当前进程的 PID，int
+os.getppid()                                # 返回当前进程的父进程 PID，int
 
-Queue(maxsize=0)                            # 进程安全队列（maxsize=0 无限）
-q.put(item, block=True, timeout=None)       # 写入消息（队列满则阻塞）
-q.get(block=True, timeout=None)             # 读取消息（队列空则阻塞）
-q.qsize() / q.empty() / q.full()           # 查询队列状态
+q = Queue(maxsize=0)                        # 创建进程安全队列；maxsize=int 最大容量，0 表示无上限；返回 Queue 对象
+q.put(item, block=True, timeout=None)       # 写入消息；item=any 可序列化对象；block=True 队列满时阻塞，False 则抛 queue.Full；返回 None
+q.get(block=True, timeout=None)             # 取出并移除队首消息；队列空时 block=True 阻塞，False 则抛 queue.Empty；返回消息本身
+q.qsize()                                   # 当前队列中的消息数，int（macOS 不可用）
+q.empty()                                   # 队列是否为空，返回 bool
+q.full()                                    # 队列是否已满，返回 bool
 
-Pool(processes=None)                        # 进程池（默认进程数=CPU核数）
-po.apply_async(func, args=())               # 异步提交任务（非阻塞）
-po.close()                                  # 禁止新任务提交
-po.join()                                   # 等待所有任务完成（须在 close 后调用）
+po = Pool(processes=None)                   # 创建进程池；processes=int|None 池中进程数，None=CPU 核数；返回 Pool 对象
+po.apply_async(func, args=())               # 异步（非阻塞）提交任务；func=callable，args=tuple；返回 AsyncResult（.get() 取返回值）
+po.close()                                  # 关闭进程池，不再接收新任务；返回 None
+po.join()                                   # 阻塞等待池中所有任务完成（必须在 close() 之后调用）；返回 None
 
-Manager().Queue()                           # 进程池专用代理队列
+Manager().Queue()                           # 创建由 Manager 托管的代理队列，可在进程池的进程间传递；返回 queue 代理对象
 
 # ── 多线程 ──────────────────────────────────────────────────────────────
-import threading
+import threading                            # threading：多线程标准库
 
-threading.Thread(target=func, args=(), daemon=None)  # 创建线程
-t.start()                                   # 启动线程
-t.join([timeout])                           # 等待线程结束
-t.name                                      # 线程名称属性
-threading.enumerate()                       # 返回所有活跃线程列表（list[Thread]）
-threading.current_thread()                  # 返回当前线程对象
+# threading.Thread(target=None, name=None, args=(), kwargs=None, daemon=None)：创建线程对象（尚未启动），返回 Thread 对象
+# daemon=True 表示守护线程，主线程退出时自动结束
+t = threading.Thread(target=func, args=(), daemon=None)
+t.start()                                   # 启动线程，立即返回 None（不阻塞调用者）
+t.join(timeout=None)                        # 阻塞等待线程结束；timeout=float|None 最长等待秒数；返回 None
+t.name                                      # 属性：线程名称，str，默认 Thread-N
+threading.enumerate()                       # 返回当前所有存活线程（含主线程）的列表，list[Thread]
+threading.current_thread()                  # 返回当前正在执行的线程对象，Thread
 
-threading.Lock()                             # 创建互斥锁对象，初始状态为未锁定，返回 Lock 对象
-mutex.acquire(blocking=True, timeout=-1)     # 上锁；blocking=True 锁被占用时阻塞；
-                                             # timeout=-1 永不超时；返回 bool（True=成功获锁）
-mutex.release()                              # 解锁，唤醒等待该锁的其他线程；返回 None
-with mutex:                                  # 上下文管理器语法：等价于 acquire()+try/finally+release()
-    pass                                     # 临界区代码（推荐使用 with，自动保证解锁，防止异常遗漏）
+mutex = threading.Lock()                    # 创建互斥锁，初始为未锁定状态；返回 Lock 对象
+mutex.acquire(blocking=True, timeout=-1)    # 上锁；blocking=True 锁被占用时阻塞等待；timeout=float 最长等待秒数，-1=永久；返回 bool（True=成功获锁）
+mutex.release()                             # 解锁，唤醒等待该锁的其他线程；返回 None
+with mutex:                                 # 上下文管理器：进入时自动 acquire()，退出（含异常）时自动 release()
+    pass                                    # 临界区代码（推荐使用 with，可防止异常导致忘记解锁）
 
 # ── 协程（gevent）───────────────────────────────────────────────────────
-from gevent import monkey
-import gevent
+from gevent import monkey                   # monkey：猴子补丁工具模块
+import gevent                               # gevent：基于 greenlet 的协程库
 
-monkey.patch_all()                          # !! 最先调用，替换标准库阻塞 IO
+monkey.patch_all()                          # 必须最先调用：把标准库中的阻塞 IO（socket、time.sleep 等）替换为非阻塞版本；返回 None
 
-gevent.spawn(func, *args)                   # 创建并启动协程，返回 Greenlet 对象
-gevent.spawn_later(seconds, func, *args)    # 延时创建协程
-gevent.joinall([g1, g2, ...])               # 等待所有协程完成
-gevent.sleep(seconds)                       # 协程专用 sleep（触发切换）
-gevent.getcurrent()                         # 返回当前 Greenlet 对象
-gevent.kill(greenlet)                       # 终止指定协程
+g = gevent.spawn(func, *args)               # 创建并调度协程；func=callable，*args 直接展开传参；返回 Greenlet 对象
+gevent.spawn_later(seconds, func, *args)    # 延迟 seconds（float，秒）后再创建协程；返回 Greenlet 对象
+gevent.joinall([g1, g2])                    # 阻塞等待列表中所有协程完成；参数 list[Greenlet]；返回 list[Greenlet]
+gevent.sleep(seconds)                       # 协程专用 sleep，仅挂起当前协程并触发切换；seconds=float；返回 None
+gevent.getcurrent()                         # 返回当前正在执行的 Greenlet 对象
+gevent.kill(g)                              # 终止指定协程；g=Greenlet；返回 None
 ```
 
 #### 17.6.3 GIL（全局解释器锁）说明
