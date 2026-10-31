@@ -3439,10 +3439,22 @@ print(len(length_bytes))               # 输出：4
 
 # struct.unpack(fmt, buffer)：按格式字符串将 bytes 解包还原为 Python 数值
 # 参数 fmt    : str，格式字符串（必须与 pack 时相同，否则解析出错）
-# 参数 buffer : bytes，待解包的字节串（长度必须与格式字符串要求的字节数完全匹配）
-# 返回值      : tuple，数值元组（即使只有一个值也是元组形式）
+#               可包含多个格式字符（如 'II' = 两个 unsigned int），
+#               此时 buffer 总长度须等于所有格式字符要求字节数之和（'II' = 4+4 = 8 字节）
+# 参数 buffer : bytes，待解包的字节串；可用 + 拼接多段 bytes 再传入
+#               例：struct.unpack('II', head_a + head_b) 一次解出两个整数
+# 返回值      : tuple，数值元组，元素数量与格式字符个数一致（即使只有一个值也是元组形式）
 length_tuple = struct.unpack('I', length_bytes)   # 返回 (100,)，类型为 tuple[int]
 length = length_tuple[0]               # 取第 0 个元素，还原为整数 100
+
+# 多值解包：格式字符串含多个字符，buffer 为多段 bytes 拼接
+# 'II' 表示连续解包两个 unsigned int（各 4 字节，共 8 字节）
+# head_a + head_b：bytes 拼接，等价于将两段报文头合并后一次性解析
+# 返回值为 tuple[int, int]，依次对应格式字符串中每个格式字符
+a_bytes = struct.pack('I', 100)        # bytes，4 字节，值 100
+b_bytes = struct.pack('I', 200)        # bytes，4 字节，值 200
+two_vals = struct.unpack('II', a_bytes + b_bytes)  # 返回 (100, 200)，类型为 tuple[int, int]
+val_a, val_b = two_vals                # 元组解包，val_a=100, val_b=200
 
 # 大端序（网络字节序）打包示例：跨平台通信时确保双端解析一致
 # '>' 前缀指定大端序，'I' 仍为无符号 32 位整数
