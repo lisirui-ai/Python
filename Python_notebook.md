@@ -2030,6 +2030,97 @@ with open('gbk_file.txt', 'r', encoding='gbk') as f:
     print(f.read())    # 正确输出：这是GBK编码的文件
 ```
 
+### 13.6 MD5 文件校验
+
+**MD5**（Message Digest Algorithm 5）是一种单向哈希算法，将任意长度数据映射为固定 128 位（32 个十六进制字符）的摘要值。Python 通过内置的 `hashlib` 模块即可计算 MD5，常用于：
+
+- **文件完整性验证**：对比下载前后的 MD5 值，确认文件未损坏或被篡改
+- **文件去重**：对比两个文件的 MD5 值，相同则内容完全一致
+
+> ⚠️ MD5 存在碰撞漏洞，**不适用于密码存储等安全场景**，仅用于完整性校验和去重。
+
+```python
+import hashlib  # Python 内置哈希库，支持 md5、sha256 等算法
+
+# ── 计算字符串的 MD5 ─────────────────────────────────────────────
+text = "hello"
+md5_obj = hashlib.md5()                        # 创建 md5 哈希对象
+md5_obj.update(text.encode("utf-8"))           # update 接受 bytes，需先编码
+digest = md5_obj.hexdigest()                   # hexdigest() 返回 32 位十六进制字符串
+print(digest)  # 5d41402abc4b2a76b9719d911017c592
+
+# ── 计算文件的 MD5（核心用法）────────────────────────────────────
+def get_file_md5(filepath: str) -> str:
+    """
+    计算指定文件的 MD5 哈希值。
+
+    参数:
+        filepath (str): 文件路径。
+
+    返回:
+        str: 32 位十六进制 MD5 摘要字符串。
+    """
+    md5_obj = hashlib.md5()                    # 创建 md5 哈希对象
+    with open(filepath, "rb") as f:            # 以二进制只读模式打开，兼容所有文件类型
+        # 分块读取，避免大文件一次性加载到内存
+        for chunk in iter(lambda: f.read(8192), b""):  # 每次读取 8192 字节（8 KB）
+            md5_obj.update(chunk)              # 逐块更新哈希状态
+    return md5_obj.hexdigest()                 # 返回最终的 32 位十六进制摘要
+
+# 示例：计算单个文件的 MD5
+path = "data.txt"
+print(get_file_md5(path))                      # 例如：d8e8fca2dc0f896fd7cb4cb0031ba249
+
+# ── 验证文件完整性 ────────────────────────────────────────────────
+def verify_file(filepath: str, expected_md5: str) -> bool:
+    """
+    验证文件的 MD5 是否与预期值一致。
+
+    参数:
+        filepath     (str): 待验证文件路径。
+        expected_md5 (str): 官方或参考 MD5 值（32 位十六进制字符串）。
+
+    返回:
+        bool: True 表示文件完整，False 表示文件已损坏或被篡改。
+    """
+    actual = get_file_md5(filepath)            # 计算实际 MD5
+    return actual == expected_md5.lower()      # 统一转小写后比较（大小写不敏感）
+
+# 示例：验证下载文件是否完整
+ok = verify_file("downloaded.zip", "d41d8cd98f00b204e9800998ecf8427e")
+print("文件完整" if ok else "文件损坏或被篡改")
+
+# ── 文件去重 ──────────────────────────────────────────────────────
+import os                                      # 用于目录遍历
+
+def find_duplicates(directory: str) -> dict:
+    """
+    在指定目录下查找 MD5 相同的重复文件。
+
+    参数:
+        directory (str): 要扫描的目录路径。
+
+    返回:
+        dict: 键为 MD5 字符串，值为拥有该 MD5 的文件路径列表（仅包含有重复的组）。
+    """
+    md5_map: dict[str, list[str]] = {}         # MD5 → [文件路径, ...] 的映射字典
+    for root, _, files in os.walk(directory):  # os.walk 递归遍历目录树
+        for name in files:
+            full_path = os.path.join(root, name)   # 拼接完整路径
+            file_md5 = get_file_md5(full_path)     # 计算该文件的 MD5
+            md5_map.setdefault(file_md5, []).append(full_path)  # 按 MD5 分组归集
+
+    # 过滤出有重复的组（列表长度 > 1）
+    return {md5: paths for md5, paths in md5_map.items() if len(paths) > 1}
+
+# 示例：扫描 downloads 目录并打印重复文件
+duplicates = find_duplicates("./downloads")
+for md5, paths in duplicates.items():
+    print(f"[重复] MD5={md5}")
+    for p in paths:
+        print(f"  {p}")                        # 打印每一个重复文件的路径
+```
+
 ---
 
 
