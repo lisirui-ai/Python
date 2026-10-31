@@ -3884,9 +3884,9 @@ $ ps
 # 选项 a=显示所有用户的进程（含终端的）；u=以用户导向格式输出（USER、PID、%CPU、%MEM、VSZ、RSS、STAT、START、COMMAND）；
 # x=同时显示没有控制终端的进程（如守护进程）；注意：aux 是 BSD 风格写法，前面不加 -（写成 -aux 虽能运行但会提示警告）
 $ ps aux
-# |：管道符，把左边命令的输出作为右边命令的输入；grep 'python'：只保留含 'python' 的行（参数为匹配的关键字）
-# 注意：结果里会包含 grep 进程自身，可改用 grep '[p]ython' 排除
-$ ps aux | grep 'python'
+# |：管道符，把左边命令的输出作为右边命令的输入；grep python：只保留含 python 的行（参数为匹配的关键字，不含空格等特殊字符时不用加引号）
+# 注意：grep 进程自身有时也会出现在结果中（取决于 ps 采集进程列表时 grep 是否已启动），出现时可改用 grep [p]ython 排除
+$ ps aux | grep python
 # 选项 -e=显示所有进程；-l=长格式（多出 S 状态、PRI 优先级、NI nice 值等列）；-f=完整格式（多出 UID、PPID、C、STIME 等列）
 # 其中 PPID 是父进程号，通过 PID 与 PPID 的对应关系即可看出进程的父子关系
 $ ps -elf
