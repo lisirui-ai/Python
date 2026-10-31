@@ -2043,82 +2043,59 @@ with open('gbk_file.txt', 'r', encoding='gbk') as f:
 import hashlib  # Python 内置哈希库，支持 md5、sha256 等算法
 
 # ── 计算字符串的 MD5 ─────────────────────────────────────────────
-text = "hello"
-md5_obj = hashlib.md5()                        # 创建 md5 哈希对象
-md5_obj.update(text.encode("utf-8"))           # update 接受 bytes，需先编码
-digest = md5_obj.hexdigest()                   # hexdigest() 返回 32 位十六进制字符串
-print(digest)  # 5d41402abc4b2a76b9719d911017c592
+# hashlib.md5()：创建并返回一个 MD5 哈希对象（HASH 类型），初始状态为空
+md5_obj = hashlib.md5()
+# update(data: bytes)：将 data 追加到哈希对象的内部状态，无返回值（None）
+# 字符串不能直接传入，需先调用 encode() 转为 bytes
+md5_obj.update("hello".encode("utf-8"))
+# hexdigest()：根据当前内部状态计算摘要，返回 str，固定为 32 位十六进制字符串
+print(md5_obj.hexdigest())  # 5d41402abc4b2a76b9719d911017c592
 
-# ── 计算文件的 MD5（核心用法）────────────────────────────────────
-def get_file_md5(filepath: str) -> str:
-    """
-    计算指定文件的 MD5 哈希值。
+# hashlib.md5(data: bytes) 也可以在创建时直接传入初始数据（与上方等价）
+md5_obj = hashlib.md5("hello".encode("utf-8"))
+print(md5_obj.hexdigest())  # 5d41402abc4b2a76b9719d911017c592
 
-    参数:
-        filepath (str): 文件路径。
-
-    返回:
-        str: 32 位十六进制 MD5 摘要字符串。
-    """
-    md5_obj = hashlib.md5()                    # 创建 md5 哈希对象
-    with open(filepath, "rb") as f:            # 以二进制只读模式打开，兼容所有文件类型
-        # 分块读取，避免大文件一次性加载到内存
-        for chunk in iter(lambda: f.read(8192), b""):  # 每次读取 8192 字节（8 KB）
-            md5_obj.update(chunk)              # 逐块更新哈希状态
-    return md5_obj.hexdigest()                 # 返回最终的 32 位十六进制摘要
-
-# 示例：计算单个文件的 MD5
-path = "data.txt"
-print(get_file_md5(path))                      # 例如：d8e8fca2dc0f896fd7cb4cb0031ba249
+# ── 计算文件的 MD5 ────────────────────────────────────────────────
+md5_obj = hashlib.md5()
+with open("data.txt", "rb") as f:  # rb：以二进制只读模式打开，兼容任意文件类型
+    # iter(callable, sentinel)：内置函数，重复调用无参 callable
+    # 当其返回值 == sentinel 时停止迭代；此处 sentinel=b"" 表示文件已读完
+    for chunk in iter(lambda: f.read(8192), b""):  # 每次读 8192 字节（8 KB），避免大文件撑爆内存
+        md5_obj.update(chunk)  # 逐块追加到哈希状态，update() 可多次调用，效果等同于一次性传入全部数据
+# hexdigest() 在所有 update() 完成后调用，返回完整文件的 32 位十六进制摘要字符串
+print(md5_obj.hexdigest())
 
 # ── 验证文件完整性 ────────────────────────────────────────────────
-def verify_file(filepath: str, expected_md5: str) -> bool:
-    """
-    验证文件的 MD5 是否与预期值一致。
+# 将 hexdigest() 的结果与官方提供的参考 MD5 值对比，相同则文件完整未被篡改
+expected = "d41d8cd98f00b204e9800998ecf8427e"  # 官方或下载页面给出的参考值（str）
+# str.lower()：统一转小写，防止大小写不同导致误判；== 返回 bool
+print(md5_obj.hexdigest() == expected.lower())  # True 表示完整，False 表示损坏或被篡改
+```
 
-    参数:
-        filepath     (str): 待验证文件路径。
-        expected_md5 (str): 官方或参考 MD5 值（32 位十六进制字符串）。
+**命令行方式（`md5sum` 命令，Linux/macOS/Git Bash）：**
 
-    返回:
-        bool: True 表示文件完整，False 表示文件已损坏或被篡改。
-    """
-    actual = get_file_md5(filepath)            # 计算实际 MD5
-    return actual == expected_md5.lower()      # 统一转小写后比较（大小写不敏感）
+```bash
+# 计算单个文件的 MD5 值，输出格式为：<哈希值>  <文件名>
+$ md5sum filename.txt
 
-# 示例：验证下载文件是否完整
-ok = verify_file("downloaded.zip", "d41d8cd98f00b204e9800998ecf8427e")
-print("文件完整" if ok else "文件损坏或被篡改")
+# 同时计算多个文件的 MD5 值，逐行输出每个文件的哈希值
+$ md5sum file1.txt file2.txt file3.txt
 
-# ── 文件去重 ──────────────────────────────────────────────────────
-import os                                      # 用于目录遍历
+# 将多个文件的 MD5 值保存到校验文件（> 重定向输出）
+$ md5sum *.zip > checksums.md5
 
-def find_duplicates(directory: str) -> dict:
-    """
-    在指定目录下查找 MD5 相同的重复文件。
+# -c：逐行读取校验文件，对比实际 MD5；输出 OK 表示完整，FAILED 表示被篡改或损坏
+$ md5sum -c checksums.md5
 
-    参数:
-        directory (str): 要扫描的目录路径。
+# --quiet：配合 -c 使用，仅输出校验失败的文件，忽略 OK 行，减少噪音
+$ md5sum --quiet -c checksums.md5
 
-    返回:
-        dict: 键为 MD5 字符串，值为拥有该 MD5 的文件路径列表（仅包含有重复的组）。
-    """
-    md5_map: dict[str, list[str]] = {}         # MD5 → [文件路径, ...] 的映射字典
-    for root, _, files in os.walk(directory):  # os.walk 递归遍历目录树
-        for name in files:
-            full_path = os.path.join(root, name)   # 拼接完整路径
-            file_md5 = get_file_md5(full_path)     # 计算该文件的 MD5
-            md5_map.setdefault(file_md5, []).append(full_path)  # 按 MD5 分组归集
+# -b（--binary）：以二进制模式读取文件，跨平台校验时推荐使用，避免换行符差异
+$ md5sum -b archive.zip
 
-    # 过滤出有重复的组（列表长度 > 1）
-    return {md5: paths for md5, paths in md5_map.items() if len(paths) > 1}
-
-# 示例：扫描 downloads 目录并打印重复文件
-duplicates = find_duplicates("./downloads")
-for md5, paths in duplicates.items():
-    print(f"[重复] MD5={md5}")
-    for p in paths:
-        print(f"  {p}")                        # 打印每一个重复文件的路径
+# 管道用法：直接校验字符串的 MD5（echo -n 不输出末尾换行符，避免影响结果）
+$ echo -n "hello" | md5sum
+# 输出：5d41402abc4b2a76b9719d911017c592  -
 ```
 
 ---
