@@ -4216,7 +4216,7 @@ if __name__ == '__main__':
     p1 = Process(target=work1)  # 创建子进程1对象，target=work1 表示子进程执行 work1 函数
     p1.start()                  # start()：启动子进程1，立即返回 None，不等待子进程完成
     p1.join()                   # join()：阻塞主进程，等待 p1 执行完毕；返回 None
-                                # 必须先等 p1 完成，再启动 p2，否则 p2 可能读不到 work1 的打印
+                                # 先等 p1 执行完并打印修改后的结果，再启动 p2，保证输出顺序清晰，便于对比 nums 是否被修改
 
     p2 = Process(target=work2)  # 创建子进程2对象
     p2.start()                  # 启动子进程2
