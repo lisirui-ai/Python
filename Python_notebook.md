@@ -3928,6 +3928,19 @@ $ fg <作业ID>
 # nohup 与 & 是两个独立功能：nohup 负责“终端关闭后不被杀”，& 负责“不占用当前终端”，& 并非必须，不加则命令仍在前台运行、占着终端
 $ nohup python script.py > output.log 2>&1 &
 
+# 查看命令退出状态码
+# $?：Shell 特殊变量，保存上一条前台命令的退出状态码（int，范围 0~255）；0 表示成功，非 0 表示失败
+# 常见值：1 通用错误、2 用法错误、126 无执行权限、127 命令未找到、130 被 Ctrl+C 中断（128+信号编号 2）
+$ python script.py
+# echo：打印后面的内容；$? 只反映紧邻的上一条命令，echo 执行后 $? 会被更新为 0，需要复用时应先保存到变量
+$ echo $?
+# code=$?：把退出码保存到变量 code（等号两边不能有空格），避免被后续命令覆盖
+$ code=$?
+# [ $code -eq 0 ]：判断 code 是否等于 0（-eq=equal，整数比较）；成立执行 then 分支，否则执行 else 分支
+$ if [ $code -eq 0 ]; then echo "执行成功"; else echo "执行失败，退出码 $code"; fi
+# 管道中 $? 只取最后一个命令的状态；${PIPESTATUS[@]} 是 bash 数组，依次保存管道中每个命令的退出码
+$ ps aux | grep python; echo ${PIPESTATUS[@]}
+
 # 磁盘与内存查看
 # free：显示内存使用情况，默认单位 KB；列含义：total 总量、used 已用、free 空闲、shared 共享、buff/cache 缓冲与缓存、available 可用；
 # 可加 -h 以 KB/MB/GB 自动换算易读单位；Swap 行为交换分区（磁盘上的虚拟内存）
