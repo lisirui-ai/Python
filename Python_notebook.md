@@ -4144,6 +4144,9 @@ if __name__ == '__main__':
     # p.is_alive()   # is_alive()：判断子进程是否仍在运行，返回 bool（True=运行中）
     # p.name         # name 属性：str，进程名称；start() 前后均可读取
     # p.pid          # pid 属性：int|None，子进程 PID；调用 start() 之后才有值，之前为 None
+    # p.exitcode     # exitcode 属性：int|None，子进程的退出码；子进程还没结束时为 None
+                     # 0 表示正常结束；sys.exit(N) 退出则为 N；因未捕获异常退出为 1；被信号 N 终止则为 -N（如 terminate() 在 Linux 下得到 -15）
+    print(f'子进程退出码={p.exitcode}')  # 此处已 join()，子进程必已结束，正常结束时输出 0
 ```
 
 > **创建子进程的代码必须放在 `if __name__ == '__main__':` 里面**
