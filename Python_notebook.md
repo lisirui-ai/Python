@@ -4126,8 +4126,8 @@ def run_proc(name, age, **kwargs):
     print(f'子进程 PID={os.getpid()}, 父进程 PID={os.getppid()}')
     print(f'name={name}, age={age}, 额外参数={kwargs}')  # 打印收到的所有参数
 
-# if __name__ == '__main__'：Windows 下必须有此保护，否则子进程 import 主模块时
-# 会再次执行顶层代码，导致无限递归创建进程；Linux/macOS 使用 fork() 不受此影响但建议保留
+# if __name__ == '__main__'：使用 spawn 启动方式（Windows、macOS）时必须有此保护，否则子进程 import 主模块时
+# 会再次执行顶层代码，导致无限递归创建进程；Linux 在 Python 3.13 及以前默认使用 fork() 不受此影响，但建议保留
 if __name__ == '__main__':
     print(f'父进程 PID={os.getpid()}')  # os.getpid() 返回主进程 PID，int 类型
 
@@ -4145,6 +4145,14 @@ if __name__ == '__main__':
     # p.name         # name 属性：str，进程名称；start() 前后均可读取
     # p.pid          # pid 属性：int|None，子进程 PID；调用 start() 之后才有值，之前为 None
 ```
+
+> **创建子进程的代码必须放在 `if __name__ == '__main__':` 里面**
+>
+> - 本质原因：Windows 没有 `fork()`，`multiprocessing` 使用 `spawn` 方式启动子进程，即启动一个全新的 Python 解释器，再 `import` 主模块以获取子进程要执行的函数；`import` 会把模块顶层代码从头到尾执行一遍
+> - 如果创建 `Process` 的代码写在顶层、没有这层保护，子进程 `import` 主模块时会再次执行它，又去创建子进程，形成无限递归创建进程的逻辑；实际运行时 Python 会检测到并抛出 `RuntimeError`，提示在进程完成初始化之前不能启动新进程
+> - 保护的原理：只有直接运行文件时 `__name__` 才等于 `'__main__'`；被子进程 `import` 时 `__name__` 是模块名，保护块内的代码不会执行
+> - 各平台默认启动方式：Windows 和 macOS（Python 3.8 起）默认使用 `spawn`，必须加保护；Linux 在 Python 3.13 及以前默认使用 `fork()`，直接复制当前进程的内存状态，不会重新 `import` 主模块，所以不加也能运行，Python 3.14 起默认改为 `forkserver`，同样会重新导入主模块，也需要保护
+> - 无论哪个平台，都建议始终保留这层保护
 
 #### 17.3.2 进程不共享全局变量
 
