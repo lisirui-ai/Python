@@ -4317,29 +4317,29 @@ if __name__ == '__main__':      # 入口保护：Windows spawn 下子进程重�
 > - **Windows（`spawn`）**：子进程是一个全新的解释器，会重新导入模块，全局变量会被重新创建；若 `Queue` 写成全局变量，子进程里得到的是**一个全新的、与父进程无关的队列**，数据不再共享
 > - **正确做法**：统一通过 `Process(target=..., args=(q,))` 把 `Queue` 作为参数传入，`multiprocessing` 会在创建子进程时把底层句柄正确传递，三个平台都可用
 > - **配套要求**：`spawn` 会重新导入主模块，创建进程的代码必须放在 `if __name__ == '__main__':` 之下，否则会无限递归创建子进程；`target` 函数必须定义在模块顶层（可被 `pickle`）
-
-```python
-from multiprocessing import Process, Queue  # Process：子进程类；Queue：进程安全的消息队列
-
-# 错误写法（Windows 下不共享）：Queue 作为模块级全局变量
-# spawn 启动子进程时会重新导入本模块，子进程里会重新执行这一行，得到一个全新的队列
-# q = Queue()
-
-def worker(q):
-    """
-    子进程任务：向队列写入一条消息。
-    参数 q : Queue，由父进程通过 args 传入的队列（与父进程共享同一个底层管道）
-    """
-    q.put('来自子进程的消息')    # put(item)：写入消息，返回 None；父进程能读到，因为 q 与父进程共享管道
-
-if __name__ == '__main__':      # spawn 方式下必须有此保护，避免子进程重新导入时再次创建子进程
-    q = Queue()                 # 在主进程中创建队列，返回 Queue 对象
-    # args=(q,)：把 q 作为参数传给子进程，底层句柄随之传递；逗号不可省略（单元素元组）
-    p = Process(target=worker, args=(q,))
-    p.start()                   # 启动子进程，立即返回 None
-    print(q.get())              # get()：阻塞等待并取出消息，返回 str；输出：来自子进程的消息
-    p.join()                    # 等待子进程结束，返回 None
-```
+>
+> ```python
+> from multiprocessing import Process, Queue  # Process：子进程类；Queue：进程安全的消息队列
+>
+> # 错误写法（Windows 下不共享）：Queue 作为模块级全局变量
+> # spawn 启动子进程时会重新导入本模块，子进程里会重新执行这一行，得到一个全新的队列
+> # q = Queue()
+>
+> def worker(q):
+>     """
+>     子进程任务：向队列写入一条消息。
+>     参数 q : Queue，由父进程通过 args 传入的队列（与父进程共享同一个底层管道）
+>     """
+>     q.put('来自子进程的消息')    # put(item)：写入消息，返回 None；父进程能读到，因为 q 与父进程共享管道
+>
+> if __name__ == '__main__':      # spawn 方式下必须有此保护，避免子进程重新导入时再次创建子进程
+>     q = Queue()                 # 在主进程中创建队列，返回 Queue 对象
+>     # args=(q,)：把 q 作为参数传给子进程，底层句柄随之传递；逗号不可省略（单元素元组）
+>     p = Process(target=worker, args=(q,))
+>     p.start()                   # 启动子进程，立即返回 None
+>     print(q.get())              # get()：阻塞等待并取出消息，返回 str；输出：来自子进程的消息
+>     p.join()                    # 等待子进程结束，返回 None
+> ```
 
 #### 17.3.4 进程池——Pool
 
