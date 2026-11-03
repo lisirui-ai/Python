@@ -4388,6 +4388,8 @@ if __name__ == '__main__':
     print('---- 所有任务执行完毕 ----')
 ```
 
+##### 17.3.4.1 异步提交与 `AsyncResult` 对象
+
 > **异步提交与 `AsyncResult` 对象**：
 > - **同步（阻塞）**：`apply()` 提交任务后，主进程停在原地等任务执行完才继续，任务只能一个接一个执行，失去并发意义
 > - **异步（非阻塞）**：`apply_async()` 只负责把任务交给进程池，**立即返回**，主进程继续往下执行，任务由池中工作进程在后台并发完成
@@ -4449,6 +4451,8 @@ if __name__ == '__main__':          # 入口保护，Windows spawn 必需
     po.close()                      # 关闭进程池，禁止提交新任务，返回 None
     po.join()                       # 等待所有任务执行完毕，返回 None
 ```
+
+##### 17.3.4.2 进程池中使用 Queue
 
 > **进程池中使用 Queue**：`Pool` 创建的进程不能使用 `multiprocessing.Queue`，须改用 `multiprocessing.Manager().Queue()`，否则会抛出 `RuntimeError: Queue objects should only be shared between processes through inheritance`。
 
