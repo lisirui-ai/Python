@@ -4388,6 +4388,68 @@ if __name__ == '__main__':
     print('---- 所有任务执行完毕 ----')
 ```
 
+> **异步提交与 `AsyncResult` 对象**：
+> - **同步（阻塞）**：`apply()` 提交任务后，主进程停在原地等任务执行完才继续，任务只能一个接一个执行，失去并发意义
+> - **异步（非阻塞）**：`apply_async()` 只负责把任务交给进程池，**立即返回**，主进程继续往下执行，任务由池中工作进程在后台并发完成
+> - **`AsyncResult` 对象**：任务提交时尚未执行完，无法立刻返回函数结果，所以 `apply_async()` 先返回一个 `AsyncResult` 对象，相当于结果的"取货凭证"，之后可凭它查询任务状态或取回结果
+> - 常用方法如下表：
+>
+> ---
+
+| 方法 | 功能 | 返回值 |
+|---|---|---|
+| `get(timeout=None)` | 阻塞等待任务完成并取回函数返回值；任务内部抛出异常时会在此处重新抛出；超过 `timeout` 秒抛 `multiprocessing.TimeoutError` | `func` 的返回值 |
+| `wait(timeout=None)` | 只阻塞等待任务完成（或超时），不取结果 | `None` |
+| `ready()` | 不阻塞，判断任务是否已执行完毕（无论成功或失败） | `bool` |
+| `successful()` | 判断任务是否成功完成（未抛异常）；任务未完成时调用会抛 `ValueError`，须先确认 `ready()` 为 `True` | `bool` |
+
+> ---
+>
+> - **收集多个任务结果**：先把每次 `apply_async()` 返回的对象保存到列表，最后再统一 `get()`，结果顺序与提交顺序一致
+> - **`callback` 方式**：任务完成后，进程池自动在**主进程**中调用回调函数，并把任务返回值作为参数传入，无需手动 `get()`
+> - **注意**：上面 `worker` 只打印、没有 `return`，所以示例中丢弃了 `AsyncResult`；需要拿返回值时必须保存它
+
+```python
+from multiprocessing.pool import Pool  # Pool：进程池类
+
+def square(x):
+    """
+    工作进程任务：计算平方。
+    参数 x : int，待计算的数
+    返回值 : int，x 的平方
+    """
+    return x * x    # 返回 x 的平方，类型 int；该值会被 AsyncResult 保存
+
+def on_done(result):
+    """
+    回调函数：任务完成后由进程池在主进程中自动调用。
+    参数 result : int，任务函数 square 的返回值
+    返回值      : None
+    """
+    print(f'回调收到结果：{result}')    # 在主进程中打印返回值
+
+if __name__ == '__main__':          # 入口保护，Windows spawn 必需
+    po = Pool(3)                    # 创建含 3 个工作进程的进程池，返回 Pool 对象
+
+    # apply_async 立即返回 AsyncResult 对象，此时任务可能还没执行完
+    res = po.apply_async(square, (5,))   # (5,) 为位置参数元组，逗号不可省略
+    print(res.ready())              # ready()：不阻塞，返回 bool；刚提交时通常为 False
+    print(res.get())                # get()：阻塞等待并取回返回值 25，int 类型
+    print(res.successful())         # successful()：任务已完成，返回 True（bool）
+
+    # 收集多个任务的结果：列表推导式得到 10 个 AsyncResult，list 类型
+    results = [po.apply_async(square, (i,)) for i in range(10)]
+    # 依次 get() 取值，顺序与提交顺序一致，得到 list[int]：[0, 1, 4, ..., 81]
+    values = [r.get() for r in results]
+    print(values)                   # 打印所有任务的返回值
+
+    # callback：任务完成后自动在主进程调用 on_done，把返回值作为参数传入
+    po.apply_async(square, (7,), callback=on_done)
+
+    po.close()                      # 关闭进程池，禁止提交新任务，返回 None
+    po.join()                       # 等待所有任务执行完毕，返回 None
+```
+
 > **进程池中使用 Queue**：`Pool` 创建的进程不能使用 `multiprocessing.Queue`，须改用 `multiprocessing.Manager().Queue()`，否则会抛出 `RuntimeError: Queue objects should only be shared between processes through inheritance`。
 
 ```python
