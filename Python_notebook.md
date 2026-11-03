@@ -4237,34 +4237,41 @@ if __name__ == '__main__':
 from multiprocessing import Process, Queue  # Queue：底层基于 Pipe + Lock 实现的进程安全消息队列
 import time                                 # time：提供 sleep() 模拟 IO 耗时
 
-# ── Queue 构造与常用 API ────────────────────────────────────────────────
-# Queue(maxsize=0)：创建进程安全的消息队列
-# 参数 maxsize : int，队列最大容量；0 或负数表示无上限（受物理内存限制）
-# 返回值       : Queue 对象
-q = Queue(3)        # 创建最大容量为 3 条消息的队列
+# ── Queue 构造与常用 API（封装为函数，仅在 __main__ 中调用，避免 Windows spawn 时被子进程重复执行）──
+def demo_queue_api():
+    """
+    演示 Queue 的构造与常用 API（单进程内演示，不涉及子进程）。
+    参数：无
+    返回值：None
+    """
+    # Queue(maxsize=0)：创建进程安全的消息队列
+    # 参数 maxsize : int，队列最大容量；0 或负数表示无上限（受物理内存限制）
+    # 返回值       : Queue 对象
+    demo_q = Queue(3)       # 创建最大容量为 3 条消息的队列，局部变量，不污染模块全局命名空间
 
-# put(item, block=True, timeout=None)：向队列尾部写入一条消息
-# 参数 item    : any，要写入的消息内容（任意可序列化对象）
-# 参数 block   : bool，True=队列已满时阻塞等待空位（默认）；False=队列满时立即抛 queue.Full
-# 参数 timeout : float|None，block=True 时最大等待秒数；超时抛 queue.Full；None=永久等待
-# 返回值       : None
-q.put('消息1')                  # 队列当前：['消息1']，共 1 条
-q.put('消息2')                  # 队列当前：['消息1', '消息2']，共 2 条
-q.put('消息3')                  # 队列当前满（3 条），再 put 会阻塞或抛异常
-# q.put_nowait('消息4')         # put_nowait(item)：等价于 put(item, block=False)
-                                # 队列满时立即抛 queue.Full，不阻塞
+    # put(item, block=True, timeout=None)：向队列尾部写入一条消息
+    # 参数 item    : any，要写入的消息内容（任意可序列化对象）
+    # 参数 block   : bool，True=队列已满时阻塞等待空位（默认）；False=队列满时立即抛 queue.Full
+    # 参数 timeout : float|None，block=True 时最大等待秒数；超时抛 queue.Full；None=永久等待
+    # 返回值       : None
+    demo_q.put('消息1')                 # 队列当前：['消息1']，共 1 条
+    demo_q.put('消息2')                 # 队列当前：['消息1', '消息2']，共 2 条
+    demo_q.put('消息3')                 # 队列当前满（3 条），再 put 会阻塞或抛异常
+    # demo_q.put_nowait('消息4')        # put_nowait(item)：等价于 put(item, block=False)
+                                        # 队列满时立即抛 queue.Full，不阻塞
 
-# get(block=True, timeout=None)：从队列头部取出并移除一条消息
-# 参数 block   : bool，True=队列空时阻塞等待（默认）；False=队列空时立即抛 queue.Empty
-# 参数 timeout : float|None，block=True 时最大等待秒数；超时抛 queue.Empty；None=永久等待
-# 返回值       : any，被取出的消息内容（与写入时类型一致）
-msg = q.get()       # 取出队列头部消息 '消息1'，返回 str；队列中剩余 2 条
-# q.get_nowait()    # get_nowait()：等价于 get(block=False)，队列空时立即抛 queue.Empty
+    # get(block=True, timeout=None)：从队列头部取出并移除一条消息
+    # 参数 block   : bool，True=队列空时阻塞等待（默认）；False=队列空时立即抛 queue.Empty
+    # 参数 timeout : float|None，block=True 时最大等待秒数；超时抛 queue.Empty；None=永久等待
+    # 返回值       : any，被取出的消息内容（与写入时类型一致）
+    msg = demo_q.get()                  # 取出队列头部消息 '消息1'，返回 str；队列中剩余 2 条
+    print(f'取出的消息：{msg}')          # 打印取出的消息，输出：取出的消息：消息1
+    # demo_q.get_nowait()               # get_nowait()：等价于 get(block=False)，队列空时立即抛 queue.Empty
 
-# 状态查询方法（均返回实时状态，多进程下仅供参考，不保证原子性）
-q.qsize()           # qsize()：返回当前队列中的消息数量，int 类型；注意：macOS 下不可用
-q.empty()           # empty()：队列为空返回 True，否则 False；bool 类型
-q.full()            # full()：队列已满返回 True，否则 False；bool 类型（maxsize=0 时永远 False）
+    # 状态查询方法（均返回实时状态，多进程下仅供参考，不保证原子性）
+    print(demo_q.qsize())               # qsize()：返回当前队列中的消息数量，int 类型；注意：macOS 下不可用
+    print(demo_q.empty())               # empty()：队列为空返回 True，否则 False；bool 类型
+    print(demo_q.full())                # full()：队列已满返回 True，否则 False；bool 类型（maxsize=0 时永远 False）
 
 
 # ── 生产者-消费者模型：父进程创建 Queue，传给子进程实现跨进程通信 ──────
@@ -4288,7 +4295,9 @@ def read(q):
         print(f'Get {value} from queue.')   # 打印取出的消息内容
         time.sleep(1)                       # sleep(1)：模拟消费耗时 1 秒
 
-if __name__ == '__main__':
+if __name__ == '__main__':      # 入口保护：Windows spawn 下子进程重新导入本模块时不会执行此块
+    demo_queue_api()            # 调用 API 演示函数，只在主进程中执行一次，返回 None
+
     q = Queue()     # 创建无容量限制的进程安全队列（maxsize=0 表示无上限），返回 Queue 对象
 
     pw = Process(target=write, args=(q,))   # 创建生产者子进程，args=(q,) 中逗号不可省略（单元素元组）
