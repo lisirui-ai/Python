@@ -3895,6 +3895,12 @@ $ ps aux | grep python
 # 选项 -e=显示所有进程；-l=长格式（多出 S 状态、PRI 优先级、NI nice 值等列）；-f=完整格式（多出 UID、PPID、C、STIME 等列）
 # 其中 PPID 是父进程号，通过 PID 与 PPID 的对应关系即可看出进程的父子关系
 $ ps -elf
+# 注意区分大小写：小写 -l 是长格式（long），大写 -L 才是显示线程（Linux 的线程以轻量级进程 LWP 实现）
+# -L=每个线程单独显示一行；-f 的输出会多出 LWP（线程 ID，主线程的 LWP 与 PID 相同）和 NLWP（该进程包含的线程总数）两列
+# 同一进程的所有线程 PID 相同、LWP 不同，可据此查看某个 Python 进程开了多少线程
+$ ps -eLf
+# 只看指定进程的线程：-p 后接 PID（int），与 -L 配合使用，输出该进程的所有线程；-f 同上输出完整格式
+$ ps -Lf -p <PID>
 # -e=显示所有进程；-o=自定义输出列，列名用逗号分隔：pid 进程号、stat 进程状态（R/S/D/T/Z）、psr 进程当前所在的 CPU 编号、comm 命令名
 $ ps -eo pid,stat,psr,comm
 
