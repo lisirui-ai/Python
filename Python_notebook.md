@@ -4491,10 +4491,12 @@ if __name__ == '__main__':
     q = Manager().Queue()
     po = Pool()             # Pool()：进程数默认为 CPU 核心数（os.cpu_count()）
 
-    po.apply_async(writer, (q,))    # 异步提交 writer 任务，立即返回 AsyncResult 对象
-    time.sleep(2)                   # 等待 2 秒，确保 writer 已将所有数据写入队列
-                                    # 生产环境应使用 AsyncResult.get() 或 Event 同步，而非 sleep
-    po.apply_async(reader, (q,))    # 异步提交 reader 任务
+    # 异步提交 writer 任务，立即返回 AsyncResult 对象，保存到 res_writer 以便后续同步
+    res_writer = po.apply_async(writer, (q,))
+    # get()：阻塞主进程，直到 writer 执行完毕（数据已全部写入队列）；返回 writer 的返回值 None
+    # 若 writer 内部抛异常，会在此处重新抛出
+    res_writer.get()
+    po.apply_async(reader, (q,))    # 异步提交 reader 任务，此时队列中数据已写完
 
     po.close()   # close()：关闭进程池，不再接受新任务，返回 None
     po.join()    # join()：等待所有任务完成，返回 None（必须在 close() 之后调用）
