@@ -1335,6 +1335,10 @@ print(factorial(5))    # 120
 
 ## 九、迭代器与生成器
 
+> **可迭代对象的类型**：可迭代对象的类型是 `Iterable`，位于 `collections.abc` 模块中，可用 `isinstance(对象, Iterable)` 判断一个对象是否可迭代（实现了 `__iter__` 方法即返回 `True`）。例如：`isinstance([], Iterable)` 返回 `True`。使用前需先导入：`from collections.abc import Iterable`。
+
+> **迭代器、生成器与可迭代对象的关系**：迭代器和生成器都属于可迭代对象，三者是包含关系：生成器 ⊂ 迭代器 ⊂ 可迭代对象。迭代器同时实现了 `__iter__` 和 `__next__`，其 `__iter__` 返回自身，所以迭代器一定是可迭代对象；生成器是迭代器的一种，因此也是可迭代对象。反过来不成立：列表、元组、字符串等是可迭代对象，但不是迭代器（没有 `__next__`），不能直接对其使用 `next()`。可分别用 `isinstance(对象, Iterable)`、`isinstance(对象, Iterator)`、`isinstance(对象, Generator)` 判断（均需从 `collections.abc` 导入）。
+
 
 
 ### 9.1 迭代器（Iterator）
