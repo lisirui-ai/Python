@@ -4759,11 +4759,10 @@ p2 = threading.Thread(target=test2, args=(1_000_000,))  # 创建线程2，同样
 p1.start()   # 启动线程1，立即返回 None
 p2.start()   # 启动线程2，与线程1 并发执行
 
-# threading.enumerate()：返回所有存活线程列表（list[Thread]），含主线程
-# len() == 1 表示只剩主线程（子线程全部结束）
-# 轮询等待（不精确），生产环境应使用 p1.join(); p2.join() 精确等待
-while len(threading.enumerate()) != 1:
-    time.sleep(1)   # 每隔 1 秒检查一次是否所有子线程已结束
+# Thread.join(timeout=None)：阻塞调用它的线程（这里是主线程），直到目标线程执行结束，返回 None
+# 参数 timeout : float|None，最长等待秒数；None 表示一直等到线程结束
+p1.join()   # 主线程等待线程1 结束
+p2.join()   # 主线程接着等待线程2 结束；两个 join() 都返回后，可确定累加已全部完成
 print(f'最终结果：{g_num}')  # 加锁后两线程串行操作，结果稳定为 2,000,000
 ```
 
