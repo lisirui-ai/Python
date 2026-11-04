@@ -1424,6 +1424,33 @@ c = Counter(3)                # 创建迭代器对象
 print(next(c))                # 0（调用 __next__）
 print(list(c))                # [1, 2]（接着上次的位置继续遍历）
 print(list(c))                # []（迭代器已耗尽，只能遍历一遍）
+
+# ── 自定义可迭代对象（基于上面的迭代器类 Counter）──────────────────────────
+# 自定义可迭代对象只需要实现 __iter__，并在其中返回一个迭代器对象
+class MyRange:
+    """自定义可迭代对象：每次遍历都返回一个新的 Counter 迭代器
+
+    参数:
+        n (int): 遍历的上限（不含）
+    """
+
+    def __init__(self, n):
+        # 保存遍历的上限（可迭代对象本身不保存遍历进度）
+        self.n = n
+
+    def __iter__(self):
+        # 每次调用都创建并返回一个新的迭代器，进度保存在新迭代器里，所以每次遍历都从头开始
+        return Counter(self.n)
+
+
+r = MyRange(3)                # 创建可迭代对象
+print(list(r))                # [0, 1, 2]（list() 内部调用 iter(r)，得到新的迭代器）
+print(list(r))                # [0, 1, 2]（再次遍历得到另一个新迭代器，可以反复遍历）
+
+# 可迭代对象不是迭代器：没有 __next__，不能直接对它使用 next()
+# next(r)                     # TypeError: 'MyRange' object is not an iterator
+it = iter(r)                  # 手动调用 iter()，拿到一个迭代器（Counter 对象）
+print(next(it))               # 0（迭代器可以使用 next()）
 ```
 
 
