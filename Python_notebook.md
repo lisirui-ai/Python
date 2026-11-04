@@ -1388,6 +1388,42 @@ for i in a:                   # 相当于遍历可迭代对象
 
 # 实现了 __iter__ 方法的类实例化的对象是可迭代对象
 # __iter__ 使得对象可迭代，每次遍历返回的是 __iter__ 的返回值
+
+# ── 自定义迭代器类 ──────────────────────────
+# 自定义迭代器需要同时实现 __iter__（返回自身）和 __next__（返回下一个元素）
+class Counter:
+    """自定义迭代器：从 0 开始，依次返回到 n - 1 的整数
+
+    参数:
+        n (int): 遍历的上限（不含）
+    """
+
+    def __init__(self, n):
+        # 保存遍历的上限
+        self.n = n
+        # 保存当前遍历进度（迭代器自己记录位置）
+        self.current = 0
+
+    def __iter__(self):
+        # 迭代器的 __iter__ 返回自身，所以迭代器也是可迭代对象
+        return self
+
+    def __next__(self):
+        # 已到达上限：抛出 StopIteration，通知 for 循环结束
+        if self.current >= self.n:
+            raise StopIteration
+        # 取出当前值
+        value = self.current
+        # 进度后移一位
+        self.current += 1
+        # 返回当前值
+        return value
+
+
+c = Counter(3)                # 创建迭代器对象
+print(next(c))                # 0（调用 __next__）
+print(list(c))                # [1, 2]（接着上次的位置继续遍历）
+print(list(c))                # []（迭代器已耗尽，只能遍历一遍）
 ```
 
 
