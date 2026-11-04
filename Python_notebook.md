@@ -4578,12 +4578,18 @@ import time         # time 模块：提供 sleep() 等时间功能
 # ── 传入函数创建线程：通过 target 参数指定线程要执行的函数 ──────────────────────────────────────
 def sing():
     """模拟唱歌任务：循环打印 3 次。"""
+    # threading.current_thread()：返回当前正在执行本代码的 Thread 对象（这里是 t1 线程）
+    # .ident：Thread 的 int 属性，线程标识符（线程 id），线程启动后才有值，未启动时为 None
+    # 同一时刻存活的线程 ident 互不相同；线程结束后，ident 可能被新线程复用
+    print(f'唱歌线程 id：{threading.current_thread().ident}')
     for i in range(3):          # range(3)：生成 0、1、2，控制循环 3 次
         print(f'正在唱歌...{i}')  # 打印当前循环轮次
         time.sleep(1)           # sleep(1)：当前线程暂停 1 秒（让出 GIL），返回 None
 
 def dance():
     """模拟跳舞任务：循环打印 3 次。"""
+    # 此处 current_thread() 返回的是 t2 线程，所以 ident 与 sing 中打印的不同
+    print(f'跳舞线程 id：{threading.current_thread().ident}')
     for i in range(3):          # range(3)：同上，控制循环 3 次
         print(f'正在跳舞...{i}')  # 打印当前循环轮次
         time.sleep(1)           # 暂停 1 秒，同期间唱歌线程可能正在运行
@@ -4600,6 +4606,12 @@ t2 = threading.Thread(target=dance)  # 创建跳舞线程对象，target 指向 
 
 t1.start()  # start()：真正创建操作系统线程并开始执行，立即返回 None（不阻塞主线程）
 t2.start()  # 同上，t1 和 t2 此后并发执行（交替获得 CPU 时间片）
+
+# 在主线程中调用 threading.current_thread()，返回的是主线程对象（名称为 MainThread）
+# 它的 ident 与 t1、t2 都不同，说明三者是三个独立的线程
+print(f'主线程 id：{threading.current_thread().ident}')
+# 也可以在线程外通过线程对象读取：t1.ident（启动后为 int，启动前为 None）
+print(f't1 的 id：{t1.ident}，t2 的 id：{t2.ident}')
 
 # threading.enumerate()：返回当前所有存活线程的列表，list[Thread] 类型
 # 包括主线程（MainThread）和所有子线程；len() 返回存活线程总数（int）
@@ -4680,8 +4692,9 @@ def work2():
 
 t1 = Thread(target=work1)  # 创建线程1对象，执行 work1 函数，返回 Thread 对象
 t1.start()                 # start()：启动线程1，立即返回 None，线程开始并发执行
-time.sleep(1)              # sleep(1)：主线程暂停 1 秒，等待 t1 完成（简单粗暴）
-                           # 生产环境应使用 t1.join() 精确等待，而非 sleep 估时
+# join()：阻塞主线程，直到 t1 执行结束才继续，返回 None；可传 timeout（float，秒）限制最长等待时间
+# 相比 time.sleep(1) 估时等待，join() 能精确等待线程完成，不多等也不会少等
+t1.join()
 
 t2 = Thread(target=work2)  # 创建线程2对象，执行 work2 函数
 t2.start()                 # 启动线程2；此时 g_num 已被 t1 修改为 103
