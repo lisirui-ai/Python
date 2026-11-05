@@ -1565,10 +1565,10 @@ def gen():
 
 
 f = gen()                           # 创建生成器对象，函数体尚未执行
-print(next(f))                      # 0（首次唤醒，执行到第一个 yield，返回 0）
-print(f.send('haha'))               # 先打印 haha（temp='haha'），再返回 1
-print(next(f))                      # 先打印 None（next 等价于 send(None)），再返回 2
-print(f.send('python'))             # 先打印 python，再返回 3
+print(next(f))                      # 打印 0（首次唤醒，执行到第一个 yield，next 返回 0，由 print 打印）
+print(f.send('haha'))               # 先打印 haha（temp='haha'），再打印 1（send 的返回值，即下一个 yield 后的 i）
+print(next(f))                      # 先打印 None（next 等价于 send(None)），再打印 2
+print(f.send('python'))             # 先打印 python，再打印 3
 
 g = gen()                           # 新建一个生成器对象
 # g.send('haha')                    # 报错：TypeError，刚创建的生成器只能 send(None)
