@@ -4075,6 +4075,11 @@ $ kill -l
 # <PID> 为 int，进程号（可由 ps 查得）；省略 -9 时默认发送 SIGTERM（15），允许进程做清理后退出
 $ kill -9 <PID>
 # pkill：按进程名发送信号（默认 SIGTERM）；-f=匹配完整命令行而不仅是进程名；'python' 为匹配的关键字
+# 注意：-f 会拿关键字去匹配每个进程的完整命令行（解释器+脚本名+参数），只要命令行中出现关键字（此处为 python）就会被杀
+# 例如同时运行 python a.py、python b.py 会被全部杀死，而不是只杀一个
+# multiprocessing 的子进程也会被杀：Linux 默认 fork 方式创建的子进程与父进程命令行完全相同（都是 python a.py），所以同样匹配关键字；
+# spawn 方式的子进程命令行形如 python -c "from multiprocessing.spawn import spawn_main..."，含 python 但不含 a.py，因此 pkill -f python 能杀到，pkill -f a.py 杀不到
+# 命令行中含 python 的其他进程（如 vim notes_python.txt）也会被误杀；想精确杀某个，可改用具体脚本名，如 pkill -f a.py
 $ pkill -f python
 
 # 后台与前台控制
