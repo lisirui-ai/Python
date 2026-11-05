@@ -1548,6 +1548,33 @@ print(list(g))                # [0, 1, 2]
 print(list(g))                # []（这个生成器已耗尽，只能遍历一遍）
 ```
 
+> **使用 `send()` 唤醒生成器**：除了 `next()`，还可以用生成器对象的 `send(value)` 方法唤醒生成器，好处是**唤醒的同时向断点处传入一个附加数据**。
+>
+> - **执行流程**：生成器暂停在 `temp = yield i` 处时，`send(value)` 会让 `yield i` 这个表达式的值变成 `value`（赋给 `temp`），然后继续往下执行，直到下一个 `yield`，并把该 `yield` 后面的值作为 `send()` 的返回值
+> - **与 `next()` 的关系**：`next(g)` 等价于 `g.send(None)`，此时 `yield` 表达式的值是 `None`
+> - **注意**：生成器刚创建、还没执行到第一个 `yield` 时，只能传 `None`（即 `next(g)` 或 `g.send(None)`），否则抛出 `TypeError: can't send non-None value to a just-started generator`
+
+```python
+def gen():
+    """演示 send 的生成器：yield 既返回 i，又接收外部传入的值"""
+    i = 0                           # 计数变量，保存在生成器栈帧中
+    while i < 5:                    # 循环 5 次，i 从 0 到 4
+        temp = yield i              # 暂停并返回 i；下次唤醒时，temp 接收 send() 传入的值（next() 唤醒则为 None）
+        print(temp)                 # 打印接收到的值
+        i += 1                      # 计数加 1
+
+
+f = gen()                           # 创建生成器对象，函数体尚未执行
+print(next(f))                      # 0（首次唤醒，执行到第一个 yield，返回 0）
+print(f.send('haha'))               # 先打印 haha（temp='haha'），再返回 1
+print(next(f))                      # 先打印 None（next 等价于 send(None)），再返回 2
+print(f.send('python'))             # 先打印 python，再返回 3
+
+g = gen()                           # 新建一个生成器对象
+# g.send('haha')                    # 报错：TypeError，刚创建的生成器只能 send(None)
+print(g.send(None))                 # 0（等价于 next(g)）
+```
+
 > **生成器 vs 列表**：生成器惰性计算，每次只产生一个值，节省内存；列表一次性计算所有值，可重复遍历
 
 ---
