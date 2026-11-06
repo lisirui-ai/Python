@@ -6232,6 +6232,65 @@ gevent.joinall([g1, g2, g3])
 # 输出：g1 g2 g3 交替打印——每遇到 gevent.sleep() 自动切换到下一个就绪协程
 ```
 
+**获取协程的返回值：`Greenlet.value` 与 `Greenlet.get()`**
+
+> `gevent.joinall()` 返回的 `list[Greenlet]` 里装的是 **Greenlet 对象本身**，**不是**任务函数的返回值。任务函数的返回值保存在对应 Greenlet 对象上，需要通过 `value` 属性或 `get()` 方法取出。
+
+```python
+import gevent           # gevent：基于 greenlet 的高性能协程库
+
+
+def square(n):
+    """
+    正常结束的协程任务：返回 n 的平方。
+    参数 n : int，要计算平方的整数
+    返回值 : int，n * n；该返回值会保存到对应 Greenlet 对象上
+    """
+    gevent.sleep(0.1)       # 触发协程切换，模拟 IO 等待，返回 None
+    return n * n            # 返回 int，之后可通过 g.value / g.get() 取出
+
+
+def bad_task():
+    """
+    会抛出异常的协程任务，用于对比 value 与 get() 在异常时的区别。
+    返回值 : 无（始终抛出 ZeroDivisionError）
+    """
+    gevent.sleep(0.1)       # 触发协程切换，返回 None
+    return 1 / 0            # 抛出 ZeroDivisionError，该异常会被记录到 Greenlet 对象上
+
+# gevent.spawn(func, *args)：创建并调度协程，返回 Greenlet 对象；这里保存到列表，后面要读取返回值
+greenlets = [gevent.spawn(square, i) for i in range(3)]     # list[Greenlet]，长度 3
+# joinall 返回 list[Greenlet]（已结束的协程对象），而不是各函数的返回值
+done = gevent.joinall(greenlets)                             # list[Greenlet]
+print(done)                                                  # 打印的是 Greenlet 对象列表，如 [<Greenlet ...>, ...]
+
+# Greenlet.value：属性，任务正常结束时为函数返回值；未结束或抛异常时为 None，访问本身不会报错
+print([g.value for g in greenlets])                          # list[int]：[0, 1, 4]
+# Greenlet.get(block=True, timeout=None)：方法，返回函数返回值；协程未结束时会阻塞等待；
+# 若任务抛了异常，get() 会把该异常重新抛出
+print([g.get() for g in greenlets])                          # list[int]：[0, 1, 4]
+
+# ── 异常情况下 value 与 get() 的区别 ─────────────────────────────────────
+bad = gevent.spawn(bad_task)                                 # 创建会抛异常的协程，返回 Greenlet
+gevent.joinall([bad])                                        # 等待它结束（异常不会让主程序崩溃，但会在 stderr 打印 traceback）
+print(bad.value)                                             # None：异常时 value 不报错，但也拿不到任何信息
+print(bad.successful())                                      # bool：False，successful() 表示任务是否正常结束（未抛异常）
+print(repr(bad.exception))                                   # ZeroDivisionError(...)：exception 属性保存抛出的异常对象
+try:                                                         # get() 会重新抛出任务中的异常，需要 try 捕获
+    bad.get()                                                # 抛出 ZeroDivisionError
+except ZeroDivisionError as e:                               # 捕获协程中抛出的异常，e 为异常对象
+    print('get() 重新抛出了异常:', e)                         # 输出：get() 重新抛出了异常: division by zero
+```
+
+| 接口 | 类型 | 任务正常结束 | 任务抛异常 | 协程未结束 |
+|---|---|---|---|---|
+| `g.value` | 属性 | 返回函数返回值 | `None`（不报错） | `None`（不等待） |
+| `g.get()` | 方法 | 返回函数返回值 | 重新抛出该异常 | 阻塞等待结束 |
+| `g.successful()` | 方法 | `True` | `False` | `False` |
+| `g.exception` | 属性 | `None` | 异常对象 | `None` |
+
+> 想及时发现任务中的错误，用 `get()`（或先判断 `successful()`）；只想“有就拿，没有就算”，用 `value`。
+
 #### 17.5.4 monkey patch——让标准库自动触发协程切换
 
 默认情况下，`time.sleep`、`socket` 等**标准库的 IO 操作**不会触发 gevent 协程切换。`monkey.patch_all()` 在程序启动时将这些标准库**动态替换**为 gevent 的非阻塞版本，使现有代码无需修改即可享受协程自动切换。
@@ -6261,7 +6320,7 @@ def coroutine_work(name):
         #               调用时自动挂起当前协程并切换到其他就绪协程执行，返回 None
         time.sleep(random.random())
 
-# gevent.joinall(greenlets)：阻塞当前线程，等待列表中所有协程执行完毕；返回 list[Greenlet]
+# gevent.joinall(greenlets)：阻塞当前线程，等待列表中所有协程执行完毕；返回 list[Greenlet]（Greenlet 对象本身，不是任务返回值；返回值请用 g.value 或 g.get() 获取，见 17.5.3）
 gevent.joinall([
     gevent.spawn(coroutine_work, 'work1'),  # spawn(func, *args)：创建并调度协程1，args 为 'work1'（str），返回 Greenlet
     gevent.spawn(coroutine_work, 'work2'),  # 创建并调度协程2，返回 Greenlet 对象
