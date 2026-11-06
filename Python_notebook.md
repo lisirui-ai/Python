@@ -3994,6 +3994,827 @@ while True:                              # 循环接受新连接
 server.close()
 ```
 
+
+### 16.11 HTTP 协议
+
+#### 16.11.1 浏览器与服务器的关系
+
+Web 应用中，服务器把网页传给浏览器，**本质上就是把网页的 HTML 代码发送给浏览器，由浏览器渲染显示**。
+
+- `HTML`（HyperText Markup Language，超文本标记语言）：用来定义网页的**文本**，会写 HTML 就能写网页。
+- `HTTP`（HyperText Transfer Protocol，超文本传输协议）：在网络上传输 HTML 的**协议**，用于浏览器和服务器之间的通信，位于 TCP/IP 的**应用层**，底层基于 `TCP`，默认端口 `80`（`HTTPS` 为 `443`）。
+
+> **用浏览器开发者工具观察 HTTP**：
+>
+> 1. 打开 Chrome，按 `F12`（或菜单“更多工具 → 开发者工具”）。
+> 2. `Elements`：显示网页的 HTML 结构。
+> 3. `Network`：显示浏览器和服务器之间的**所有通信**（确保左上角的录制按钮是红色）。
+> 4. 在地址栏输入网址后，在 `Network` 中点击第一条记录，右侧 `Headers` 里的 `Request Headers` 就是浏览器发出的请求，`Response Headers` 就是服务器的响应。
+
+---
+
+#### 16.11.2 一次 HTTP 通信的完整流程
+
+以浏览器访问 `www.sina.com` 为例：
+
+```
+步骤 1：浏览器 ──────── HTTP 请求 ────────→ 服务器
+        （方法 + 路径 + 协议版本 + 请求头 [+ 请求体]）
+
+步骤 2：浏览器 ←─────── HTTP 响应 ───────── 服务器
+        （状态码 + 响应头 + 响应体：HTML 源码）
+
+步骤 3：浏览器解析 HTML，发现里面还引用了图片、CSS、JS、视频……
+        → 针对每一个资源，重复步骤 1、2（所以 Network 里会看到很多请求）
+```
+
+- HTTP 采用非常简单的**请求-响应模式**：一次请求只处理**一个资源**（类似 TCP 的短连接，要多个资源就发多个请求）。
+- HTML 中可以链入**其他服务器**的资源（如 `<img src="http://i1.sinaimg.cn/xxx.png">`），把请求压力分散到各服务器，无数站点互相链接，就形成了 **WWW（World Wide Web，万维网）**。
+
+---
+
+#### 16.11.3 请求报文
+
+**HTTP 是文本协议**，请求和响应都由 `Header`（头）和 `Body`（体，可选）两部分组成，每个 Header 占一行，换行符是 `\r\n`，**遇到连续两个 `\r\n`（即一个空行）时，Header 结束，后面全部是 Body**。
+
+**GET 请求的格式**：
+
+```
+GET /path HTTP/1.1
+Header1: Value1
+Header2: Value2
+
+```
+
+**POST 请求的格式**（比 GET 多了 Body，用于携带用户数据）：
+
+```
+POST /path HTTP/1.1
+Header1: Value1
+Header2: Value2
+
+body data goes here...
+```
+
+**请求行详解**（第一行）：
+
+```
+GET / HTTP/1.1
+```
+
+| 部分 | 含义 |
+|------|------|
+| `GET` | 请求方法，`GET` 表示读取请求，从服务器获取数据 |
+| `/` | URL 路径，**总是以 `/` 开头**，`/` 单独出现表示首页 |
+| `HTTP/1.1` | 使用的 HTTP 协议版本 |
+
+**常用请求头**：
+
+| 请求头 | 含义 |
+|--------|------|
+| `Host` | 请求的域名（如 `Host: www.sina.com`）。一台服务器可能部署多个网站，靠 `Host` 区分浏览器访问的是哪一个 |
+| `Connection: keep-alive` | 要求使用**长连接**，多个 HTTP 请求复用同一个 TCP 连接 |
+| `Content-Length` | 请求体的字节长度 |
+| `User-Agent` | 浏览器标识 |
+
+**常用请求方法**（RESTful 风格下与“增删改查”对应）：
+
+| 方法 | 作用 | 说明 |
+|------|------|------|
+| `GET` | 查询 | 仅请求资源，不附带请求体 |
+| `POST` | 新增 | 会附带用户数据（请求体） |
+| `PUT` | 修改 | 修改服务器上的资源 |
+| `DELETE` | 删除 | 删除服务器上的资源 |
+
+---
+
+#### 16.11.4 响应报文
+
+**响应的格式**：
+
+```
+HTTP/1.1 200 OK
+Header1: Value1
+Header2: Value2
+
+body data goes here...
+```
+
+**状态行**（第一行）：`HTTP/1.1 200 OK` 中，`200` 是**状态码**，`OK` 是说明文字。
+
+| 状态码 | 含义 |
+|--------|------|
+| `1xx` | 信息性状态码 |
+| `200` | 请求成功 |
+| `3xx` | 重定向（如 `301` 永久重定向、`302` 临时重定向） |
+| `404` | `Not Found`，请求的资源不存在 |
+| `4xx` | 客户端的请求有错误 |
+| `500` | `Internal Server Error`，服务器内部出错 |
+| `5xx` | 服务器端处理时发生了错误 |
+
+**常用响应头**：
+
+| 响应头 | 含义 |
+|--------|------|
+| `Content-Type` | 响应体的**数据类型**，如 `text/html`（网页）、`image/jpeg`（图片） |
+| `Content-Length` | 响应体的字节长度 |
+| `Content-Encoding` | 响应体的压缩方式，最常见为 `gzip`；看到它时要先**解压**才能得到真实数据 |
+| `Transfer-Encoding: chunked` | 响应体使用**分块传输**（见 16.11.5） |
+| `Cache-Control` | 缓存控制策略 |
+
+> **注意**：浏览器是依靠 `Content-Type` 来判断响应内容是网页、图片、视频还是音乐，**而不是靠 URL 的后缀**。即使 URL 是 `http://www.baidu.com/meimei.jpg`，返回的也不一定是图片。
+
+**HTTP 协议版本**：
+
+| 版本 | 特点 |
+|------|------|
+| `HTTP/0.9` | 最早的版本，功能极其简单 |
+| `HTTP/1.0` | **默认**每个请求新建一个 TCP 连接（短连接）；可通过 `Connection: keep-alive` 非标准地启用长连接 |
+| `HTTP/1.1` | **默认**长连接（`keep-alive`），允许多个 HTTP 请求复用一个 TCP 连接，加快传输速度；目前最常用，大部分服务器也兼容 1.0 |
+
+---
+
+#### 16.11.5 如何判断报文结束
+
+这是一个常见的面试题：**请求头里没有 `Content-Length` 时，怎么知道请求体结束了？**
+
+**① Header 与 Body 的分隔**
+
+每个头部项以 `\r\n` 结尾，Header 和 Body 之间有一个空行，所以数据流中用 `\r\n\r\n` 来**分割** Header 和 Body。
+
+**② Body 的结束判断**
+
+HTTP 协议**并没有**规定 Body 要以 `\r\n\r\n` 结束，且 Body 内容多种多样，可能本身就包含 `\r\n\r\n`，所以**用结束符判断不严谨**。协议规定的方式有：
+
+| 方式 | 说明 |
+|------|------|
+| `Content-Length` | 响应头中直接给出 Body 的字节长度，读够这么多字节就结束 |
+| `Transfer-Encoding: chunked` | 发送头时**不知道完整长度**（如数据太大、服务端流式处理）时使用，分块传输；此时**不应设置** `Content-Length`，即使设置了也会被忽略 |
+| 关闭连接 | 短连接下，连接关闭就表示数据传输完成 |
+
+**分块传输的格式**：每个数据块由“**数据长度 + 数据内容**”两部分组成，以 `\r\n` 分隔；**最后一个长度为 0 的块**表示没有数据了，响应结束。
+
+```
+5\r\n               ← 第 1 块：长度（十六进制）
+hello\r\n           ← 第 1 块：内容
+6\r\n               ← 第 2 块：长度
+ world\r\n          ← 第 2 块：内容
+0\r\n               ← 长度为 0：最后一块，表示结束
+\r\n
+```
+
+> **自己实现 HTTP 服务端时如何兼容**：短连接最简单，连接关闭即结束；长连接可以用 `Content-Length`，不严谨的做法是读取超时就认为结束。
+> 在双方约定可控的场景下，也可以用结束符判断（实现简洁），但要防止内容中包含结束符导致被提前截断，此时发送方应先对内容中的约定结束符进行**编码转义**。
+
+---
+
+### 16.12 Web 静态服务器
+
+> **静态服务器**：浏览器请求什么文件，服务器就把磁盘上对应的文件原样返回，不做动态处理。
+>
+> 本节从最简单的版本出发，逐步演进到支持高并发的版本，**核心流程**都是：`创建 TCP 套接字 → bind → listen → accept → 接收 HTTP 请求 → 组织响应 → send → close`。
+
+**测试准备**：在代码同级目录新建 `html` 文件夹，里面放一个 `index.html`（及若干图片等资源），然后在浏览器访问 `http://127.0.0.1:端口号/`。
+
+#### 16.12.1 显示固定的页面
+
+```python
+import socket
+
+
+def handle_client(client_socket):
+    """为一个客户端进行服务
+
+    Args:
+        client_socket (socket.socket): 与该客户端通信的套接字
+    """
+    # recv(1024)：接收浏览器发来的 HTTP 请求，返回 bytes；decode 转成 str
+    recv_data = client_socket.recv(1024).decode('utf-8', errors='ignore')
+    # splitlines()：按行切割请求报文，返回 list[str]
+    request_header_lines = recv_data.splitlines()
+    # 遍历并打印每一行请求头，方便观察浏览器发送了什么
+    for line in request_header_lines:
+        print(line)
+
+    # 响应头第一行（状态行）：协议版本 + 状态码 200（成功）+ 说明，\r\n 为行结束符
+    response_headers = 'HTTP/1.1 200 OK\r\n'
+    # 单独的一个 \r\n 即“空行”，用来分隔响应头与响应体
+    response_headers += '\r\n'
+    # 响应体：浏览器将显示的内容
+    response_body = 'hello world'
+    # 拼接为完整的响应报文（str 类型）
+    response = response_headers + response_body
+    # send：只能发送 bytes，所以先 encode
+    client_socket.send(response.encode('utf-8'))
+    # 关闭与该客户端的连接（HTTP 短连接：响应完就断开）
+    client_socket.close()
+
+
+def main():
+    """作为程序的主控制入口"""
+    # 创建 TCP 套接字（IPv4 + 流式）
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # SO_REUSEADDR：服务器先关闭进入 TIME_WAIT 时，也能立即重新绑定同一端口
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # 绑定本机所有网卡的 7788 端口
+    server_socket.bind(('', 7788))
+    # 开始监听，全连接队列最大长度为 128
+    server_socket.listen(128)
+    # 循环接受客户端连接
+    while True:
+        # accept 阻塞等待，返回 (与客户端通信的新套接字, 客户端地址)
+        client_socket, client_addr = server_socket.accept()
+        # 当前版本：处理完一个客户端才能处理下一个（单任务）
+        handle_client(client_socket)
+
+
+# 仅当直接运行本文件时才启动服务器
+if __name__ == '__main__':
+    main()
+```
+
+运行后，浏览器访问 `http://127.0.0.1:7788/`，页面显示 `hello world`，终端会打印出浏览器发来的请求头。
+
+---
+
+#### 16.12.2 显示需要的页面（含 404）
+
+根据请求行 `GET /xxx.html HTTP/1.1` 中的路径，读取对应文件返回；文件不存在则返回 `404`。
+
+> 后续各版本都会复用本小节的 `build_response` 函数，把“解析请求 + 组织响应”独立出来，服务器只需关心“如何并发”。
+
+```python
+import re
+import socket
+
+# 服务器存放静态资源的根目录
+DOCUMENTS_ROOT = './html'
+
+
+def build_response(request_text):
+    """根据请求报文生成完整的响应报文
+
+    Args:
+        request_text (str): 浏览器发来的完整 HTTP 请求文本
+
+    Returns:
+        bytes: 响应头 + 响应体 拼接后的二进制数据，可直接 send
+    """
+    # 按行切割请求报文，第 0 行是请求行，如：GET /index.html HTTP/1.1
+    request_lines = request_text.splitlines()
+    # 空请求（客户端已断开）直接返回空字节
+    if not request_lines:
+        return b''
+    # 正则：[^/]+ 匹配到第一个 / 之前的内容（GET 和空格），(/[^ ]*) 捕获路径
+    match = re.match(r'[^/]+(/[^ ]*)', request_lines[0])
+    # 无法解析请求行时，当作访问首页（注：带查询参数如 /a.html?x=1 的路径本示例未处理，会当作文件名而返回 404）
+    file_name = match.group(1) if match else '/'
+    # 路径为 / 时，默认返回首页 index.html
+    if file_name == '/':
+        file_name = '/index.html'
+    # 简单的安全检查：禁止用 .. 访问根目录之外的文件（路径穿越）
+    if '..' in file_name:
+        file_name = '/not_exist'
+    try:
+        # 以二进制模式（rb）打开文件，因为图片等资源不是文本
+        with open(DOCUMENTS_ROOT + file_name, 'rb') as f:
+            # 读取整个文件内容，返回 bytes
+            response_body = f.read()
+    except IOError:
+        # 文件不存在：状态码 404
+        response_body = '====sorry, file not found===='.encode('utf-8')
+        response_header = 'HTTP/1.1 404 Not Found\r\n'
+    else:
+        # 文件读取成功：状态码 200
+        response_header = 'HTTP/1.1 200 OK\r\n'
+    # Content-Length 告诉浏览器响应体的字节数（必须用 bytes 的长度，而不是 str）
+    response_header += 'Content-Length: %d\r\n' % len(response_body)
+    # 空行：响应头结束
+    response_header += '\r\n'
+    # 头是 str，体是 bytes，需先把头 encode 后再拼接
+    return response_header.encode('utf-8') + response_body
+
+
+def handle_client(client_socket):
+    """为一个客户端进行服务
+
+    Args:
+        client_socket (socket.socket): 与该客户端通信的套接字
+    """
+    # 接收并解码请求报文
+    request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
+    # 生成响应并发送；sendall 会保证数据全部发出
+    client_socket.sendall(build_response(request_text))
+    # 关闭连接
+    client_socket.close()
+
+
+def main():
+    """作为程序的主控制入口"""
+    # 创建 TCP 套接字
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # 允许端口立即复用
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # 绑定 7788 端口
+    server_socket.bind(('', 7788))
+    # 开始监听
+    server_socket.listen(128)
+    # 循环接受客户端
+    while True:
+        # 取出一个已完成握手的连接
+        client_socket, client_addr = server_socket.accept()
+        # 同一时刻只能服务一个客户端
+        handle_client(client_socket)
+
+
+if __name__ == '__main__':
+    main()
+```
+
+> **为什么响应头和响应体要分开处理**：头是用字符串拼接的，而文件（图片等）是以**二进制**读取的 `bytes`，两者类型不同不能直接相加，必须先把头 `encode` 成 bytes。
+>
+> **缺点**：单任务，一个客户端没处理完，其他浏览器只能排队等待。下面几个版本解决**并发**问题。
+
+---
+
+#### 16.12.3 多进程版
+
+每来一个客户端，就创建一个**新进程**专门为它服务（进程相关内容见第十七章）。
+
+```python
+import multiprocessing
+import socket
+
+
+class WebServer(object):
+    """多进程静态 Web 服务器"""
+
+    def __init__(self, server_address):
+        """初始化监听套接字
+
+        Args:
+            server_address (tuple): (ip, port)，如 ('', 8888)
+        """
+        # 创建 TCP 套接字
+        self.listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # 允许立即使用上次绑定的端口
+        self.listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # 绑定地址
+        self.listen_socket.bind(server_address)
+        # 变为被动套接字，并指定全连接队列长度
+        self.listen_socket.listen(128)
+
+    def serve_forever(self):
+        """循环等待客户端连接，并为每个客户端创建一个进程"""
+        while True:
+            # 阻塞等待新客户端
+            client_socket, client_address = self.listen_socket.accept()
+            print(client_address)
+            # 创建子进程，target 为子进程执行的方法，args 为传给它的参数元组
+            new_process = multiprocessing.Process(
+                target=self.handle_request, args=(client_socket,))
+            # 启动子进程
+            new_process.start()
+            # 子进程已复制了父进程的套接字，父进程这里 close 只是减少一次引用计数，
+            # 并不会真正关闭这个连接，子进程仍可继续使用
+            client_socket.close()
+
+    def handle_request(self, client_socket):
+        """子进程中为一个客户端服务
+
+        Args:
+            client_socket (socket.socket): 与该客户端通信的套接字
+        """
+        # 接收请求
+        request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
+        # 复用 16.12.2 中的 build_response 生成响应并发送
+        client_socket.sendall(build_response(request_text))
+        # 子进程的这份引用也关闭后，连接才真正断开
+        client_socket.close()
+
+
+def main():
+    """主控制入口"""
+    # 创建服务器对象，监听 8888 端口
+    httpd = WebServer(('', 8888))
+    print('web server: serving HTTP on port 8888 ...')
+    # 开始服务
+    httpd.serve_forever()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+- **优点**：多个客户端同时被服务，进程间互不影响。
+- **缺点**：进程**创建与切换开销大**，每个进程占用独立内存，连接数多时系统资源吃紧。
+
+---
+
+#### 16.12.4 多线程版
+
+与多进程版几乎一样，只是把 `Process` 换成 `Thread`，线程更轻量。
+
+```python
+import socket
+import threading
+
+
+class WebServer(object):
+    """多线程静态 Web 服务器"""
+
+    def __init__(self, server_address):
+        """初始化监听套接字
+
+        Args:
+            server_address (tuple): (ip, port)
+        """
+        # 创建 TCP 套接字
+        self.listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # 允许端口立即复用
+        self.listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # 绑定地址
+        self.listen_socket.bind(server_address)
+        # 开始监听
+        self.listen_socket.listen(128)
+
+    def serve_forever(self):
+        """循环等待客户端连接，并为每个客户端创建一个线程"""
+        while True:
+            # 阻塞等待新客户端
+            client_socket, client_address = self.listen_socket.accept()
+            print(client_address)
+            # 创建线程，target 为线程执行的方法，args 为参数元组
+            new_thread = threading.Thread(
+                target=self.handle_request, args=(client_socket,))
+            # 启动线程
+            new_thread.start()
+            # 注意：线程与主线程共享同一个套接字对象，
+            # 主线程绝对不能在这里 close，否则子线程就无法使用它了
+
+    def handle_request(self, client_socket):
+        """子线程中为一个客户端服务
+
+        Args:
+            client_socket (socket.socket): 与该客户端通信的套接字
+        """
+        # 接收请求
+        request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
+        # 发送响应
+        client_socket.sendall(build_response(request_text))
+        # 由子线程负责关闭套接字
+        client_socket.close()
+
+
+def main():
+    """主控制入口"""
+    # 创建服务器并运行
+    WebServer(('', 8888)).serve_forever()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+> **多进程 vs 多线程的 `close` 区别**（高频考点）：
+>
+> - **多进程**：子进程会**复制**父进程的套接字，父进程必须 `close` 自己那份，否则文件描述符泄漏；
+> - **多线程**：线程**共享**同一个套接字，主线程不能 `close`，只能由子线程关闭。
+
+---
+
+#### 16.12.5 单进程非阻塞版
+
+不使用多进程/多线程，而是把套接字设置为**非阻塞**，在一个进程里**轮询**所有连接（原理见 16.8.2）。
+
+```python
+import socket
+
+
+class WebServer(object):
+    """单进程非阻塞静态 Web 服务器"""
+
+    def __init__(self, port):
+        """初始化监听套接字
+
+        Args:
+            port (int): 监听的端口号
+        """
+        # 创建 TCP 套接字
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # 允许端口立即复用
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # 绑定端口
+        self.server_socket.bind(('', port))
+        # 开始监听
+        self.server_socket.listen(128)
+        # 设置为非阻塞：没有新连接时 accept 不再等待，而是直接抛出 BlockingIOError
+        self.server_socket.setblocking(False)
+        # 保存所有已连接客户端的套接字
+        self.client_socket_list = []
+
+    def run_forever(self):
+        """循环：先检查有无新连接，再轮询所有已连接的客户端"""
+        while True:
+            try:
+                # 非阻塞 accept：没有客户端 connect 时会抛出异常
+                new_socket, new_addr = self.server_socket.accept()
+            except BlockingIOError:
+                # 没有新客户端，什么也不做，继续往下
+                pass
+            else:
+                # 新连接的套接字同样设置为非阻塞
+                new_socket.setblocking(False)
+                # 加入客户端列表
+                self.client_socket_list.append(new_socket)
+
+            # 遍历副本，因为循环内会 remove 元素（遍历时不要修改原列表）
+            for client_socket in self.client_socket_list[:]:
+                try:
+                    # 非阻塞 recv：没有数据时抛出 BlockingIOError
+                    request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
+                except BlockingIOError:
+                    # 这个客户端暂时没发数据，轮到下一个
+                    continue
+                if request_text:
+                    # 有数据：生成并发送响应（带 Content-Length，浏览器可用长连接）
+                    client_socket.sendall(build_response(request_text))
+                else:
+                    # recv 返回空：客户端已关闭连接，服务器也关闭并移出列表
+                    client_socket.close()
+                    self.client_socket_list.remove(client_socket)
+
+
+if __name__ == '__main__':
+    WebServer(7890).run_forever()
+```
+
+- 响应头必须带 `Content-Length`，浏览器才知道响应何时结束，从而复用连接（长连接）；否则只能靠关闭连接来表示结束。
+- **缺点**：`while True` 空转，**CPU 占用很高**，且连接数越多每轮轮询越慢。
+
+---
+
+#### 16.12.6 epoll 版（仅 Linux）
+
+用 `epoll` 让**操作系统内核**帮我们监视所有套接字，有事件才返回，避免空转（epoll 详解见 16.8.1）。
+
+```python
+import select
+import socket
+
+
+class WebServer(object):
+    """epoll 静态 Web 服务器（仅 Linux 支持）"""
+
+    def __init__(self, port):
+        """初始化监听套接字并创建 epoll 对象
+
+        Args:
+            port (int): 监听的端口号
+        """
+        # 创建 TCP 套接字
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # 允许端口立即复用
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # 绑定端口
+        self.server_socket.bind(('', port))
+        # 开始监听
+        self.server_socket.listen(128)
+        # 创建 epoll 对象
+        self.epoll = select.epoll()
+        # register(fd, 事件掩码)：EPOLLIN 表示可读；EPOLLET 为边缘触发模式
+        self.epoll.register(self.server_socket.fileno(), select.EPOLLIN | select.EPOLLET)
+        # 字典：文件描述符 fd → 对应的客户端套接字对象
+        self.fd_socket = {}
+
+    def run_forever(self):
+        """事件循环"""
+        while True:
+            # poll()：不指定超时则阻塞，返回 [(fd, 事件), ...] 就绪列表
+            epoll_list = self.epoll.poll()
+            # 逐个处理就绪的 fd
+            for fd, event in epoll_list:
+                if fd == self.server_socket.fileno():
+                    # 监听套接字可读：说明有新客户端，可以 accept
+                    new_socket, new_addr = self.server_socket.accept()
+                    # 把新连接也注册到 epoll 中，监视它的可读事件
+                    self.epoll.register(new_socket.fileno(), select.EPOLLIN | select.EPOLLET)
+                    # 记录 fd 与套接字的对应关系
+                    self.fd_socket[new_socket.fileno()] = new_socket
+                elif event == select.EPOLLIN:
+                    # 客户端套接字可读：接收数据
+                    request_text = self.fd_socket[fd].recv(1024).decode('utf-8', errors='ignore')
+                    if request_text:
+                        # 有数据：返回响应
+                        self.fd_socket[fd].sendall(build_response(request_text))
+                    else:
+                        # 空数据：客户端已关闭，从 epoll 注销并关闭套接字
+                        self.epoll.unregister(fd)
+                        self.fd_socket[fd].close()
+                        # 删除字典中的记录
+                        del self.fd_socket[fd]
+
+
+if __name__ == '__main__':
+    WebServer(7890).run_forever()
+```
+
+> **ET 模式注意**：边缘触发下事件只通知一次，严谨的写法应把套接字设为非阻塞并循环 `accept`/`recv` 直到抛出 `BlockingIOError`；上面的示例沿用教材写法做了简化，默认的 LT 模式（去掉 `EPOLLET`）更不易漏事件。
+>
+> **IO 多路复用的本质**：`select / poll / epoll` 让**一个进程同时等待多个套接字**，任意一个就绪就立即返回处理（也称 *event driven IO*，事件驱动）。
+>
+> - 它**本身没有并发能力**：任一时刻仍然只有一个进程/线程在工作；
+> - 之所以高效，是因为避免了“逐个套接字阻塞等待”，有动静才处理，不浪费 CPU；
+> - 高性能方案常**组合使用**：IO 多路复用负责高效接收通知，收到请求后交给**进程池/线程池**处理业务逻辑。
+
+---
+
+#### 16.12.7 gevent 协程版
+
+用协程（`gevent`）为每个客户端创建一个**协程**，代码像多线程一样简单，开销却小得多（协程详见第十七章）。
+
+```python
+# 安装：pip install gevent
+from gevent import monkey
+import gevent
+import socket
+
+# 猴子补丁：把标准库中会阻塞的操作（socket、time.sleep 等）替换为 gevent 的协程版本
+# 必须在使用 socket 之前调用
+monkey.patch_all()
+
+
+class WebServer(object):
+    """gevent 协程静态 Web 服务器"""
+
+    def __init__(self, port):
+        """初始化监听套接字
+
+        Args:
+            port (int): 监听的端口号
+        """
+        # 创建 TCP 套接字（此时已被打补丁，阻塞时会自动切换协程）
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # 允许端口立即复用
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # 绑定端口
+        self.server_socket.bind(('', port))
+        # 开始监听
+        self.server_socket.listen(128)
+
+    def run_forever(self):
+        """循环接收客户端，每个客户端交给一个协程处理"""
+        while True:
+            # 阻塞时 gevent 会切换去执行其他协程
+            new_socket, new_addr = self.server_socket.accept()
+            # spawn(函数, 参数...)：创建并调度一个协程，返回 Greenlet 对象
+            gevent.spawn(self.handle_request, new_socket)
+
+    def handle_request(self, client_socket):
+        """协程中为一个客户端服务（支持长连接，循环收发直到对方关闭）
+
+        Args:
+            client_socket (socket.socket): 与该客户端通信的套接字
+        """
+        while True:
+            # 接收请求（阻塞时自动切换协程）
+            request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
+            # 浏览器接收完数据后会主动关闭，此时 recv 返回空，服务器也要关闭
+            if not request_text:
+                client_socket.close()
+                break
+            # 返回响应
+            client_socket.sendall(build_response(request_text))
+
+
+if __name__ == '__main__':
+    WebServer(7890).run_forever()
+```
+
+---
+
+#### 16.12.8 并发方案对比与 C10K 问题
+
+| 方案 | 实现方式 | 优点 | 缺点 |
+|------|---------|------|------|
+| 单任务 | `accept` 后直接处理 | 最简单 | 同一时刻只能服务一个客户端 |
+| 多进程 | 一个连接一个进程 | 真并行（多核），隔离性好 | 创建/切换开销大，占内存 |
+| 多线程 | 一个连接一个线程 | 比进程轻量 | 仍有切换开销；受 GIL 影响，不适合 CPU 密集 |
+| 单进程非阻塞 | 轮询所有套接字 | 无需多进程/线程 | 空转，CPU 占用高 |
+| epoll | 内核监视所有套接字 | 高并发、无空转 | 仅 Linux；编程较复杂 |
+| gevent 协程 | 一个连接一个协程 | 代码简单、开销极小 | 依赖第三方库，需打补丁 |
+
+> **C10K 问题**：指服务器同时处理 **1 万个**并发连接（Client 10 Thousand）的难题。传统“一个连接一个进程/线程”的方式，在连接数达到上万时会因内存和切换开销而崩溃，催生了 `epoll`、协程等 IO 多路复用技术。可延伸阅读：
+>
+> - 《单台服务器并发 TCP 连接数到底可以有多少》
+> - 《上一个 10 年，著名的 C10K 并发连接问题》
+
+---
+
+### 16.13 网络通信过程
+
+#### 16.13.1 网络设备与组网方式
+
+**① 两台电脑直连**
+
+- 两台电脑用网线直接连接即可通信，但需**提前设置好 IP 地址和网络掩码**；
+- 两个 IP 必须在**同一网段**内，例如 `192.168.1.1` 和 `192.168.1.2`。
+
+**② 集线器（Hub）**
+
+- 可把多台电脑连在一起组成网络，但接口较少；
+- **缺点**：以**广播**方式发送数据——A 发给 B 的数据，集线器会复制一份发给所有连接的电脑（C、D 也会收到），导致**网络拥堵**。现已被淘汰。
+
+**③ 交换机（Switch）**
+
+- 集线器的**升级版**，有**学习功能**（记住每个端口对应哪个 MAC 地址），需要广播时广播，需要**单播**时精准单播；
+- 已取代集线器，企业中用交换机把多台设备连成网络。
+
+**④ 路由器（Router）**
+
+- 连接**多个不同的网段**，让它们之间可以互相收发数据。
+
+---
+
+#### 16.13.2 访问网址的完整通信过程
+
+以浏览器访问 `www.cskaoyan.com` 为例：
+
+```
+1. 浏览器先通过 DNS 把域名解析成 IP 地址
+2. 得到 IP 后，浏览器以 TCP 方式“三次握手”连接服务器
+3. 以 TCP 方式把 HTTP 请求数据发给服务器
+4. 服务器以 TCP 方式把 HTTP 应答数据回给浏览器
+```
+
+**关键概念总结**：
+
+| 概念 | 作用 |
+|------|------|
+| MAC 地址 | 设备与设备之间通信时，标记**收发双方**（网卡的序列号） |
+| IP 地址 | 在逻辑上标记一台电脑，**指引数据包的收发方向**（电脑的序列号） |
+| 网络掩码 | 用来区分 IP 地址的**网络号**和**主机号** |
+| 默认网关 | 目的 IP **不在本网段**时，数据包会发给的那台电脑（通常就是路由器） |
+| 集线器 | 已过时，每次收发都**广播**，网络易拥堵 |
+| 交换机 | 集线器的升级版，会学习，按需单播或广播 |
+| 路由器 | 连接多个不同网段；转发时 **IP 不变，MAC 变化** |
+| DNS | 把域名解析成 IP（类似电话簿） |
+| HTTP 服务器 | 提供浏览器能够访问到的数据 |
+
+---
+
+#### 16.13.3 路由器转发规则
+
+**转发流程**（主机 A 访问另一网段的主机 B）：
+
+```
+1. 主机 A 在网络层把数据封装成 IP 数据包（首部含源 IP、目的 IP）
+2. 主机 A 用自己的网络掩码（如 255.255.255.0）与目的 IP 做“与”运算，
+   得到目的网络地址，判断与本机是否在同一网段
+3. 不在同一网段 → 数据包要发给默认网关
+4. 发送前，A 通过 ARP 请求获得默认网关的 MAC 地址
+5. A 在链路层把 IP 数据包封装成以太网数据帧（目的 MAC = 网关 MAC），发往路由器
+6. 路由器收到数据帧，发现目的 MAC 是自己，于是拆掉以太网帧封装，
+   读取 IP 包头的目的 IP，查询路由表，选出最佳路径和转发接口
+7. 路由器重新封装（新的 MAC），从对应接口转发给下一跳
+```
+
+> **路由器转发的核心结论**：
+>
+> - 转发过程中**IP 地址（源和目的）始终不变**，只会修改 **MAC 地址**（每经过一跳，MAC 都会变化）；
+> - **唯一的例外是 NAT**（网络地址转换），此时源 IP 会被改变（见下一节）。
+
+---
+
+#### 16.13.4 NAT（网络地址转换）
+
+**为什么需要 NAT**：只有**公网 IP** 才能上互联网，而公网 IP 数量有限；家庭里多台设备共用一个公网 IP，靠的就是路由器上的 NAT。
+
+**家庭上网的结构**：
+
+```
+光纤/电话线 ──→ 调制解调器（猫）──→ 路由器 ──→ 多台电脑/手机
+                                      │
+                       路由器一端：1 个公网 IP（运营商分配）
+                       路由器另一端：多个私有 IP（如 192.168.1.x）
+```
+
+**NAT 的工作过程**（以私有 IP 为 `192.168.1.2` 的电脑访问外网为例）：
+
+```
+发送数据时（路由器把私有地址替换为公网地址 + 临时端口，并记录对应关系）：
+  192.168.1.2:6789 ──→ 路由器 ──→ 116.226.52.212:6539 ──→ 猫 ──→ 万维网
+
+接收数据时（路由器按之前记录的对应关系，还原为内网 IP 和端口）：
+  万维网 ──→ 猫 ──→ 116.226.52.212:6539 ──→ 路由器 ──→ 192.168.1.2:6789
+```
+
+> **要点**：
+>
+> - 私有 IP（如 `192.168.x.x`）只在局域网内有效，不能直接上网；
+> - NAT 靠 **`IP + 端口`** 的映射表区分内网中的不同设备/进程；
+> - 因此外网无法**主动**访问内网设备（映射表里没有记录），这也是“内网穿透”需求的由来。
+
 ---
 
 
