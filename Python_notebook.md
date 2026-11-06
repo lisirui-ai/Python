@@ -5349,6 +5349,7 @@ gr1.switch()    # 启动并切换到 gr1，程序从 test1 开头开始执行
 | I/O 多路复用 | `select`、`selectors` | 能（需打补丁） | `select.select()`、`poll()` 等被替换为协作式版本 |
 | 纯 Python 实现的网络驱动 | 如 `PyMySQL` | 能（需打补丁） | 底层走 `socket`，随之被补丁 |
 | 普通磁盘文件 | `open().read()` / `write()` | 不能 | 操作系统层面普通文件没有非阻塞读写，会阻塞线程 |
+| 多进程通信 | `multiprocessing.Queue`、`multiprocessing.Pipe`、`ProcessPoolExecutor` | 不能（甚至可能卡死） | 底层依赖阻塞的管道读写与线程锁；官方文档警告打 `thread` 补丁后使用它们会使进程挂起。替代：协程间用 `gevent.queue`，管道用 `gevent.fileobject.FileObject`，必须调用时放入 `gevent.threadpool` |
 | 标准输入 | `input()`、`sys.stdin` | 不能 | `patch_sys()` 在现行版本中已不起作用，`input()` 仍会阻塞 |
 | CPU 计算 | 大循环、数值运算、压缩加密 | 不能 | 没有等待点，不会触发切换，独占线程 |
 | C 扩展中的阻塞调用 | 如基于 C 库的数据库驱动 `mysqlclient` | 不能 | 阻塞发生在 C 层，gevent 无法拦截 |
