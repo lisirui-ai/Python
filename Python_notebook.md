@@ -5213,19 +5213,34 @@ if __name__ == '__main__':
 >
 > def level1():                    # 最外层
 >     yield from level2()          # 同样必须转发；中间只要有一层是普通函数，暂停就传不上去
+>
+> gen = level1()                   # 创建生成器对象（此时函数体尚未执行），类型 generator
+> print(next(gen))                 # 驱动到 level3 的 yield 处，返回 yield 右侧的值 1，输出：1
+> for _ in gen:                    # 继续驱动剩余部分；生成器耗尽时 for 自动捕获 StopIteration
+>     pass                         # 本例 level3 之后没有更多 yield，直接结束
 > ```
 >
 > **2. greenlet：中间层可以是普通函数**
 >
 > ```python
+> from greenlet import greenlet, getcurrent   # greenlet：协程类；getcurrent()：返回当前正在运行的 greenlet 对象
+>
+> main_gr = getcurrent()           # 获取主 greenlet（程序启动时的默认协程），后续用来切回主流程
+>
 > def level3():                    # 最深层
->     main_gr.switch()             # 普通函数里直接切走，无需任何特殊语法
+>     print('level3：准备暂停')     # 暂停前输出
+>     main_gr.switch('来自 level3 的暂停')  # 普通函数里直接切回主协程；参数会成为主协程 switch() 的返回值
+>     print('level3：已恢复')       # 被再次 switch() 后，从此处继续执行
 >
 > def level2():                    # 普通函数，无需改动
 >     level3()                     # 直接调用即可
 >
 > def level1():                    # 普通函数，无需改动
 >     level2()                     # 直接调用即可
+>
+> gr = greenlet(level1)            # 创建 greenlet 对象，绑定入口函数 level1（此时尚未启动）
+> print(gr.switch())               # 首次 switch() 启动 gr；level3 切回后得到其传出的值，输出：来自 level3 的暂停
+> gr.switch()                      # 再次 switch()：整条调用栈原样恢复，level3 继续执行并输出：level3：已恢复
 > ```
 >
 > **3. 什么是“栈”与“无栈协程”**
@@ -5245,7 +5260,7 @@ if __name__ == '__main__':
 
 > ---
 
-> `greenlet` 对 `yield` 协程进行封装，使切换语法更直观。
+> `greenlet` 提供显式的 `switch()` 切换，语法比 `yield` 更直观。
 
 ```bash
 # 安装 greenlet
