@@ -4060,6 +4060,7 @@ GET / HTTP/1.1
 | `Accept` | 告诉服务器浏览器**能接收**的响应数据类型，如 `text/html` |
 | `Accept-Encoding` | 浏览器支持的压缩方式，如 `gzip, deflate, br`；服务器据此压缩响应体，并在响应头 `Content-Encoding` 中说明实际使用的方式 |
 | `Accept-Language` | 浏览器偏好的语言，如 `zh-CN,zh;q=0.9`（`q` 为权重），服务器可据此返回不同语言的页面 |
+| `Origin` | 发起请求的页面所在的**源**（协议 + 域名 + 端口，如 `http://localhost:3000`），浏览器在**跨域**请求中自动携带，服务器据此决定是否允许访问（见 16.11.4 的跨域说明） |
 | `Cookie` | 把浏览器保存的 Cookie 发给服务器，登录状态、会话保持主要靠它 |
 | `Authorization` | 携带身份凭证，如 `Bearer <token>`、`Basic ...`，常用于 API 鉴权 |
 | `Referer` | 当前请求是从哪个页面跳转或引用而来，可用于防盗链、来源统计（单词拼写是历史遗留，少了一个 `r`） |
@@ -4139,6 +4140,25 @@ body data goes here...
 | `Access-Control-Allow-Origin` | 允许哪些来源的网页跨域访问该资源（CORS），如 `*` 表示任意来源 |
 | `Server` | 服务器软件的标识，如 `nginx`、`Apache` |
 | `Date` | 服务器生成响应的时间 |
+
+> **跨域与 `Access-Control-Allow-Origin`**
+>
+> **跨域**是浏览器的安全限制（**同源策略**）：网页中的 JavaScript 访问**另一个源**的资源时，默认会被浏览器拦截。**源（Origin）= 协议 + 域名 + 端口**，三者**完全相同**才算同源。
+>
+> ---
+
+| 页面所在的源 | 要访问的地址 | 是否同源 | 原因 |
+|---|---|---|---|
+| `http://a.com` | `http://a.com/api/data` | 同源 | 协议、域名、端口都相同 |
+| `http://a.com` | `https://a.com/api/data` | **跨域** | 协议不同 |
+| `http://a.com` | `http://b.com/api/data` | **跨域** | 域名不同 |
+| `http://a.com:80` | `http://a.com:8080/api/data` | **跨域** | 端口不同 |
+
+> ---
+>
+> - **典型场景**：前后端分离开发时，前端页面在 `http://localhost:3000`，后端接口在 `http://localhost:8000`，端口不同，前端用 `fetch` 请求后端就会遇到跨域问题。
+> - **解决方式（CORS，跨源资源共享）**：由**服务器**在响应头中声明允许哪些来源访问。浏览器发出跨域请求时带上请求头 `Origin: http://localhost:3000`，服务器若返回 `Access-Control-Allow-Origin: http://localhost:3000`（或 `*`，表示任意来源），浏览器就放行；没有该响应头或来源不匹配，浏览器就拦截。
+> - **注意**：跨域限制是**浏览器**做的，请求通常已经到达服务器，只是浏览器不让脚本读取响应；用 Python 的 `requests` 或 `curl` 访问接口**不受**跨域限制。
 
 > **注意**：浏览器是依靠 `Content-Type` 来判断响应内容是网页、图片、视频还是音乐，**而不是靠 URL 的后缀**。即使 URL 是 `http://www.baidu.com/meimei.jpg`，返回的也不一定是图片。
 
