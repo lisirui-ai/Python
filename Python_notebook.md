@@ -3955,7 +3955,7 @@ tcp_syncookies         # 启用 SYN Cookie（最有效）：在完成三次握�
 
 
 
-### 16.10 网络编程速查
+### 16.10 socket 常用方法速查
 
 
 | 方法                                        | 所属协议    | 说明                           |
@@ -3974,26 +3974,7 @@ tcp_syncookies         # 启用 SYN Cookie（最有效）：在完成三次握�
 | `setblocking(False)`                      | UDP/TCP | 设置非阻塞模式                      |
 | `setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)` | TCP     | 允许地址复用（解决 TIME_WAIT 不能绑定的问题） |
 
-
-```python
-# 最简 TCP 服务器模板（循环接受多个客户端）
-import socket
-
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # 允许地址复用
-server.bind(('', 8888))
-server.listen(128)
-
-while True:                              # 循环接受新连接
-    client, addr = server.accept()      # 阻塞等待
-    data = client.recv(1024)            # 接收数据
-    if data:
-        client.send(data)               # 回显（echo server）
-    client.close()
-
-server.close()
-```
-
+---
 
 ### 16.11 HTTP 协议
 
