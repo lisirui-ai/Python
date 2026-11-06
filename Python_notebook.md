@@ -5417,14 +5417,16 @@ gevent.joinall([g1, g2, g3])
 
 ```python
 from gevent import monkey   # monkey：提供猴子补丁工具函数（动态替换标准库实现）
-import gevent               # gevent：协程库，提供 spawn()、joinall() 等接口
-import time                 # time：标准库时间模块，其 sleep() 将被 monkey.patch_all() 替换
-import random               # random：标准库随机数模块，random.random() 返回 [0.0, 1.0) 的 float
 
-# !! 必须在导入其他标准库之前调用 !!
+# !! 应尽早调用：放在其他模块导入之前，避免已导入的模块/已创建的对象仍持有旧的阻塞版本 !!
 # monkey.patch_all()：将 socket、time、threading 等标准库中的阻塞 IO 操作
 # 替换为 gevent 的非阻塞版本，使 time.sleep / socket.recv 等操作能触发协程切换
+# 参数：可选，用关键字参数（如 socket=True）限制补丁范围，默认补丁全部；返回 bool（补丁是否成功）
 monkey.patch_all()
+
+import gevent               # gevent：协程库，提供 spawn()、joinall() 等接口
+import time                 # time：标准库时间模块，其 sleep() 已被上面的 patch_all() 替换
+import random               # random：标准库随机数模块，random.random() 返回 [0.0, 1.0) 的 float
 
 def coroutine_work(name):
     """
