@@ -4126,11 +4126,19 @@ body data goes here...
 
 | 响应头 | 含义 |
 |--------|------|
-| `Content-Type` | 响应体的**数据类型**，如 `text/html`（网页）、`image/jpeg`（图片） |
+| `Content-Type` | 响应体的**数据类型**，如 `text/html`（网页）、`image/jpeg`（图片）、`application/json`（JSON）；文本类型常带编码，如 `text/html; charset=utf-8` |
 | `Content-Length` | 响应体的字节长度 |
 | `Content-Encoding` | 响应体的压缩方式，最常见为 `gzip`；看到它时要先**解压**才能得到真实数据 |
 | `Transfer-Encoding: chunked` | 响应体使用**分块传输**（见 16.11.5） |
-| `Cache-Control` | 缓存控制策略 |
+| `Connection` | 连接是否保持，`keep-alive` 表示保持长连接，`close` 表示响应后关闭连接 |
+| `Location` | 重定向的目标地址，配合 `301`、`302` 等 `3xx` 状态码使用 |
+| `Set-Cookie` | 让浏览器保存一个 Cookie，之后浏览器会通过请求头 `Cookie` 带回来 |
+| `Cache-Control` | 缓存控制策略，如 `no-cache`（使用缓存前必须先向服务器验证）、`max-age=3600`（缓存 3600 秒内有效） |
+| `ETag` / `Last-Modified` | 资源的版本标识 / 最后修改时间，浏览器下次请求时通过 `If-None-Match` / `If-Modified-Since` 询问，未变化则服务器返回 `304` |
+| `Content-Disposition` | 指示浏览器如何处理响应体，`attachment; filename="a.zip"` 表示作为附件**下载**并指定文件名 |
+| `Access-Control-Allow-Origin` | 允许哪些来源的网页跨域访问该资源（CORS），如 `*` 表示任意来源 |
+| `Server` | 服务器软件的标识，如 `nginx`、`Apache` |
+| `Date` | 服务器生成响应的时间 |
 
 > **注意**：浏览器是依靠 `Content-Type` 来判断响应内容是网页、图片、视频还是音乐，**而不是靠 URL 的后缀**。即使 URL 是 `http://www.baidu.com/meimei.jpg`，返回的也不一定是图片。
 
