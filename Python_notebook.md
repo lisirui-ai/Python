@@ -4058,6 +4058,11 @@ GET / HTTP/1.1
 | `Content-Type` | 请求体的**数据类型**（仅带请求体的请求如 `POST` 才需要），如 `application/x-www-form-urlencoded`（表单）、`application/json`（JSON 数据）、`multipart/form-data`（文件上传） |
 | `Content-Length` | 请求体的字节长度 |
 | `Accept` | 告诉服务器浏览器**能接收**的响应数据类型，如 `text/html` |
+| `Accept-Encoding` | 浏览器支持的压缩方式，如 `gzip, deflate, br`；服务器据此压缩响应体，并在响应头 `Content-Encoding` 中说明实际使用的方式 |
+| `Accept-Language` | 浏览器偏好的语言，如 `zh-CN,zh;q=0.9`（`q` 为权重），服务器可据此返回不同语言的页面 |
+| `Cookie` | 把浏览器保存的 Cookie 发给服务器，登录状态、会话保持主要靠它 |
+| `Authorization` | 携带身份凭证，如 `Bearer <token>`、`Basic ...`，常用于 API 鉴权 |
+| `Referer` | 当前请求是从哪个页面跳转或引用而来，可用于防盗链、来源统计（单词拼写是历史遗留，少了一个 `r`） |
 | `User-Agent` | 浏览器标识 |
 
 **常用请求方法**（RESTful 风格下与“增删改查”对应）：
