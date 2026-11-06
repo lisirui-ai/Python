@@ -4055,7 +4055,9 @@ GET / HTTP/1.1
 |--------|------|
 | `Host` | 请求的域名（如 `Host: www.sina.com`）。一台服务器可能部署多个网站，靠 `Host` 区分浏览器访问的是哪一个 |
 | `Connection: keep-alive` | 要求使用**长连接**，多个 HTTP 请求复用同一个 TCP 连接 |
+| `Content-Type` | 请求体的**数据类型**（仅带请求体的请求如 `POST` 才需要），如 `application/x-www-form-urlencoded`（表单）、`application/json`（JSON 数据）、`multipart/form-data`（文件上传） |
 | `Content-Length` | 请求体的字节长度 |
+| `Accept` | 告诉服务器浏览器**能接收**的响应数据类型，如 `text/html` |
 | `User-Agent` | 浏览器标识 |
 
 **常用请求方法**（RESTful 风格下与“增删改查”对应）：
