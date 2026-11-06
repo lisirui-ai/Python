@@ -6367,6 +6367,165 @@ gevent.joinall([
 # joinall 阻塞直到三个下载协程全部完成，返回 list[Greenlet]（此处结果不使用）
 ```
 
+#### 17.5.6 asyncio——标准库的 async/await 协程
+
+> `asyncio` 是 Python **标准库**自带的协程框架（3.4 引入，3.5 起有 `async` / `await` 语法），无需安装第三方库。它在**单线程**中运行一个**事件循环（event loop）**，协程遇到 `await` 时主动让出控制权，事件循环再去运行其他就绪的协程。
+
+> **asyncio 与 gevent 的区别**
+>
+> - **gevent**：靠 `monkey.patch_all()` 打补丁，普通的 `time.sleep()`、`socket` 等**自动**切换，代码写法和同步代码几乎一样。
+> - **asyncio**：切换点必须**显式**写出——用 `async def` 定义协程，用 `await` 标记“在这里等待并让出”；只能 `await` 支持异步的对象（如 `asyncio.sleep()`、异步网络库 `aiohttp` 等），**不能**直接用阻塞的 `time.sleep()` 或 `requests`，否则会卡住整个事件循环。
+
+**核心概念**
+
+| 概念 | 说明 |
+|---|---|
+| 协程函数 | 用 `async def` 定义的函数；调用它**不会执行函数体**，只会返回一个**协程对象**（`coroutine`） |
+| `await` | 只能写在 `async def` 内部；等待一个可等待对象完成，等待期间让出控制权，完成后取回返回值 |
+| 事件循环 | 负责调度和运行所有协程，由 `asyncio.run()` 创建并在结束时关闭 |
+| `Task` | 对协程的封装，用 `asyncio.create_task()` 创建后**立即加入调度**，并发运行；可获取结果 |
+
+```python
+import asyncio          # asyncio：Python 标准库的异步 IO 框架，基于事件循环和 async/await
+
+
+# ── asyncio 常用 API ─────────────────────────────────────────────────────
+# async def func(...)：定义协程函数；调用 func(...) 只返回协程对象（coroutine），函数体不会执行
+# await 可等待对象：等待其完成并返回结果；只能写在 async def 内部
+# asyncio.run(coro)：创建事件循环，运行协程 coro 直到结束，返回 coro 的返回值；通常只在程序入口调用一次
+# asyncio.sleep(seconds)：协程专用 sleep，等待期间让出控制权，返回 None（不同于 time.sleep，后者会阻塞整个线程）
+# asyncio.create_task(coro)：把协程包装成 Task 并立即调度，返回 Task 对象（需在已运行的事件循环中调用）
+# asyncio.gather(*aws, return_exceptions=False)：并发运行多个可等待对象，按传入顺序返回结果 list
+# asyncio.wait_for(aw, timeout)：限时等待，超时抛出 TimeoutError 并取消该任务
+# asyncio.to_thread(func, *args)：把阻塞函数放进线程中运行，避免卡住事件循环（Python 3.9+）
+
+
+async def task(name, n):
+    """
+    演示协程任务：循环打印并通过 await asyncio.sleep() 让出控制权。
+    参数 name : str，协程名称标识，用于区分不同协程的输出
+    参数 n    : int，循环次数（每个协程执行 n 步）
+    返回值    : str，形如 'work1 完成'，可通过 await 或 Task.result() 取得
+    """
+    for i in range(n):                          # range(n)：生成 0..n-1，循环 n 步
+        print(f'{name} 执行第 {i} 步')          # 打印协程名和当前步骤（str 格式化）
+        # await asyncio.sleep(seconds)：挂起当前协程 seconds 秒，并让事件循环运行其他就绪协程
+        # 参数 seconds : float，休眠秒数；返回值 : None
+        await asyncio.sleep(0.2)
+    return f'{name} 完成'                       # 返回 str，作为该协程/Task 的结果
+
+
+async def main():
+    """
+    主协程：程序的异步入口，在这里创建并等待其他协程。
+    返回值 : None
+    """
+    # asyncio.create_task(coro)：把协程包装为 Task 并立即调度（不阻塞），返回 Task 对象
+    t1 = asyncio.create_task(task('work1', 3))  # 创建 Task1，加入事件循环
+    t2 = asyncio.create_task(task('work2', 3))  # 创建 Task2，两个任务将交替运行
+    # await Task：等待该 Task 完成；两个任务已在并发运行，所以总耗时约 0.6 秒而非 1.2 秒
+    await t1                                    # 等待 Task1 结束，返回 str
+    await t2                                    # 等待 Task2 结束，返回 str
+    # Task.result()：任务完成后返回协程的返回值（str）；Task.done()：返回 bool，是否已结束
+    print(t1.result(), t2.result(), t1.done())  # 输出：work1 完成 work2 完成 True
+
+
+# asyncio.run(main())：创建事件循环 → 运行 main 直到结束 → 关闭事件循环；返回 main 的返回值
+asyncio.run(main())
+# 输出：work1、work2 交替打印——每遇到 await asyncio.sleep() 就切换到另一个任务
+```
+
+> **常见错误：忘记 `await`**：`task('x', 1)` 只创建协程对象，不会执行；若既不 `await` 也不 `create_task`，Python 会警告 `coroutine 'task' was never awaited`。
+
+**获取协程的返回值与处理异常：`gather` 与 `Task.result()`**
+
+> 与 gevent 的 `value` / `get()` 类似：`await` 一个协程会直接得到返回值；多个协程并发时用 `asyncio.gather()` 一次性取回，按**传入顺序**排列结果。
+
+```python
+import asyncio          # asyncio：标准库异步 IO 框架
+
+
+async def square(n):
+    """
+    正常结束的协程任务：返回 n 的平方。
+    参数 n : int，要计算平方的整数
+    返回值 : int，n * n
+    """
+    await asyncio.sleep(0.1)    # 让出控制权，模拟 IO 等待，返回 None
+    return n * n                # 返回 int
+
+
+async def bad_task():
+    """
+    会抛出异常的协程任务，用于演示异常处理。
+    返回值 : 无（始终抛出 ZeroDivisionError）
+    """
+    await asyncio.sleep(0.1)    # 让出控制权，返回 None
+    return 1 / 0                # 抛出 ZeroDivisionError
+
+
+async def slow_task():
+    """耗时很长的协程任务（5 秒），用于演示超时。返回值 : None"""
+    await asyncio.sleep(5)      # 挂起 5 秒，返回 None
+
+
+async def main():
+    """
+    主协程：依次演示 gather、异常处理、Task 异常、超时、to_thread、TaskGroup。
+    返回值 : None
+    """
+    # gather(*aws)：并发运行多个协程，返回 list，顺序与传入顺序一致（与谁先完成无关）
+    results = await asyncio.gather(square(1), square(2), square(3))   # list[int]
+    print(results)                                                    # [1, 4, 9]
+
+    # return_exceptions=True：某个协程抛异常时不会中断 gather，而是把异常对象放进结果列表
+    results = await asyncio.gather(square(4), bad_task(), return_exceptions=True)  # list[int | Exception]
+    print(results)                                                    # [16, ZeroDivisionError('division by zero')]
+
+    # 默认 return_exceptions=False：第一个异常会直接从 await gather(...) 处抛出
+    try:                                                              # 用 try 捕获
+        await asyncio.gather(square(5), bad_task())                   # bad_task 的异常被抛出
+    except ZeroDivisionError as e:                                    # e：异常对象
+        print('gather 抛出:', e)                                      # 输出：gather 抛出: division by zero
+
+    # Task 的异常：任务结束后可用 exception() 查看，用 result() 取值（异常时会重新抛出）
+    bad = asyncio.create_task(bad_task())                             # 创建并调度 Task
+    await asyncio.sleep(0.2)                                          # 等待足够久，让它执行完
+    print(bad.done(), repr(bad.exception()))                          # True ZeroDivisionError(...)
+    try:                                                              # result() 会重新抛出任务中的异常
+        bad.result()                                                  # 抛出 ZeroDivisionError
+    except ZeroDivisionError as e:                                    # 捕获异常
+        print('result() 抛出:', e)                                    # 输出：result() 抛出: division by zero
+
+    # wait_for(aw, timeout)：限时等待；超时则取消任务并抛出 TimeoutError（3.11+ 与内置 TimeoutError 相同）
+    try:                                                              # 捕获超时
+        await asyncio.wait_for(slow_task(), timeout=0.3)              # 0.3 秒后超时
+    except TimeoutError:                                              # 超时异常
+        print('超时')                                                 # 输出：超时
+
+    # to_thread(func, *args)：在线程中运行阻塞函数，返回其结果；这里用 sum 代表“某个阻塞调用”
+    r = await asyncio.to_thread(sum, [1, 2, 3])                       # int：6
+    print(r)                                                          # 6
+
+    # TaskGroup（Python 3.11+）：async with 块结束时自动等待组内全部任务；任一任务异常会取消其余任务
+    async with asyncio.TaskGroup() as tg:                             # tg：任务组对象
+        a = tg.create_task(square(6))                                 # 向组内添加任务，返回 Task
+        b = tg.create_task(square(7))                                 # 再添加一个任务
+    print(a.result(), b.result())                                     # 36 49
+
+
+asyncio.run(main())             # 运行主协程，创建并关闭事件循环
+```
+
+| 接口 | 作用 | 任务抛异常时 |
+|---|---|---|
+| `await 协程 / Task` | 等待完成并取回返回值 | 在 `await` 处抛出该异常 |
+| `Task.result()` | 任务**完成后**取返回值（未完成会抛 `InvalidStateError`） | 重新抛出该异常 |
+| `Task.exception()` | 任务完成后返回异常对象，无异常返回 `None` | 返回异常对象 |
+| `asyncio.gather()` | 并发运行多个，按传入顺序返回 `list` | 默认抛出第一个异常；`return_exceptions=True` 时异常对象放入结果 |
+
+> **与 gevent 对照记忆**：`create_task` ≈ `gevent.spawn`；`await asyncio.gather(...)` ≈ `gevent.joinall`；`Task.result()` ≈ `Greenlet.get()`；`asyncio.sleep` ≈ `gevent.sleep`。
+
 ---
 
 ### 17.6 进程、线程、协程速查
