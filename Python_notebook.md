@@ -19,12 +19,12 @@ Python 是一门简洁、优雅的高级编程语言，由吉多·范·罗苏姆
 | 七   | 容器：字符串、列表、元组、字典、集合、公共操作（运算符/公共函数/sorted）、推导式 |
 | 八   | 函数：定义与调用、参数种类、变量作用域、高阶函数与 lambda、拆包、递归 |
 | 九   | 迭代器与生成器：可迭代对象、iter/next、yield、生成器函数与生成器表达式 |
-| 十   | 面向对象：类与对象、封装、继承、多态（抽象类与接口）、装饰器、单例模式、魔法方法 |
+| 十   | 面向对象：类与对象、封装、继承、多态（抽象类与接口）、装饰器、单例模式、魔法方法、多继承与 MRO、类属性与三种方法、property 属性、魔法属性、面向对象设计（工厂模式） |
 | 十一  | 异常处理：try/except/else/finally、常见异常类型、主动抛出异常、自定义异常 |
-| 十二  | 模块与包：模块的导入方式与规范、`__name__`/`__file__`/`__all__`、包的结构与相对导入 |
-| 十三  | 文件操作：文件分类与路径、打开与关闭、文件模式、读写操作、乱码问题、MD5 文件校验 |
+| 十二  | 模块与包：模块的导入方式与规范、`__name__`/`__file__`/`__all__`、包的结构与相对导入、搜索路径与 reload、多模块共享变量 |
+| 十三  | 文件操作：文件分类与路径、打开与关闭、文件模式、读写操作、乱码问题、MD5 文件校验、with 与上下文管理器 |
 | 十四  | 正则表达式：re 模块（match/search/findall/sub）、常用语法、re.compile、flags、finditer |
-| 十五  | 常用标准库：os、sys、time、datetime、random、json、copy、tqdm |
+| 十五  | 常用标准库：os、sys、time、datetime、random、json、copy（深浅拷贝）、tqdm |
 | 十六  | 网络编程：网络通信基础（IP/端口）、Socket、UDP 与 TCP 编程、编码转换、TCP 连接原理（三次握手/四次挥手）、TCP/IP 协议族、高级网络编程（epoll/粘包/C-S 与 B-S）、DDoS 简介、速查 |
 | 十七  | 并发编程：并发基础概念、Linux 进程管理命令、多进程（multiprocessing）、多线程（threading，锁与死锁）、协程（greenlet/gevent）、选型与 GIL |
 
@@ -1656,6 +1656,101 @@ class BankAccount:
 
 
 
+#### 10.2.1 私有化与下划线命名规则
+
+> Python 没有真正的访问控制关键字，而是通过**下划线命名约定**表达“公有 / 私有”的意图：
+>
+> ---
+
+| 命名形式 | 名称 | 含义与效果 |
+| --- | --- | --- |
+| `xx` | 公有变量 | 公开属性或方法，任何位置都可以访问 |
+| `_x` | 单前置下划线 | 私有化属性或方法（约定内部使用）；`from somemodule import *` 时**禁止导入**；类对象和子类可以访问 |
+| `__xx` | 双前置下划线 | 避免与子类中的属性命名冲突；无法在外部直接访问（**名字重整**，Name Mangling）；子类不能访问父类的私有属性和方法 |
+| `__xx__` | 双前后下划线 | 用户名字空间的魔法对象或属性，例如 `__init__`；**不要自己发明这样的名字** |
+| `xx_` | 单后置下划线 | 用于避免与 Python 关键字冲突，例如 `class_`、`type_` |
+
+> ---
+>
+> **名字重整（Name Mangling）**：解释器会把类中的 `__xx` 改写为 `_类名__xx`，目的是**防止子类意外重写基类的方法或属性**。
+> 因此通过 `_类名__xx`（如 `_Person__taste`）仍然可以在外部访问到“私有”成员——Python 的私有只是“不方便访问”，并非真正的安全隔离。
+
+```python
+# coding=utf-8
+class Person(object):
+    """人类：演示公有、单下划线、双下划线三种命名的访问差异"""
+
+    def __init__(self, name, age, taste):
+        self.name = name              # 公有属性：外部可直接访问
+        self._age = age               # 单下划线：约定为受保护属性，类与子类可以访问
+        self.__taste = taste          # 双下划线：被重整为 _Person__taste，子类无法直接访问
+
+    def showperson(self):
+        """显示本类的三个属性（在 Person 内部访问 __taste 是合法的）"""
+        print(self.name)              # 公有属性
+        print(self._age)              # 受保护属性
+        print(self.__taste)           # 私有属性：此处会被解释为 self._Person__taste
+
+    def dowork(self):
+        """在类内部调用单下划线与双下划线方法"""
+        self._work()                  # 调用受保护方法
+        self.__away()                 # 调用私有方法（被重整为 self._Person__away）
+
+    def _work(self):
+        print('my _work')             # 单下划线方法
+
+    def __away(self):
+        print('my __away')            # 双下划线方法
+
+
+class Student(Person):
+    """学生类：继承 Person，演示子类访问父类私有属性"""
+
+    def construction(self, name, age, taste):
+        """在子类中重新给三个属性赋值"""
+        self.name = name              # 覆盖父类公有属性
+        self._age = age               # 覆盖父类受保护属性
+        self.__taste = taste          # 注意：这里被重整为 _Student__taste，是子类自己新定义的属性，与父类的 _Person__taste 互不影响
+
+    def showstudent(self):
+        """显示子类自己定义的三个属性"""
+        print(self.name)              # 公有属性
+        print(self._age)              # 受保护属性
+        print(self.__taste)           # 访问的是 _Student__taste，必须先调用 construction() 才存在
+
+    @staticmethod
+    def testbug():
+        """静态方法：调用模块内以单下划线开头的类 _Bug"""
+        _Bug.showbug()
+
+
+# 模块内可以访问；当其他模块使用 from cur_module import * 时，单下划线开头的名字不会被导入
+class _Bug(object):
+    @staticmethod
+    def showbug():
+        print('showbug')
+
+
+s1 = Student('jack', 25, 'football')   # 创建学生对象：__init__ 来自 Person，赋值 name/_age/_Person__taste
+s1.showperson()                         # jack、25、football（Person 的方法访问的是 _Person__taste）
+print('*' * 20)                         # 分隔线
+# s1.showstudent()                      # 报错：AttributeError，此时尚不存在 _Student__taste
+s1.construction('rose', 30, 'basketball')  # 子类赋值：name、_age 被覆盖；_Student__taste 被新建
+s1.showperson()                         # rose、30、football（父类的 _Person__taste 没有被改变）
+print('*' * 20)                         # 分隔线
+s1.showstudent()                        # rose、30、basketball（子类自己的 _Student__taste）
+print('*' * 20)                         # 分隔线
+Student.testbug()                       # showbug
+```
+
+> **总结**：
+>
+> - 父类中属性名为 `__名字` 的，子类不继承，子类不能访问
+> - 如果在子类中向 `__名字` 赋值，那么会在子类中定义一个与父类相同名字的属性（实际名字为 `_子类名__名字`，两者互不影响）
+> - `_名` 的变量、函数、类在使用 `from xxx import *` 时都不会被导入
+
+
+
 ### 10.3 继承
 
 ```python
@@ -1876,6 +1971,1530 @@ print(id(a) == id(b))    # True（同一个对象）
 
 > `str` **方法不具备嵌套结构**；对象方法内可以直接访问其他对象的数据成员
 
+
+
+### 10.8 多继承与 MRO 顺序
+
+#### 10.8.1 单独调用父类的方法（`类名.__init__`）
+
+```python
+# coding=utf-8
+print('******多继承使用类名.__init__ 发生的状态******')
+
+
+class Parent(object):
+    """祖先类：只接收 name 一个参数"""
+
+    def __init__(self, name):
+        print('parent 的init 开始被调用')
+        self.name = name                    # 保存姓名
+        print('parent 的init 结束被调用')
+
+
+class Son1(Parent):
+    """子类 1：额外拥有 age 属性"""
+
+    def __init__(self, name, age):
+        print('Son1 的init 开始被调用')
+        self.age = age                      # 保存年龄
+        Parent.__init__(self, name)         # 通过类名直接调用父类 __init__，self 必须手动传入
+        print('Son1 的init 结束被调用')
+
+
+class Son2(Parent):
+    """子类 2：额外拥有 gender 属性"""
+
+    def __init__(self, name, gender):
+        print('Son2 的init 开始被调用')
+        self.gender = gender                # 保存性别
+        Parent.__init__(self, name)         # 通过类名直接调用父类 __init__
+        print('Son2 的init 结束被调用')
+
+
+class Grandson(Son1, Son2):
+    """孙子类：同时继承 Son1 和 Son2（菱形继承）"""
+
+    def __init__(self, name, age, gender):
+        print('Grandson 的init 开始被调用')
+        Son1.__init__(self, name, age)      # 单独调用父类 Son1 的初始化方法
+        Son2.__init__(self, name, gender)   # 单独调用父类 Son2 的初始化方法
+        print('Grandson 的init 结束被调用')
+
+
+gs = Grandson('grandson', 12, '男')         # 创建对象，触发整条初始化链
+print('姓名：', gs.name)                     # grandson
+print('年龄：', gs.age)                      # 12
+print('性别：', gs.gender)                   # 男
+print('******多继承使用类名.__init__ 发生的状态******\n\n')
+```
+
+> 运行结果（`Parent` 的 `__init__` 被执行了 **2 次**）：
+
+```
+******多继承使用类名.__init__ 发生的状态******
+Grandson 的init 开始被调用
+Son1 的init 开始被调用
+parent 的init 开始被调用
+parent 的init 结束被调用
+Son1 的init 结束被调用
+Son2 的init 开始被调用
+parent 的init 开始被调用
+parent 的init 结束被调用
+Son2 的init 结束被调用
+Grandson 的init 结束被调用
+姓名： grandson
+年龄： 12
+性别： 男
+******多继承使用类名.__init__ 发生的状态******
+```
+
+#### 10.8.2 多继承中 `super()` 调用所有父类被重写的方法
+
+```python
+print('******多继承使用super().__init__ 发生的状态******')
+
+
+class Parent(object):
+    def __init__(self, name, *args, **kwargs):      # 为避免多继承报错，使用不定长参数接受多余参数
+        print('parent 的init 开始被调用')
+        self.name = name                            # 保存姓名；多余的 args/kwargs 到此为止不再向上传递
+        print('parent 的init 结束被调用')
+
+
+class Son1(Parent):
+    def __init__(self, name, age, *args, **kwargs):  # 不定长参数：接收后续类需要的参数
+        print('Son1 的init 开始被调用')
+        self.age = age                               # 保存年龄
+        super().__init__(name, *args, **kwargs)      # 按 MRO 调用下一个类的 __init__（此时下一个是 Son2，而不是 Parent）
+        print('Son1 的init 结束被调用')
+
+
+class Son2(Parent):
+    def __init__(self, name, gender, *args, **kwargs):  # 不定长参数
+        print('Son2 的init 开始被调用')
+        self.gender = gender                         # 保存性别
+        super().__init__(name, *args, **kwargs)      # 调用 MRO 中的下一个类（Parent）
+        print('Son2 的init 结束被调用')
+
+
+class Grandson(Son1, Son2):
+    def __init__(self, name, age, gender):
+        print('Grandson 的init 开始被调用')
+        # 多继承时，相对于使用类名.__init__ 要把每个父类全部写一遍
+        # 而 super 只用一句话，执行了全部父类的方法，这也是为何多继承需要全部传参的一个原因
+        # super(Grandson, self).__init__(name, age, gender)   # Python 2 写法，与下一行等价
+        super().__init__(name, age, gender)
+        print('Grandson 的init 结束被调用')
+
+
+print(Grandson.__mro__)                              # 打印出来顺序是谁，将来调用的就是谁
+gs = Grandson('grandson', 12, '男')
+print('姓名：', gs.name)
+print('年龄：', gs.age)
+print('性别：', gs.gender)
+print('******多继承使用super().__init__ 发生的状态******\n\n')
+```
+
+> 运行结果（`Parent` 只被执行 **1 次**）：
+
+```
+******多继承使用super().__init__ 发生的状态******
+(<class '__main__.Grandson'>, <class '__main__.Son1'>, <class '__main__.Son2'>, <class '__main__.Parent'>, <class 'object'>)
+Grandson 的init 开始被调用
+Son1 的init 开始被调用
+Son2 的init 开始被调用
+parent 的init 开始被调用
+parent 的init 结束被调用
+Son2 的init 结束被调用
+Son1 的init 结束被调用
+Grandson 的init 结束被调用
+姓名： grandson
+年龄： 12
+性别： 男
+******多继承使用super().__init__ 发生的状态******
+```
+
+> 相当于 `Son1` 的 `super()` 走到了 `Son2`，`Son2` 又走到 `Parent`。
+
+> **注意**：
+>
+> 1. 以上 2 个代码执行的结果不同
+> 2. 如果 2 个子类中都继承了父类，当在子类中通过**父类名**调用时，`Parent` 被执行了 2 次，这种方式弊大于利（10.8.1 中的实例）
+> 3. 如果 2 个子类中都继承了父类，当在子类中通过 `super` 调用时，`Parent` 被执行了 1 次
+> 4. Python 里我们只讲**重写**，不讲**重载**（C++ 里讲重载：相同方法名字根据形参类型不同，调用不同函数）；Python 里不能出现相同的函数名，子类中覆盖父类中相同函数
+
+#### 10.8.3 单继承中的 `super()`
+
+```python
+print('******单继承使用super().__init__ 发生的状态******')
+
+
+class Parent(object):
+    def __init__(self, name):
+        print('parent 的init 开始被调用')
+        self.name = name
+        print('parent 的init 结束被调用')
+
+
+class Son1(Parent):
+    def __init__(self, name, age):
+        print('Son1 的init 开始被调用')
+        self.age = age
+        super().__init__(name)              # 单继承：只能传父类 __init__ 所需的参数，不能提供全部参数
+        print('Son1 的init 结束被调用')
+
+
+class Grandson(Son1):
+    def __init__(self, name, age, gender):
+        print('Grandson 的init 开始被调用')
+        super().__init__(name, age)         # 单继承：只传 Son1.__init__ 需要的 name、age
+        print('Grandson 的init 结束被调用')
+
+
+gs = Grandson('grandson', 12, '男')
+print('姓名：', gs.name)                     # grandson
+print('年龄：', gs.age)                      # 12
+# print('性别：', gs.gender)                 # 报错：gender 没有被保存到对象上
+print('******单继承使用super().__init__ 发生的状态******\n\n')
+```
+
+> **`super().__init__` 与 `类名.__init__` 的总结**：
+>
+> 1. `super().__init__` 相对于 `类名.__init__`，在**单继承**上用法基本无差
+> 2. 但在**多继承**上有区别：`super` 方法能保证**每个父类的方法只会执行一次**，而使用类名的方法会导致方法被执行多次（尽量避免使用类名方法调用）
+> 3. 多继承时，使用 `super` 方法，对父类的传参数，应该是由于 Python 中 `super` 的算法（MRO）导致的原因，**必须把参数全部传递，否则会报错**
+> 4. 单继承时，使用 `super` 方法，则**不能全部传递**，只能传父类方法所需的参数，否则会报错
+> 5. 多继承时，相对于使用类名 `.__init__` 方法，要把每个父类全部写一遍，而使用 `super` 方法，只需写一句话便执行了全部父类的方法，这也是为何多继承需要全部传参的一个原因
+
+#### 10.8.4 面试题：类属性的继承与修改
+
+```python
+class Parent(object):
+    x = 1                                   # 父类的类属性
+
+
+class Child1(Parent):
+    pass                                    # 不定义 x，向上查找
+
+
+class Child2(Parent):
+    pass                                    # 不定义 x，向上查找
+
+
+print(Parent.x, Child1.x, Child2.x)         # 1 1 1
+Child1.x = 2                                # 给 Child1 自己新增类属性 x（不影响 Parent）
+print(Parent.x, Child1.x, Child2.x)         # 1 2 1
+Parent.x = 3                                # 修改父类的 x：未重写 x 的子类（Child2）受影响
+print(Parent.x, Child1.x, Child2.x)         # 3 2 3
+```
+
+> **关键点**：在 Python 中，类变量在内部是作为**字典**处理的。如果一个变量的名字没有在当前类的字典中发现，将**搜索祖先类**（比如父类）直到被引用的变量名被找到（如果既没有在自己所在的类又没有在祖先类中找到，会引发一个 `AttributeError` 异常）。
+>
+> - 在父类中设置 `x = 1`，会使得类变量 `x` 在引用该类和其任何子类中的值为 1，所以第一个 `print` 输出 `1 1 1`
+> - 如果任何子类重写了该值（如 `Child1.x = 2`），该值**仅仅在子类中被改变**，所以第二个 `print` 输出 `1 2 1`
+> - 如果该值在父类中被改变（如 `Parent.x = 3`），这个改变会影响到任何**未重写该值**的子类（这里是 `Child2`），所以第三个 `print` 输出 `3 2 3`
+
+> **思考题**：如果打印要求是下面的样子，输出结果是多少？
+
+```python
+c1 = Child1()                               # 通过对象访问类属性
+c2 = Child2()
+p = Parent()
+print(c1.x, c2.x, p.x)                      # 1 1 1（三个对象都没有实例属性 x，向上查找类属性）
+c1.x = 2                                    # 给对象 c1 新增实例属性 x（不再是修改类属性）
+print(c1.x, c2.x, p.x)                      # 2 1 1
+p.x = 3                                     # 给对象 p 新增实例属性 x
+print(c1.x, c2.x, p.x)                      # 2 1 3
+```
+
+> 对象上赋值 `对象.x = 值` 永远是**新增 / 修改实例属性**，不会改动类属性；读取时先找实例属性，找不到再找类属性、再找父类。
+
+
+
+### 10.9 类属性、实例属性与三种方法
+
+#### 10.9.1 类属性与实例属性
+
+> 它们在定义和使用中有所区别，而最本质的区别是**内存中保存的位置不同**：
+>
+> - 实例属性属于**对象**
+> - 类属性属于**类**
+
+```python
+class Province(object):
+    # 类属性：属于类，所有对象共享
+    country = '中国'
+
+    def __init__(self, name):
+        # 实例属性：属于对象，每个对象各有一份
+        self.name = name
+
+
+# 创建一个实例对象
+obj = Province('山东省')
+# 直接访问实例属性：需要通过对象来访问
+print(obj.name)                             # 山东省
+# 直接访问类属性：通过类访问
+print(Province.country)                     # 中国
+```
+
+```text
+类对象 Province
+┌──────────────────────────────┐
+│ country = '中国'              │ ← 类属性：只保存 1 份
+│ def __init__(self, name)     │ ← 方法：同样只保存 1 份
+│ def other_func(self, ...)    │
+└──────────────────────────────┘
+        ▲                ▲
+        │ __class__      │ __class__
+┌───────┴────────┐ ┌─────┴──────────┐
+│ 实例对象 obj1   │ │ 实例对象 obj2   │
+│ name = '山东省' │ │ name = '山西省' │ ← 实例属性：每个对象各保存 1 份
+└────────────────┘ └────────────────┘
+```
+
+> 由上图看出：
+>
+> - **类属性在内存中只保存一份**
+> - **实例属性在每个对象中都要保存一份**（每个对象内部还有 `__class__` 指向所属的类对象）
+>
+> **应用场景**：通过类创建实例对象时，如果每个对象需要具有相同名字的属性，那么就使用类属性，用一份即可。
+
+#### 10.9.2 实例方法、静态方法和类方法
+
+> 方法包括：实例方法、静态方法和类方法，三种方法在内存中都归属于类，区别在于**调用方式不同**。
+>
+> ---
+
+| 方法 | 装饰器 | 调用者 | 默认参数 |
+| --- | --- | --- | --- |
+| 实例方法 | 无 | 对象 | 至少一个 `self` 参数；执行时自动将调用该方法的对象赋值给 `self` |
+| 类方法 | `@classmethod` | 类 | 至少一个 `cls` 参数；执行时自动将调用该方法的类赋值给 `cls` |
+| 静态方法 | `@staticmethod` | 类 | 无默认参数 |
+
+> ---
+
+```python
+class Foo(object):
+    def __init__(self, name):
+        self.name = name
+
+    def ord_func(self):
+        """定义实例方法，至少有一个 self 参数"""
+        # print(self.name)
+        print('实例方法')
+
+    @classmethod
+    def class_func(cls):
+        """定义类方法，至少有一个 cls 参数"""
+        print('类方法')
+
+    @staticmethod
+    def static_func():
+        """定义静态方法，无默认参数"""
+        print('静态方法')
+
+
+f = Foo('中国')                              # 创建对象
+f.ord_func()                                 # 调用实例方法（对象调用）
+Foo.class_func()                             # 调用类方法（类调用）
+Foo.static_func()                            # 调用静态方法（类调用）
+```
+
+> **对比**：
+>
+> - **相同点**：对于所有的方法而言，均属于类，所以在内存中也只保存一份
+> - **不同点**：方法调用者不同、调用方法时自动传入的参数不同
+
+
+
+### 10.10 property 属性
+
+#### 10.10.1 什么是 property 属性
+
+> property 属性是**一种用起来像是使用实例属性一样的特殊属性，可以对应于某个方法**。
+
+```python
+# ############### 定义 ###############
+class Foo:
+    def func(self):
+        pass
+
+    # 定义 property 属性
+    @property
+    def prop(self):
+        pass
+
+
+# ############### 调用 ###############
+foo_obj = Foo()
+foo_obj.func()                              # 调用实例方法：需要括号
+foo_obj.prop                                # 调用 property 属性：无需括号
+```
+
+> property 属性的定义和调用要注意以下几点：
+>
+> - **定义时**，在实例方法的基础上添加 `@property` 装饰器；并且仅有一个 `self` 参数
+> - **调用时**，无需括号：方法 `foo_obj.func()`；property 属性 `foo_obj.prop`
+
+> **简单实例**：商城列表页不可能把数据库中的所有内容都显示到页面上，而是通过**分页**局部显示，所以向数据库请求数据时要指定获取从第 m 条到第 n 条的所有数据。分页功能包括：
+>
+> - 根据用户请求的当前页和总数据条数计算出 m 和 n
+> - 根据 m 和 n 去数据库中请求数据
+
+```python
+# ############### 定义 ###############
+class Pager:
+    def __init__(self, current_page):
+        # 用户当前请求的页码（第一页、第二页...）
+        self.current_page = current_page
+        # 每页默认显示 10 条数据
+        self.per_items = 10
+
+    @property
+    def start(self):
+        val = (self.current_page - 1) * self.per_items   # 起始值 m
+        return val
+
+    @property
+    def end(self):
+        val = self.current_page * self.per_items         # 结束值 n
+        return val
+
+
+# ############### 调用 ###############
+p = Pager(1)
+print(p.start)                              # 就是起始值，即：m（0）
+print(p.end)                                # 就是结束值，即：n（10）
+```
+
+> Python 的 property 属性的功能是：property 属性内部进行一系列的逻辑计算，最终将计算结果返回。
+
+#### 10.10.2 property 属性的两种定义方式
+
+> - **装饰器**：在方法上应用装饰器
+> - **类属性**：在类中定义值为 `property` 对象的类属性
+
+##### 1. 装饰器方式
+
+> 在类的实例方法上应用 `@property` 装饰器。
+
+> Python 2 中的**经典类**只有一种 `@property` 装饰器（只读）；**新式类**具有三种。Python 3 中所有类都是新式类，因此下面三种访问方式都可使用。
+
+```python
+# ############### 定义 ###############
+class Goods:
+    @property
+    def price(self):
+        return 'laowang'
+
+
+# ############### 调用 ###############
+obj = Goods()
+result = obj.price                          # 自动执行 @property 修饰的 price 方法，并获取方法的返回值
+print(result)                               # laowang
+```
+
+> 具有三种 `@property` 装饰器：
+
+```python
+# coding=utf-8
+# ############### 定义 ###############
+class Goods:
+    @property
+    def price(self):
+        print('@property')
+
+    @price.setter
+    def price(self, value):
+        print('@price.setter')
+
+    @price.deleter
+    def price(self):
+        print('@price.deleter')
+
+
+# ############### 调用 ###############
+obj = Goods()
+obj.price                                   # 自动执行 @property 修饰的 price 方法，并获取方法的返回值
+obj.price = 123                             # 自动执行 @price.setter 修饰的 price 方法，并将 123 赋值给方法的参数
+del obj.price                               # 自动执行 @price.deleter 修饰的 price 方法
+```
+
+> 属性有三种访问方式，并分别对应了三个被 `@property`、`@方法名.setter`、`@方法名.deleter` 修饰的方法。
+
+> 由于具有三种访问方式，可以根据它们的访问特点，分别将三个方法定义为对同一个属性：**获取、修改、删除**：
+
+```python
+class Goods(object):
+    def __init__(self):
+        self.original_price = 100           # 原价
+        self.discount = 0.8                 # 折扣
+
+    @property
+    def price(self):
+        new_price = self.original_price * self.discount   # 实际价格 = 原价 * 折扣
+        return new_price
+
+    @price.setter
+    def price(self, value):
+        self.original_price = value         # 修改商品原价
+
+    @price.deleter
+    def price(self):
+        del self.original_price             # 删除商品原价
+
+
+obj = Goods()
+print(obj.price)                            # 获取商品价格：80.0
+obj.price = 200                             # 修改商品原价
+print(obj.price)                            # 160.0
+del obj.price                               # 删除商品原价，保证后面有人使用会报错
+```
+
+##### 2. 类属性方式：创建值为 property 对象的类属性
+
+> 当使用类属性的方式创建 property 属性时，经典类和新式类无区别。
+
+```python
+class Foo:
+    def get_bar(self):
+        return 'laowang'
+
+    BAR = property(get_bar)                 # 创建 property 对象，赋给类属性 BAR
+
+
+obj = Foo()
+result = obj.BAR                            # 自动调用 get_bar 方法，并获取方法的返回值
+print(result)                               # laowang
+```
+
+> `property(fget=None, fset=None, fdel=None, doc=None)` 有四个参数：
+>
+> ---
+
+| 参数 | 类型 | 触发时机 |
+| --- | --- | --- |
+| 第一个（`fget`） | 方法名 | `对象.属性` 时自动触发执行该方法 |
+| 第二个（`fset`） | 方法名 | `对象.属性 = XXX` 时自动触发执行该方法 |
+| 第三个（`fdel`） | 方法名 | `del 对象.属性` 时自动触发执行该方法 |
+| 第四个（`doc`） | 字符串 | `类.属性.__doc__` 时获取，是该属性的描述信息 |
+
+> ---
+
+```python
+# coding=utf-8
+class Foo(object):
+    def get_bar(self):
+        print('getter...')
+        return 'laowang'
+
+    def set_bar(self, value):
+        """必须两个参数（self 与 value）"""
+        print('setter...')
+        return 'set value' + value
+
+    def del_bar(self):
+        print('deleter...')
+        return 'laowang'
+
+    BAR = property(get_bar, set_bar, del_bar, 'description...')
+
+
+obj = Foo()
+obj.BAR                                     # 自动调用第一个参数中定义的方法：get_bar
+obj.BAR = 'alex'                            # 自动调用第二个参数中定义的方法：set_bar，并将 'alex' 当作参数传入
+desc = Foo.BAR.__doc__                      # 自动获取第四个参数中设置的值：description...
+print(desc)
+del obj.BAR                                 # 自动调用第三个参数中定义的方法：del_bar
+```
+
+> 同样可以用类属性方式将三个方法定义为对同一个属性的**获取、修改、删除**：
+
+```python
+class Goods(object):
+    def __init__(self):
+        self.original_price = 100           # 原价
+        self.discount = 0.8                 # 折扣
+
+    def get_price(self):
+        new_price = self.original_price * self.discount   # 实际价格 = 原价 * 折扣
+        return new_price
+
+    def set_price(self, value):
+        self.original_price = value
+
+    def del_price(self):
+        del self.original_price
+
+    PRICE = property(get_price, set_price, del_price, '价格属性描述...')
+
+
+obj = Goods()
+obj.PRICE                                   # 获取商品价格
+obj.PRICE = 200                             # 修改商品原价
+del obj.PRICE                               # 删除商品原价
+```
+
+#### 10.10.3 Django 框架中的 property 属性（了解）
+
+> Web 框架 Django 的视图中 `request.POST` 就是使用**类属性方式**创建的属性（下面为简化后的核心部分）：
+
+```python
+class WSGIRequest(http.HttpRequest):
+    def __init__(self, environ):
+        # ……（省略：解析 script_name、path_info、method、编码、content_length 等）
+        self.environ = environ                              # 保存 WSGI 的 environ 字典
+        self.META = environ                                 # META 是 environ 的别名
+
+    @cached_property
+    def GET(self):
+        # WSGI 规范说 QUERY_STRING 可能不存在
+        raw_query_string = get_bytes_from_wsgi(self.environ, 'QUERY_STRING', '')
+        return http.QueryDict(raw_query_string, encoding=self._encoding)
+
+    # ############### 看这里看这里 ###############
+    def _get_post(self):
+        if not hasattr(self, '_post'):
+            self._load_post_and_files()                     # 第一次访问时才加载 POST 和上传的文件
+        return self._post
+
+    # ############### 看这里看这里 ###############
+    def _set_post(self, post):
+        self._post = post
+
+    @cached_property
+    def COOKIES(self):
+        raw_cookie = get_str_from_wsgi(self.environ, 'HTTP_COOKIE', '')
+        return http.parse_cookie(raw_cookie)
+
+    def _get_files(self):
+        if not hasattr(self, '_files'):
+            self._load_post_and_files()
+        return self._files
+
+    # ############### 看这里看这里 ###############
+    POST = property(_get_post, _set_post)                   # request.POST 读取 / 赋值
+    FILES = property(_get_files)                            # request.FILES 只读
+    REQUEST = property(_get_request)                        # request.REQUEST（已弃用，_get_request 同上省略）
+```
+
+> **重要总结**：
+>
+> - 定义 property 属性共有两种方式，分别是**装饰器**和**类属性**
+> - 通过使用 property 属性，能够**简化调用者在获取数据的流程**
+
+#### 10.10.4 property 属性的应用：为私有属性添加 getter 和 setter
+
+```python
+# 1. 私有属性添加 getter 和 setter 方法
+class Money(object):
+    def __init__(self):
+        self.__money = 0                    # 私有属性
+
+    def getMoney(self):
+        return self.__money                 # getter：读取私有属性
+
+    def setMoney(self, value):
+        if isinstance(value, int):          # 边界判定：只允许整型
+            self.__money = value
+        else:
+            print('error:不是整型数字')
+```
+
+```python
+# 2. 使用 property 升级 getter 和 setter 方法
+class Money(object):
+    def __init__(self):
+        self.__money = 0
+
+    def getMoney(self):
+        return self.__money
+
+    def setMoney(self, value):
+        if isinstance(value, int):
+            self.__money = value
+        else:
+            print('error:不是整型数字')
+
+    # 定义一个属性，当对这个 money 设置值时调用 setMoney，当获取值时调用 getMoney
+    money = property(getMoney, setMoney)
+
+
+a = Money()
+a.money = 100                               # 调用 setMoney 方法
+print(a.money)                              # 调用 getMoney 方法：100
+```
+
+```python
+# 3. 使用 @property 取代 getter 和 setter 方法（重新实现一个属性的设置和读取方法，可做边界判定）
+class Money(object):
+    def __init__(self):
+        self.__money = 0
+
+    # 使用装饰器对 money 进行装饰，那么会自动添加一个叫 money 的属性，当调用获取 money 的值时，调用装饰的方法
+    @property
+    def money(self):
+        return self.__money
+
+    # 使用装饰器对 money 进行装饰，当对 money 设置值时，调用装饰的方法
+    @money.setter
+    def money(self, value):
+        if isinstance(value, int):
+            self.__money = value
+        else:
+            print('error:不是整型数字')
+
+
+a = Money()
+a.money = 100                               # 触发 setter
+print(a.money)                              # 触发 getter：100
+```
+
+
+
+### 10.11 魔法属性
+
+> Python 的类属性中存在着一些具有特殊含义的属性（魔法属性），详情如下（`__init__`、`__del__`、`__call__`、`__str__`、`__getitem__` 等魔法方法的触发时机见 10.7 表格）：
+
+#### 10.11.1 `__doc__`：类的描述信息
+
+```python
+class Foo:
+    """描述类信息，这是用于看片的神奇"""
+
+    def func(self):
+        pass
+
+
+print(Foo.__doc__)                          # 输出：描述类信息，这是用于看片的神奇
+```
+
+#### 10.11.2 `__module__` 和 `__class__`
+
+> - `__module__`：表示当前操作的对象在哪个模块
+> - `__class__`：表示当前操作的对象的类是什么
+
+```python
+# test.py
+# -*- coding:utf-8 -*-
+class Person(object):
+    def __init__(self):
+        self.name = 'laowang'
+```
+
+```python
+# main.py
+from test import Person
+
+obj = Person()
+print(obj.__module__)                       # 输出 test，即：输出模块
+print(obj.__class__)                        # 输出 <class 'test.Person'>，即：输出类
+```
+
+#### 10.11.3 `__init__`：初始化方法
+
+> 通过类创建对象时，**自动触发执行**。
+
+```python
+class Person:
+    def __init__(self, name):
+        self.name = name
+        self.age = 18
+
+
+obj = Person('laowang')                     # 自动执行类中的 __init__ 方法
+```
+
+#### 10.11.4 `__del__`：析构方法
+
+> 当对象在内存中被释放时，**自动触发执行**。
+
+> 此方法一般无须定义，因为 Python 是一门高级语言，程序员在使用时无需关心内存的分配和释放，因为此工作都是交给 Python 解释器来执行，所以 `__del__` 的调用是由解释器在进行垃圾回收时自动触发执行的。
+
+```python
+class Foo:
+    def __del__(self):
+        pass
+```
+
+#### 10.11.5 `__call__`：对象后面加括号触发执行
+
+> `__init__` 方法的执行是由**创建对象**触发的，即：`对象 = 类名()`；而 `__call__` 方法的执行是由**对象后加括号**触发的，即：`对象()` 或者 `类()()`。
+
+```python
+class Foo:
+    def __init__(self):
+        pass
+
+    def __call__(self, *args, **kwargs):
+        print('__call__')
+
+
+obj = Foo()                                 # 执行 __init__
+obj()                                       # 执行 __call__
+```
+
+#### 10.11.6 `__dict__`：类或对象中的所有属性
+
+> 实例属性属于对象；类属性和方法等属于类，即：
+
+```python
+class Province(object):
+    country = 'China'                       # 类属性
+
+    def __init__(self, name, count):
+        self.name = name                    # 实例属性
+        self.count = count                  # 实例属性
+
+    def func(self, *args, **kwargs):
+        print('func')
+
+
+# 获取类的属性，即：类属性、方法
+print(Province.__dict__)
+# 输出：{'__module__': '__main__', 'country': 'China', '__init__': <function Province.__init__ at 0x...>,
+#        'func': <function Province.func at 0x...>, '__dict__': <attribute '__dict__' of 'Province' objects>,
+#        '__weakref__': <attribute '__weakref__' of 'Province' objects>, '__doc__': None}
+
+obj1 = Province('山东', 10000)
+print(obj1.__dict__)                        # 获取对象 obj1 的属性：{'name': '山东', 'count': 10000}
+
+obj2 = Province('山西', 20000)
+print(obj2.__dict__)                        # 获取对象 obj2 的属性：{'name': '山西', 'count': 20000}
+```
+
+#### 10.11.7 `__str__`：打印对象时的输出
+
+> 如果一个类中定义了 `__str__` 方法，那么在打印对象时，默认输出该方法的返回值。
+
+```python
+class Foo:
+    def __str__(self):
+        return 'laowang'
+
+
+obj = Foo()
+print(obj)                                  # 输出：laowang
+```
+
+#### 10.11.8 `__getitem__`、`__setitem__`、`__delitem__`（了解即可）
+
+> 用于**索引操作**，如字典。以上分别表示获取、设置、删除数据。
+
+```python
+# -*- coding:utf-8 -*-
+class Foo(object):
+    def __getitem__(self, key):
+        print('__getitem__', key)
+
+    def __setitem__(self, key, value):
+        print('__setitem__', key, value)
+
+    def __delitem__(self, key):
+        print('__delitem__', key)
+
+
+obj = Foo()
+result = obj['k1']                          # 自动触发执行 __getitem__
+obj['k2'] = 'laowang'                       # 自动触发执行 __setitem__
+del obj['k1']                               # 自动触发执行 __delitem__
+```
+
+
+
+### 10.12 面向对象设计
+
+#### 10.12.1 再议封装、继承、多态
+
+> 封装、继承、多态是面向对象的 **3 大特性**。
+
+> - **继承**：基于 Python 中的属性查找（如 `X.name`）
+> - **多态**：在 `X.method` 方法中，`method` 的意义取决于 `X` 的类型
+> - **封装**：方法和运算符实现行为，数据隐藏默认是一种惯例（下划线约定）
+
+##### 为啥要封装
+
+```text
+面向过程：多个函数通过全局变量传递数据
+全局变量1、全局变量2、全局变量3 ……
+   ▲ 读写        ▲ 读写        ▲ 读写
+ 函数1()  ──→  函数2()  ──→  函数3()    ……（省略）
+所有函数共用同一份全局数据，并发时会互相干扰
+```
+
+> 实际开发中，为了完成较为复杂的任务，往往需要多个函数配合。当一个函数中收到了数据，为了让其他的函数能够直接使用，很多人想到了使用**全局变量**来实现传递的功能，其实这真的很麻烦，会出现一些问题。例如：并发程序会出现对同一个全局变量操作的问题。
+
+```text
+模板（类）：“全局”变量1/2/3 + 函数1/2/3
+        │ 实例化
+        ├──→ 实体1：独有的变量 + 指向模板的引用（用来调用函数）
+        └──→ 实体2：独有的变量 + 指向模板的引用（用来调用函数）
+每个需求者各拿一份“函数（功能）+ 变量（数据）”，互不干扰
+```
+
+> 将“变量 + 函数”制作成一个**模板**，当需要一个功能时就提供给需求者：需求人就会得到“函数（功能）+ 变量（数据）”。为了使每个需求的人之间不产生误会，因此每人一份“函数（功能）+ 变量（数据）”，每个实体有独有的变量，并指向模板的引用来调用函数。
+
+> **好处**：
+>
+> 1. 在使用面向过程编程时，当需要对数据处理时，需要考虑用哪个模块中哪个函数来进行操作；而用面向对象编程时，因为已经将数据存储到了这个独立的空间中，这个独立的空间（即对象）中通过一个特殊的变量（`__class__`）能够获取到类（模板），而且这个类中的方法是有一定数量的，与此类无关的将不会出现在本类中，因此需要对数据处理时，可以很快速地定位到需要的方法是谁，这样更方便
+> 2. 全局变量只能有 1 份，当很多个函数需要多个备份时，往往需要利用其它的变量来进行储存；而通过封装会将用来存储数据的这个变量变为了对象中的一个“全局”变量，只要对象不一样，那么这个变量就可以再有 1 份，所以这样更方便
+> 3. **代码划分更清晰**
+
+```python
+# ── 面向过程：全局变量 + 一堆函数，数据与函数没有明确归属 ──
+全局变量1
+全局变量2
+全局变量3
+
+
+def 函数1():
+    pass
+
+
+def 函数2():
+    pass
+
+
+def 函数3():
+    pass
+
+
+# ── 面向对象：属性与方法按类划分，归属清晰 ──
+class 类(object):
+    属性1
+    属性2
+
+    def 方法1(self):
+        pass
+
+    def 方法2(self):
+        pass
+
+
+class 类2(object):
+    属性3
+
+    def 方法3(self):
+        pass
+
+    def 方法4(self):
+        pass
+
+    def 方法5(self):
+        pass
+```
+
+##### 为啥要继承
+
+```text
+已有 类1（包含很多代码），现在需要对类1扩充功能、对某些方法适当修改，有两种方式：
+  方式1：重新自己写一个新版本   → 代码重复、维护成本高
+  方式2：在类1的基础上修改      → 继承类1，只写新增/修改的部分（推荐）
+```
+
+> 说明：
+>
+> 1. 能够提升代码的**重用率**，即开发一个类，可以在多个子功能中直接使用
+> 2. 继承能够有效地进行**代码的管理**，当某个类有问题只要修改这个类就行，而继承这个类的子类往往不需要修改
+
+##### 怎样理解多态
+
+```python
+class MiniOS(object):
+    """MiniOS 操作系统类"""
+
+    def __init__(self, name):
+        self.name = name                    # 系统名称
+        self.apps = []                      # 安装的应用程序名称列表
+
+    def __str__(self):
+        return '%s 安装的软件列表为%s' % (self.name, str(self.apps))
+
+    def install_app(self, app):
+        # 判断是否已经安装了软件
+        if app.name in self.apps:
+            print('已经安装了%s，无需再次安装' % app.name)
+        else:
+            app.install()                   # 多态：不同 app 子类的 install() 行为不同，这里无需区分类型
+            self.apps.append(app.name)
+
+
+class App(object):
+    def __init__(self, name, version, desc):
+        self.name = name
+        self.version = version
+        self.desc = desc
+
+    def __str__(self):
+        return '%s 的当前版本是%s - %s' % (self.name, self.version, self.desc)
+
+    def install(self):
+        print('将%s [%s] 的执行程序复制到程序目录...' % (self.name, self.version))
+
+
+class PyCharm(App):
+    pass                                    # 不重写 install，使用父类实现
+
+
+class Chrome(App):
+    def install(self):
+        print('正在解压缩安装程序...')          # 重写 install：先解压
+        super().install()                   # 再调用父类的安装逻辑
+
+
+linux = MiniOS('Linux')
+print(linux)
+
+pycharm = PyCharm('PyCharm', '1.0', 'python 开发的IDE 环境')
+chrome = Chrome('Chrome', '2.0', '谷歌浏览器')
+
+linux.install_app(pycharm)
+linux.install_app(chrome)
+linux.install_app(chrome)                   # 重复安装：提示已安装
+print(linux)
+```
+
+> 运行结果：
+
+```
+Linux 安装的软件列表为[]
+将PyCharm [1.0] 的执行程序复制到程序目录...
+正在解压缩安装程序...
+将Chrome [2.0] 的执行程序复制到程序目录...
+已经安装了Chrome，无需再次安装
+Linux 安装的软件列表为['PyCharm', 'Chrome']
+```
+
+#### 10.12.2 工厂模式
+
+> **工厂模式**：把“创建哪个类的对象”的判断封装到一个工厂类中，调用者只需传入参数，不必关心具体类。新建 `factory.py` 文件，先定义基类及子类：
+
+```python
+class Animal():
+    """动物基类：定义统一接口"""
+
+    def eat(self):
+        pass
+
+    def voice(self):
+        pass
+
+
+class Dog(Animal):
+    def eat(self):
+        print('狗吃骨头')
+
+    def voice(self):
+        print('狗叫汪汪')
+
+
+class Cat(Animal):
+    def eat(self):
+        print('猫吃鱼')
+
+    def voice(self):
+        print('猫叫喵喵')
+
+
+class FactoryMode():
+    """工厂类：根据传入的名称创建对应的动物对象"""
+
+    def create_ani(self, animal_name):
+        if animal_name == 'dog':
+            return Dog()                    # 返回 Dog 对象
+        if animal_name == 'cat':
+            return Cat()                    # 返回 Cat 对象
+
+
+f = FactoryMode()                           # 创建工厂对象
+animal = f.create_ani('cat')                # 通过参数决定创建哪个对象
+animal.eat()                                # 猫吃鱼
+animal.voice()                              # 猫叫喵喵
+```
+
+> 运行程序，发现通过传入参数的不同，工厂对象分别创建出 `dog` 和 `cat` 对象，并执行了对应的方法，工厂模式创建对象测试成功。
+
+#### 10.12.3 参考实例：腾讯即时通信模块的初级封装
+
+> 下面的实例展示了如何用**继承 + `@property` + 方法封装**来设计一组协议消息类：`Message` 表示一条消息请求，`MsgDict` 是各种消息体的基类，其子类 `TextMsg`、`LocationMsg` 等分别对应不同的消息类型。
+
+```python
+#! /usr/bin/env python
+# coding: utf-8
+import random
+import time
+
+
+class Message(object):
+    """一条消息：包含接收方、随机数与若干消息体"""
+
+    def __init__(self, msgarr=[], toacc=''):
+        self.msgbody = msgarr                               # MsgDict 对象实例的列表或者空列表
+        self.toacc = toacc                                  # toacc 为字符串（单发）或者列表（批量发）
+        self.msgrandom = random.randint(1, 1000000000)      # 消息随机数，由随机函数产生
+        self.msgrequest = {
+            'To_Account': toacc,                            # 消息接收方账号
+            'MsgRandom': self.msgrandom,                    # 消息随机数
+            'MsgBody': [t.msg for t in msgarr]              # 每个消息体通过 @property msg 转成字典
+        }
+
+    def del_option(self, option):
+        # 删除除了三个必填项之外的可选项
+        if option in (set(self.msgrequest) - set(['To_Account', 'MsgRandom', 'MsgBody'])):
+            self.__dict__.pop(option)
+            self.msgrequest.pop(option)
+
+    def append_msg(self, msg):
+        self.msgbody.append(msg)
+        self.msgrequest['MsgBody'].append(msg.msg)
+
+    def insert_msg(self, index, msg):
+        self.msgbody.insert(index, msg)
+        self.msgrequest['MsgBody'].insert(index, msg.msg)   # 原稿此处漏写 index，应为 insert(index, msg.msg)
+
+    def del_msg(self, index):
+        if index in range(len(self.msgbody)):
+            del self.msgbody[index]
+            del self.msgrequest['MsgBody'][index]
+
+    def set_from(self, fromacc):
+        # 指定消息的发送方，默认为服务器发送
+        self.fromacc = fromacc
+        self.msgrequest['From_Account'] = fromacc
+
+    def set_to(self, toacc):
+        # 指定消息的接收方，可以为 String（单发），可以为 List（批量发送）
+        self.toacc = toacc
+        self.msgrequest['To_Account'] = toacc
+
+    def refresh_random(self):
+        self.msgrandom = random.randint(1, 1000000000)
+        self.msgrequest['MsgRandom'] = self.msgrandom       # 原稿此处末尾多了一个逗号，会变成元组，应去掉
+
+    def set_sync(self, sync):
+        # 同步选项：1，把消息同步到 From_Account 在线终端和漫游上
+        #           2，消息不同步至 From_Account
+        #           若不填写，默认情况下会将消息同步；仅在单发单聊消息中可调用
+        self.sync = sync
+        self.msgrequest['SyncOtherMachine'] = sync
+
+    def set_timestamp(self):
+        # 设置消息时间戳，unix 时间，仅在单发单聊消息中可以调用
+        self.timestamp = int(time.time())
+        self.msgrequest['MsgTimeStamp'] = self.timestamp
+
+    def set_offlinepush(self, pushflag=0, desc='', ext='', sound=''):
+        # 仅适用于 APNs 推送，不适用于安卓厂商推送
+        self.msgrequest['OfflinePushInfo'] = {
+            'PushFlag': pushflag,
+            'Desc': desc,
+            'Ext': ext,
+            'Sound': sound
+        }
+
+
+class MsgDict(object):
+    """所有消息体的基类：统一 msgtype / msgcontent，并提供 msg 属性"""
+
+    def __init__(self, msgtype='', msgcontent={}):
+        self.msgtype = msgtype                              # 消息类型，如 TIMTextElem
+        self.msgcontent = msgcontent                        # 消息内容（字典）
+
+    @property
+    def msg(self):
+        # 把消息体拼装成接口要求的字典，调用时像属性一样使用：obj.msg
+        return {
+            'MsgType': self.msgtype,
+            'MsgContent': self.msgcontent
+        }
+
+    def set_content(self, content):
+        self.msgcontent = content
+
+
+class TextMsg(MsgDict):
+    """文本消息"""
+
+    def __init__(self, text='', msgtype='TIMTextElem'):
+        self.text = text
+        content = {'Text': text}
+        super(TextMsg, self).__init__(msgtype=msgtype, msgcontent=content)   # 调用父类初始化
+
+    def set_text(self, text):
+        self.text = text
+        self.msgcontent['Text'] = text                      # 属性与 msgcontent 保持同步
+
+
+class LocationMsg(MsgDict):
+    """地理位置消息"""
+
+    def __init__(self, desc='', latitude=0, longitude=0, msgtype='TIMLocationElem'):
+        self.desc = desc
+        self.latitude = latitude
+        self.longitude = longitude
+        content = {
+            'Desc': desc,                                   # 地理位置描述信息，String
+            'Latitude': latitude,                           # 纬度，Number
+            'Longitude': longitude                          # 经度，Number
+        }
+        super(LocationMsg, self).__init__(msgtype=msgtype, msgcontent=content)
+
+    def set_desc(self, desc):
+        self.desc = desc
+        self.msgcontent['Desc'] = desc
+
+    def set_location(self, latitude, longitude):
+        self.latitude = latitude
+        self.longitude = longitude
+        self.msgcontent['Latitude'] = latitude
+        self.msgcontent['Longitude'] = longitude
+
+    def set_latitude(self, latitude):
+        self.latitude = latitude
+        self.msgcontent['Latitude'] = latitude
+
+    def set_longitude(self, longitude):
+        self.longitude = longitude
+        self.msgcontent['Longitude'] = longitude
+```
+
+> 其余消息类型的设计思路完全一致（子类构造时拼装 `content` 字典 → `super().__init__` → 为每个字段提供 `set_xxx` 方法并同步更新 `msgcontent`）：
+>
+> ---
+
+| 子类 | `msgtype` | `msgcontent` 字段（`__init__` 参数） |
+| --- | --- | --- |
+| `FaceMsg` | `TIMFaceElem` | `Index`（表情索引，用户自定义，Number）、`Data`（额外数据，String） |
+| `CustomMsg` | `TIMCustomElem` | `Data`（自定义消息数据，不作为 APNs payload 字段下发，String）、`Desc`（自定义消息描述，接收方为 iPhone 后台在线时做 iOS 离线 Push 的文本展示）、`Ext`（扩展字段，接收方为 iOS 且应用处于后台时作为 APNs 请求包 payload 的 ext 键值下发，协议格式由业务方确定，APNs 只做透传）、`Sound`（自定义 APNs 推送铃声） |
+| `SoundMsg` | `TIMSoundElem` | `UUID`（语音序列号，后台用于索引语音的键值，String）、`Size`（语音数据大小，Number）、`Second`（语音时长，单位秒，Number） |
+| `ImageMsg` | `TIMImageElem` | `UUID`（图片序列号，String）、`ImageFormat`（图片格式：BMP=1、JPG=2、GIF=3、其他=0，Number）、`ImageInfoArray`（原图、缩略图或大图下载信息，Array，元素来自 `ImageInfo.info`）；额外提供 `append_info`、`insert_info`、`del_info` |
+| `FileMsg` | `TIMFileElem` | `UUID`（文件序列号，String）、`FileSize`（文件数据大小，Number）、`FileName`（文件名称 / 路径，String） |
+
+> ---
+
+```python
+class ImageInfo(object):
+    """图片下载信息：不继承 MsgDict，仅用 @property info 输出字典"""
+
+    def __init__(self, itype=1, size=0, width=0, height=0, url=''):
+        self.itype = itype                  # 图片类型：1-原图，2-大图，3-缩略图，0-其他
+        self.size = size                    # 图片数据大小，Number
+        self.width = width                  # 图片宽度，Number
+        self.height = height                # 图片高度，Number
+        self.url = url                      # 图片下载地址，String
+
+    @property
+    def info(self):
+        return {
+            'Type': self.itype,
+            'Size': self.size,
+            'Width': self.width,
+            'Height': self.height,
+            'URL': self.url
+        }
+
+    def set_type(self, itype):
+        self.itype = itype
+
+    def set_size(self, size):
+        self.size = size
+
+    def set_width(self, width):
+        self.width = width
+
+    def set_height(self, height):
+        self.height = height
+
+    def set_url(self, url):
+        self.url = url
+```
+
+> **原稿中的几处笔误（学习时注意避免）**：
+>
+> - `FaceMsg.__init__` 中写成了 `super(TextMsg, self).__init__(...)`，应为 `super(FaceMsg, self)`
+> - `ImageMsg.append_info` 中 `self.msgcontnet` 拼写错误，应为 `self.msgcontent`
+> - `FileMsg.set_uuid` 中 `self.msgcontent['UUID'] = UUID`，应为 `= uuid`
+> - 默认参数使用了可变对象（如 `msgarr=[]`、`msgcontent={}`、`imginfo=[]`），多个实例会**共享同一个默认对象**，更稳妥的写法是默认 `None` 后在函数体内新建
+
+#### 10.12.4 参考实例：微信开发包（wechat_sdk）中的类设计
+
+> 微信开发包（Python 实现）可用于学习类的设计，项目地址：
+>
+> - [doraemonext/wechat-python-sdk](https://github.com/doraemonext/wechat-python-sdk)（几年前的版本）
+> - [wechatpy/wechatpy](https://github.com/wechatpy/wechatpy)（最新）
+
+> 截取其中的配置类 `WechatConf`，该类存储所有和微信开发相关的配置信息，同时维护配置信息的有效性。核心设计：**双下划线私有属性 + `@property` 读取 + `@xxx.setter` 修改并联动更新**。
+
+```python
+from __future__ import unicode_literals
+import time
+
+from wechat_sdk.lib.crypto import BasicCrypto
+from wechat_sdk.lib.request import WechatRequest
+from wechat_sdk.exceptions import NeedParamError
+from wechat_sdk.utils import disable_urllib3_warning
+
+
+class WechatConf(object):
+    """WechatConf 配置类
+
+    该类将会存储所有和微信开发相关的配置信息，同时也会维护配置信息的有效性。
+    """
+
+    def __init__(self, **kwargs):
+        """
+        :param kwargs: 配置信息字典，可用字典 key 值及对应解释如下：
+            'token': 微信 Token
+            'appid': App ID
+            'appsecret': App Secret
+            'encrypt_mode': 加解密模式（'normal': 明文模式，'compatible': 兼容模式，'safe': 安全模式（默认））
+            'encoding_aes_key': EncodingAESKey 值（传入此值必须保证同时传入 token、appid，否则抛出异常）
+            'access_token_getfunc' / 'access_token_setfunc' / 'access_token_refreshfunc':
+                access token 的获取 / 写入 / 刷新函数（用于单机及分布式环境下）
+            'access_token' / 'access_token_expires_at':
+                直接导入的 access token 值及过期日期，需在上一次实例化之后手动缓存并在此处传入；
+                不传入则在需要时自动重新获取（传入 getfunc 和 setfunc 后将自动忽略此处的传入值）
+            'jsapi_ticket_getfunc' / 'jsapi_ticket_setfunc' / 'jsapi_ticket_refreshfunc':
+                jsapi ticket 的获取 / 写入 / 刷新函数
+            'jsapi_ticket' / 'jsapi_ticket_expires_at': 直接导入的 jsapi ticket 值及过期日期（规则同 access token）
+            'partnerid': 财付通商户身份标识，支付权限专用
+            'partnerkey': 财付通商户权限密钥 Key，支付权限专用
+            'paysignkey': 商户签名密钥 Key，支付权限专用
+            'checkssl': 是否检查 SSL，默认不检查（False），可避免 urllib3 的 InsecurePlatformWarning 警告
+        """
+        self.__request = WechatRequest()                    # 私有属性：封装 HTTP 请求
+        if kwargs.get('checkssl') is not True:
+            disable_urllib3_warning()                       # 可解决 InsecurePlatformWarning 警告
+
+        self.__token = kwargs.get('token')
+        self.__appid = kwargs.get('appid')
+        self.__appsecret = kwargs.get('appsecret')
+        self.__encrypt_mode = kwargs.get('encrypt_mode', 'safe')
+        self.__encoding_aes_key = kwargs.get('encoding_aes_key')
+        self.__crypto = None
+        self._update_crypto()                               # 根据当前配置更新加解密对象
+
+        self.__access_token_getfunc = kwargs.get('access_token_getfunc')
+        self.__access_token_setfunc = kwargs.get('access_token_setfunc')
+        self.__access_token_refreshfunc = kwargs.get('access_token_refreshfunc')
+        self.__access_token = kwargs.get('access_token')
+        self.__access_token_expires_at = kwargs.get('access_token_expires_at')
+
+        self.__jsapi_ticket_getfunc = kwargs.get('jsapi_ticket_getfunc')
+        self.__jsapi_ticket_setfunc = kwargs.get('jsapi_ticket_setfunc')
+        self.__jsapi_ticket_refreshfunc = kwargs.get('jsapi_ticket_refreshfunc')
+        self.__jsapi_ticket = kwargs.get('jsapi_ticket')
+        self.__jsapi_ticket_expires_at = kwargs.get('jsapi_ticket_expires_at')
+
+        self.__partnerid = kwargs.get('partnerid')
+        self.__partnerkey = kwargs.get('partnerkey')
+        self.__paysignkey = kwargs.get('paysignkey')
+
+    @property
+    def token(self):
+        """获取当前 Token"""
+        self._check_token()
+        return self.__token
+
+    @token.setter
+    def token(self, token):
+        """设置当前 Token"""
+        self.__token = token
+        self._update_crypto()                               # 改动 Token 需要重新更新 Crypto
+
+    @property
+    def appid(self):
+        """获取当前 App ID"""
+        return self.__appid
+
+    @property
+    def appsecret(self):
+        """获取当前 App Secret"""
+        return self.__appsecret
+
+    def set_appid_appsecret(self, appid, appsecret):
+        """设置当前 App ID 及 App Secret"""
+        self.__appid = appid
+        self.__appsecret = appsecret
+        self._update_crypto()                               # 改动 App ID 后需要重新更新 Crypto
+
+    @property
+    def encoding_aes_key(self):
+        """获取当前 EncodingAESKey"""
+        return self.__encoding_aes_key
+
+    @encoding_aes_key.setter
+    def encoding_aes_key(self, encoding_aes_key):
+        """设置当前 EncodingAESKey"""
+        self.__encoding_aes_key = encoding_aes_key
+        self._update_crypto()                               # 改动 EncodingAESKey 需要重新更新 Crypto
+
+    @property
+    def encrypt_mode(self):
+        return self.__encrypt_mode
+
+    @encrypt_mode.setter
+    def encrypt_mode(self, encrypt_mode):
+        """设置当前加密模式"""
+        self.__encrypt_mode = encrypt_mode
+        self._update_crypto()
+
+    @property
+    def crypto(self):
+        """获取当前 Crypto 实例"""
+        return self.__crypto
+
+    @property
+    def access_token(self):
+        """获取当前 access token 值，本方法会自行维护 access token 有效性"""
+        self._check_appid_appsecret()
+        if callable(self.__access_token_getfunc):
+            self.__access_token, self.__access_token_expires_at = self.__access_token_getfunc()
+        if self.__access_token:
+            now = time.time()
+            if self.__access_token_expires_at - now > 60:   # 距离过期还有 60 秒以上则直接使用缓存
+                return self.__access_token
+        self.grant_access_token()                           # 从腾讯服务器获取 access token 并更新
+        return self.__access_token
+
+    @property
+    def jsapi_ticket(self):
+        """获取当前 jsapi ticket 值，本方法会自行维护 jsapi ticket 有效性"""
+        self._check_appid_appsecret()
+        if callable(self.__jsapi_ticket_getfunc):
+            self.__jsapi_ticket, self.__jsapi_ticket_expires_at = self.__jsapi_ticket_getfunc()
+        if self.__jsapi_ticket:
+            now = time.time()
+            if self.__jsapi_ticket_expires_at - now > 60:
+                return self.__jsapi_ticket
+        self.grant_jsapi_ticket()                           # 从腾讯服务器获取 jsapi ticket 并更新
+        return self.__jsapi_ticket
+
+    @property
+    def partnerid(self):
+        """获取当前财付通商户身份标识"""
+        return self.__partnerid
+
+    @property
+    def partnerkey(self):
+        """获取当前财付通商户权限密钥 Key"""
+        return self.__partnerkey
+
+    @property
+    def paysignkey(self):
+        """获取商户签名密钥 Key"""
+        return self.__paysignkey
+
+    def grant_access_token(self):
+        """获取 access token 并更新当前配置
+
+        :return: 返回的 JSON 数据包（传入 access_token_refreshfunc 参数后返回 None）
+        """
+        self._check_appid_appsecret()
+        if callable(self.__access_token_refreshfunc):
+            self.__access_token, self.__access_token_expires_at = self.__access_token_refreshfunc()
+            return
+        response_json = self.__request.get(
+            url='https://api.weixin.qq.com/cgi-bin/token',
+            params={
+                'grant_type': 'client_credential',
+                'appid': self.__appid,
+                'secret': self.__appsecret,
+            },
+            access_token=self.__access_token
+        )
+        self.__access_token = response_json['access_token']
+        self.__access_token_expires_at = int(time.time()) + response_json['expires_in']
+        if callable(self.__access_token_setfunc):
+            self.__access_token_setfunc(self.__access_token, self.__access_token_expires_at)
+        return response_json
+
+    def grant_jsapi_ticket(self):
+        """获取 jsapi ticket 并更新当前配置
+
+        :return: 返回的 JSON 数据包（传入 jsapi_ticket_refreshfunc 参数后返回 None）
+        """
+        self._check_appid_appsecret()
+        if callable(self.__jsapi_ticket_refreshfunc):
+            self.__jsapi_ticket, self.__jsapi_ticket_expires_at = self.__jsapi_ticket_refreshfunc()
+            return
+        response_json = self.__request.get(
+            url='https://api.weixin.qq.com/cgi-bin/ticket/getticket',
+            params={'type': 'jsapi'},
+            access_token=self.access_token,
+        )
+        self.__jsapi_ticket = response_json['ticket']
+        self.__jsapi_ticket_expires_at = int(time.time()) + response_json['expires_in']
+        if callable(self.__jsapi_ticket_setfunc):
+            self.__jsapi_ticket_setfunc(self.__jsapi_ticket, self.__jsapi_ticket_expires_at)
+        return response_json
+
+    def get_access_token(self):
+        """获取 Access Token 及 Access Token 过期日期，仅供缓存使用
+
+        如果希望得到原生的 Access Token 请求数据请使用 grant_access_token。
+        仅为兼容 v0.6.0 以前版本使用，自行维护 access_token 请使用 access_token_setfunc 和 access_token_getfunc 进行操作。
+
+        :return: dict 对象，key 包括 access_token 及 access_token_expires_at
+        """
+        self._check_appid_appsecret()
+        return {
+            'access_token': self.access_token,
+            'access_token_expires_at': self.__access_token_expires_at,
+        }
+
+    def get_jsapi_ticket(self):
+        """获取 Jsapi Ticket 及 Jsapi Ticket 过期日期，仅供缓存使用（用法同 get_access_token）
+
+        :return: dict 对象，key 包括 jsapi_ticket 及 jsapi_ticket_expires_at
+        """
+        self._check_appid_appsecret()
+        return {
+            'jsapi_ticket': self.jsapi_ticket,
+            'jsapi_ticket_expires_at': self.__jsapi_ticket_expires_at,
+        }
+
+    def _check_token(self):
+        """检查 Token 是否存在
+
+        :raises NeedParamError: Token 参数没有在初始化的时候提供
+        """
+        if not self.__token:
+            raise NeedParamError('Please provide Token parameter in the construction of class.')
+
+    def _check_appid_appsecret(self):
+        """检查 AppID 和 AppSecret 是否存在
+
+        :raises NeedParamError: AppID 或 AppSecret 参数没有在初始化的时候完整提供
+        """
+        if not self.__appid or not self.__appsecret:
+            raise NeedParamError('Please provide app_id and app_secret parameters in the construction of class.')
+
+    def _update_crypto(self):
+        """根据当前配置内容更新 Crypto 类"""
+        if self.__encrypt_mode in ['compatible', 'safe'] and self.__encoding_aes_key is not None:
+            if self.__token is None or self.__appid is None:
+                raise NeedParamError('Please provide token and appid parameters in the construction of class.')
+            self.__crypto = BasicCrypto(self.__token, self.__encoding_aes_key, self.__appid)
+        else:
+            self.__crypto = None
+```
+
+> **从 `WechatConf` 学到的类设计要点**：
+>
+> - 配置全部保存在 `__xxx` 私有属性中，外部只能通过 `@property` 读取，关键属性通过 `@xxx.setter` 修改（**封装**）
+> - 修改影响其他状态的配置时（如 `token`、`appid`、`encoding_aes_key`），在 setter 中联动调用 `_update_crypto()` 保持一致性
+> - `access_token` 属性内部封装了“读缓存 → 判断是否临近过期（< 60 秒）→ 重新向服务器获取”的逻辑，**调用者只需 `conf.access_token`，无需关心细节**（property 的价值）
+> - 以单下划线开头的 `_check_token`、`_update_crypto` 等是内部辅助方法（受保护约定）
+
+#### 10.12.5 思维锻炼
+
+> **练习**：
+>
+> 1. 设计讲师和学生类：讲师有上课、备课等方法，学生有听课、做练习等方法，均有姓名、性别、年龄等基本属性（提示：抽取公共的 `Person` 基类，讲师和学生继承它）
+> 2. 设计聊天 `Message` 类（参考 10.12.3）
+
 ---
 
 
@@ -2048,6 +3667,196 @@ __all__ = ['func_a', 'ClassA']
 ```
 
 
+
+#### 12.1.2 import 搜索路径
+
+> `import` 导入模块时，解释器会**按 `sys.path` 列表中的目录依次查找**要导入的模块文件：
+
+```python
+import sys                                  # sys 模块：提供与解释器交互的功能
+
+# sys.path：list[str]，模块搜索路径列表
+# '' 表示当前路径；列表中路径的先后顺序，代表了 Python 解释器在搜索模块时的先后顺序
+print(sys.path)
+# ['', '/usr/local/bin', '/usr/local/Cellar/python3/3.6.0/.../lib/python36.zip',
+#  '/usr/local/.../lib/python3.6', '/usr/local/.../lib/python3.6/lib-dynload',
+#  '/usr/local/lib/python3.6/site-packages', ... , '/Users/dongge/.ipython']
+```
+
+> **程序执行时添加新的模块路径**：
+
+```python
+import sys
+
+# append(path)：把新路径追加到列表末尾（优先级最低，其他目录找不到时才搜索它）
+sys.path.append('/home/wangdao/xxx')
+# insert(0, path)：把新路径插入列表开头（优先级最高），可以确保先搜索这个路径
+sys.path.insert(0, '/home/wangdao/xxx')     # 可以确保先搜索这个路径
+
+# 在 IPython 中的实际效果
+# In [37]: sys.path.insert(0, '/home/python/xxxx')
+# In [38]: sys.path
+# Out[38]:
+# ['/home/python/xxxx',                     ← 新插入的路径排在最前面
+#  '',
+#  '/usr/bin',
+#  '/usr/lib/python35.zip',
+#  '/usr/lib/python3.5',
+#  '/usr/lib/python3.5/plat-x86_64-linux-gnu',
+#  '/usr/lib/python3.5/lib-dynload',
+#  '/usr/local/lib/python3.5/dist-packages',
+#  '/usr/lib/python3/dist-packages',
+#  '/usr/lib/python3/dist-packages/IPython/extensions',
+#  '/home/python/.ipython']
+```
+
+#### 12.1.3 重新导入模块（reload）
+
+> 模块被导入后，再次 `import module` **不能重新导入**模块（模块只会被导入一次，已缓存在 `sys.modules` 中），重新导入需用 `reload`。
+
+```python
+# reload_test.py（第一次的内容）
+def test():
+    print('---1---')
+```
+
+```python
+# 在 IPython / 交互式终端中
+import reload_test                          # 第一次导入
+reload_test.test()                          # ---1---
+
+# 此时在另一个终端中把 reload_test.py 修改为：print('---2---')
+import reload_test                          # 再次 import：模块只会导入一次，修改不会生效
+reload_test.test()                          # 仍然是 ---1---
+
+# 如果用 reload 则可以重新导入
+from imp import reload                      # Python 3.4 以前写法；Python 3.12 起 imp 模块已被移除
+reload(reload_test)                         # <module 'reload_test' from '/Users/dongge/Desktop/reload_test.py'>
+reload_test.test()                          # ---2---
+```
+
+> **版本说明**：Python 3.4+ 推荐使用 `from importlib import reload`（`reload(module)`；参数为已导入的**模块对象**，返回重新加载后的模块对象），`imp` 模块在 Python 3.12 中已被移除。
+
+#### 12.1.4 多模块开发时的注意点
+
+> 下面用三个模块共同配合，演示 `from 模块 import 变量` 与 `import 模块` 在**修改共享变量**时的区别。
+
+> `common.py` 模块：存放多个模块共享的变量
+
+```python
+RECV_DATA_LIST = []                         # 接收到的数据列表
+HANDLE_FLAG = False                         # 数据是否处理完成的标志
+```
+
+> `recv_msg.py` 模块：接收数据
+
+```python
+from common import RECV_DATA_LIST           # 导入列表：列表是可变类型，后面是原地 append，所以共享有效
+# from common import HANDLE_FLAG            # 错误写法：只拿到导入瞬间的值（False），之后无法感知 common 中的变化
+import common                               # 正确写法：导入模块对象，通过 common.HANDLE_FLAG 每次都访问最新的值
+
+
+def recv_msg():
+    """模拟接收到数据，然后添加到 common 模块中的列表中"""
+    print('--->recv_msg')
+    for i in range(5):
+        RECV_DATA_LIST.append(i)            # 原地修改同一个列表对象，handle_msg 里同样可见
+
+
+def test_recv_data():
+    """测试接收到的数据"""
+    print('--->test_recv_data')
+    print(RECV_DATA_LIST)                   # [0, 1, 2, 3, 4]
+
+
+def recv_msg_next():
+    """已经处理完成后，再接收另外的其他数据"""
+    print('--->recv_msg_next')
+    # if HANDLE_FLAG:                       # 错误：HANDLE_FLAG 永远是导入时的 False
+    if common.HANDLE_FLAG:
+        print('------发现之前的数据已经处理完成，这里进行接收其他的数据(模拟过程...)----')
+    else:
+        print('------发现之前的数据未处理完，等待中....------')
+```
+
+> `handle_msg.py` 模块：处理数据
+
+```python
+from common import RECV_DATA_LIST           # 同一个列表对象
+# from common import HANDLE_FLAG            # 错误写法（见下方图解）
+import common
+
+
+def handle_data():
+    """模拟处理 recv_msg 模块接收的数据"""
+    print('--->handle_data')
+    for i in RECV_DATA_LIST:
+        print(i)
+    # 既然处理完成了，那么将变量 HANDLE_FLAG 设置为 True，意味着处理完成
+    # global HANDLE_FLAG
+    # HANDLE_FLAG = True                    # 错误：只是修改了本模块名字空间里的 HANDLE_FLAG，common 里依然是 False
+    common.HANDLE_FLAG = True               # 正确：修改 common 模块对象的属性，所有模块都能看到
+
+
+def test_handle_data():
+    """测试处理是否完成，变量是否设置为 True"""
+    print('--->test_handle_data')
+    # if HANDLE_FLAG:
+    if common.HANDLE_FLAG:
+        print('=====已经处理完成====')
+    else:
+        print('=====未处理完成====')
+```
+
+> `main.py` 模块：入口
+
+```python
+from recv_msg import *                      # 导入 recv_msg 中的公开名字
+from handle_msg import *                    # 导入 handle_msg 中的公开名字
+
+
+def main():
+    recv_msg()                              # 1. 接收数据
+    test_recv_data()                        # 2. 测试是否接收完毕
+    recv_msg_next()                         # 3. 判断如果处理完成，则接收其它数据（此时尚未处理 → 等待中）
+    handle_data()                           # 4. 处理数据（把 common.HANDLE_FLAG 设为 True）
+    test_handle_data()                      # 5. 测试是否处理完毕（已经处理完成）
+    recv_msg_next()                         # 6. 判断如果处理完成，则接收其它数据（发现已处理完成 → 接收其他数据）
+
+
+if __name__ == '__main__':
+    main()
+```
+
+> **`from common import HANDLE_FLAG` 的问题**：
+
+```text
+common.py        HANDLE_FLAG = False  ←──────────────┐
+                                                    │ 导入瞬间复制了引用（值 False）
+recv_msg.py      from common import HANDLE_FLAG ────┘   名字 HANDLE_FLAG → False（此后不再变化）
+handle_msg.py    from common import HANDLE_FLAG
+                 HANDLE_FLAG = True      ✗ 只让 handle_msg 自己的名字指向 True，common 里仍是 False
+```
+
+> `from common import HANDLE_FLAG` 相当于在本模块中**新建了一个名字 `HANDLE_FLAG`，指向导入瞬间 `common.HANDLE_FLAG` 的值（False）**。`handle_msg.py` 中执行 `HANDLE_FLAG = True` 只是让 `handle_msg` 自己的名字指向 `True`，`common.py` 里的值和 `recv_msg.py` 里的名字都没有改变，所以 `recv_msg` 永远发现不了“已处理完成”。
+
+> **`import common` 的正确做法**：
+
+```text
+common.py        HANDLE_FLAG = False → True  ←─┐（模块对象的属性被修改）
+                                               │
+recv_msg.py      import common                 ├─ 都指向同一个模块对象 common
+                 common.HANDLE_FLAG 此时为 True │
+handle_msg.py    import common                 │
+                 common.HANDLE_FLAG = True ────┘  ✓ 直接修改模块对象的属性
+```
+
+> `recv_msg.py` 与 `handle_msg.py` 都导入的是**同一个模块对象 `common`**，`common.HANDLE_FLAG = True` 直接修改模块对象的属性，因此 `recv_msg.py` 通过 `common.HANDLE_FLAG` 访问时就能看到最新值 `True`。
+>
+> **经验总结**：
+>
+> - 多个模块需要共享并**重新赋值**的变量，使用 `import 模块` + `模块.变量` 的方式访问和修改
+> - 共享的**可变对象**（如列表）原地修改（`append` 等）时，`from 模块 import 变量` 也能共享，因为大家引用的是同一个对象；但一旦**重新赋值**（`=`），就会断开共享
 
 ### 12.2 包（Package）
 
@@ -2282,6 +4091,112 @@ $ md5sum -b archive.zip
 $ echo -n "hello" | md5sum
 # 输出：5d41402abc4b2a76b9719d911017c592  -
 ```
+
+### 13.7 with 与上下文管理器
+
+> 对于系统资源如**文件、数据库连接、socket** 而言，应用程序打开这些资源并执行完业务逻辑之后，必须做的一件事就是要**关闭（断开）该资源**：
+>
+> - 打开文件写完内容后不关闭，极端情况下会出现 `Too many open files` 的错误，因为系统允许打开的最大文件数量是有限的
+> - 数据库连接过多而没有及时关闭，就可能会出现 `Can not connect to MySQL server Too many connections`，因为数据库连接是一种非常昂贵的资源，不可能无限制地被创建
+
+#### 13.7.1 正确关闭文件的三种写法
+
+```python
+# 普通版：写入过程中一旦抛出异常，close() 不会被调用，资源会一直被占用
+def m1():
+    f = open('output.txt', 'w')             # 打开文件，返回文件对象
+    f.write('python 之禅')                   # 若这里出现异常，下一行不会执行
+    f.close()                               # 关闭文件
+
+
+# 进阶版：try/finally 保证无论是否异常，finally 中的 close() 一定执行
+def m2():
+    f = open('output.txt', 'w')
+    try:
+        f.write('python 之禅')
+    except IOError:
+        print('oops error')                 # 捕获 IO 异常
+    finally:
+        f.close()                           # 无论如何都会关闭文件
+
+
+# 高级版：with 语句，离开 with 代码块时系统自动调用 f.close()
+def m3():
+    with open('output.txt', 'w') as f:      # 原稿示例用 'r' 模式写入会报错，写入应使用 'w'
+        f.write('Python 之禅')
+```
+
+> **说明**：`with` 的作用和使用 `try/finally` 语句是一样的。`open()` 的返回值赋值给变量 `f`，当离开 `with` 代码块的时候，系统会自动调用 `f.close()` 方法。其实现原理建立在**上下文管理器（Context Manager）**之上。
+
+#### 13.7.2 什么是上下文（context）
+
+> 上下文在不同的地方表示不同的含义，要感性理解。`context` 和文章的上下文是一个意思，通俗一点叫**环境**更好：
+>
+> - 一篇文章摘录一段，没前没后，读不懂，因为有**语境**（语言环境）存在，一段话说了什么，要通过上下文（文章的上下文）来推断
+> - App 点击一个按钮进入一个新的界面，也要保存你是从哪个屏幕跳过来的等信息，以便点击返回的时候能正确跳回，如果不存肯定就无法正确跳回了
+
+> 上下文虽然叫“上下文”，但程序里面一般都只有“上文”而已。进程中断在操作系统中是有上有下的，这个问题不必深究，理解成**环境**即可。
+
+#### 13.7.3 上下文管理器
+
+> **定义**：任何实现了 `__enter__()` 和 `__exit__()` 方法的对象都可称之为**上下文管理器**，上下文管理器对象可以使用 `with` 关键字。显然，文件（file）对象也实现了上下文管理器。
+
+> 我们可以模拟实现一个自己的文件类，让该类实现 `__enter__()` 和 `__exit__()` 方法：
+
+```python
+class File():
+    """自定义文件类：实现上下文管理器协议"""
+
+    def __init__(self, filename, mode):
+        self.filename = filename            # 文件名
+        self.mode = mode                    # 打开模式
+
+    def __enter__(self):
+        """进入 with 时调用：打开资源并返回资源对象（赋给 as 后的变量）"""
+        print('entering')
+        self.f = open(self.filename, self.mode)
+        return self.f
+
+    def __exit__(self, *args):
+        """退出 with 时调用（无论是否发生异常）：处理清理工作
+        args：(异常类型, 异常值, 追踪信息)，没有异常时都是 None
+        """
+        print('will exit')
+        self.f.close()
+
+
+# 因为 File 类实现了上下文管理器，现在就可以使用 with 语句了
+with File('out.txt', 'w') as f:             # 先执行 __enter__，其返回值赋给 f
+    print('writing')
+    f.write('hello, python')                # with 块结束（或中途异常）后自动执行 __exit__
+```
+
+> `__enter__()` 方法**返回资源对象**，这里就是你将要打开的那个文件对象；`__exit__()` 方法**处理一些清除工作**。
+> 这样就无需显式地调用 `close` 方法了，由系统自动去调用，**哪怕中间遇到异常 `close` 方法也会被调用**。
+
+#### 13.7.4 `@contextmanager`：实现上下文管理器的另外方式
+
+> Python 还提供了 `contextlib.contextmanager` 装饰器，更进一步简化了上下文管理器的实现方式：通过 `yield` 将函数分割成两部分，**`yield` 之前的语句在 `__enter__` 方法中执行，`yield` 之后的语句在 `__exit__` 方法中执行**，紧跟在 `yield` 后面的值是函数的返回值（即 `as` 后的变量）。
+
+```python
+from contextlib import contextmanager       # 导入装饰器
+
+
+@contextmanager
+def my_open(path, mode):
+    f = open(path, mode)                    # yield 之前：相当于 __enter__ 中的代码
+    yield f                                 # yield 的值会赋给 with ... as 后的变量
+    f.close()                               # yield 之后：相当于 __exit__ 中的代码
+
+
+# 调用
+with my_open('out.txt', 'w') as f:
+    f.write('hello , the simplest context manager')
+```
+
+> **注意**：如果 `with` 块内抛出异常，异常会在 `yield` 处重新抛出，其后的 `f.close()` 不会执行；生产环境中建议写成 `try: yield f` + `finally: f.close()`，才能保证异常时同样关闭资源。
+
+> **总结**：Python 提供了 `with` 语法用于简化资源操作的后续清除操作，是 `try/finally` 的替代方法，实现原理建立在**上下文管理器**之上。此外，Python 还提供了一个 `contextmanager` 装饰器，更进一步简化上下文管理器的实现方式。
 
 ---
 
@@ -2647,6 +4562,111 @@ deep = copy.deepcopy(original)
 deep[0].append(100)
 print(original[0])    # [1, 2, 99]（不受影响）
 ```
+
+#### 15.7.1 浅拷贝与深拷贝的概念
+
+| 类型 | 含义 | 通俗理解 |
+| --- | --- | --- |
+| 浅拷贝 | 对于一个对象的**顶层拷贝** | 拷贝了**引用**，并没有拷贝**内容** |
+| 深拷贝 | 对于一个对象**所有层次**的拷贝（递归） | 内外层的可变对象都重新创建一份 |
+
+#### 15.7.2 浅拷贝与深拷贝的对比演示
+
+```python
+import copy                                 # copy 模块：提供 copy()（浅拷贝）与 deepcopy()（深拷贝）
+
+a = [11, 22]                                # 内层列表 1
+b = [33, 44]                                # 内层列表 2
+c = [a, b]                                  # 外层列表：保存的是 a、b 两个列表的引用，c = [[11, 22], [33, 44]]
+
+# ── 浅拷贝 ───────────────────────────────────
+d = copy.copy(c)                            # 顶层拷贝：新建外层列表 d，但 d 里的元素仍然是 a、b 的引用
+print(id(d) == id(c))                       # False：外层是两个不同的对象
+a[0] = 12                                   # 通过 a 修改内层列表（a 与 c[0]、d[0] 是同一个对象）
+print(c)                                    # [[12, 22], [33, 44]]
+print(d)                                    # [[12, 22], [33, 44]]：d 也跟着变了（浅拷贝没有拷贝内层）
+print(id(c[0]) == id(a) == id(d[0]))        # True：c[0]、a、d[0] 指向同一个内层列表
+
+# ── 深拷贝 ───────────────────────────────────
+a[0] = 11                                   # 先还原
+d = copy.deepcopy(c)                        # 递归拷贝：内层列表也重新创建
+print(id(d) == id(c))                       # False：外层不同
+print(id(d[0]) == id(c[0]))                 # False：内层也不同
+a[0] = 18                                   # 再次修改 a
+print(c)                                    # [[18, 22], [33, 44]]：c 随之变化
+print(d)                                    # [[11, 22], [33, 44]]：d 不受影响（完全独立）
+```
+
+> 浅拷贝：`id(d) != id(c)`，但 `id(d[0]) == id(c[0])`，**内层对象共用**，修改内层会互相影响；
+> 深拷贝：`id(d) != id(c)` 且 `id(d[0]) != id(c[0])`，**所有层次都独立**，修改互不影响。
+
+#### 15.7.3 拷贝的其他方式
+
+> 字典的 `copy` 方法可以拷贝一个字典（同样是**浅拷贝**）：
+
+```python
+d = dict(name='zhangsan', age=27)           # 创建字典
+co = d.copy()                               # 字典的 copy 方法：浅拷贝，返回新字典
+print(id(d) == id(co))                      # False：是两个不同的字典对象
+print(d, co)                                # {'name': 'zhangsan', 'age': 27} 两者内容相同
+
+d = dict(name='zhangsan', age=27, children_ages=[11, 22])   # 值中含有可变的列表
+co = d.copy()                               # 浅拷贝：co['children_ages'] 与 d['children_ages'] 是同一个列表
+d['children_ages'].append(9)                # 通过 d 修改列表
+print(d)                                    # {'name': 'zhangsan', 'age': 27, 'children_ages': [11, 22, 9]}
+print(co)                                   # {'name': 'zhangsan', 'age': 27, 'children_ages': [11, 22, 9]}：co 也变了
+```
+
+```text
+d  ──→ {'name': ─┐   'age': ─┐   'children_ages': ─┐}
+                 ▼           ▼                      ▼
+             'zhangsan'      27                 [11, 22, 9]   ← 值对象只有一份
+                 ▲           ▲                      ▲
+co ──→ {'name': ─┘   'age': ─┘   'children_ages': ─┘}
+```
+
+> 如上所示 `d` 与 `co` 是两个字典，但相同的键指向**同一个值对象**（`'zhangsan'`、`27`、`[11, 22]`），所以修改可变的值会同时影响两者。
+
+> **思考：下面两种创建字典的方式，哪一种效率更高？**
+
+```python
+d = dict(name='zhangsan', age=20)           # 方式一：调用 dict 类（需要先查找名字 dict、再调用函数、再处理关键字参数）
+d = {'name': 'zhangsan', 'age': 20}         # 方式二：字典字面量（直接由字节码 BUILD_MAP 创建）
+```
+
+> **答案**：方式二（字面量 `{}`）效率更高，因为它不需要名字查找和函数调用的开销；可以用 `timeit` 实测验证。
+
+```python
+import timeit                               # timeit：测量小段代码的执行时间
+
+# timeit.timeit(stmt, number)：执行 stmt number 次，返回总耗时（float，单位秒）
+print(timeit.timeit("dict(name='zhangsan', age=20)", number=1_000_000))   # 方式一：耗时更长
+print(timeit.timeit("{'name': 'zhangsan', 'age': 20}", number=1_000_000)) # 方式二：耗时更短
+```
+
+#### 15.7.4 注意点：不可变类型与可变类型的 copy 不同
+
+> 1. `copy.copy` 对于**可变类型**，会进行**浅拷贝**（创建新的对象）
+> 2. `copy.copy` 对于**不可变类型**，**不会拷贝**，仅仅是指向（返回的是同一个对象）
+
+```python
+import copy
+
+# ── 可变类型（列表）：copy.copy 产生新对象 ──
+a = [11, 22, 33]
+b = copy.copy(a)
+print(id(a) == id(b))                       # False：两个不同的列表对象
+a.append(44)                                # 修改 a
+print(a)                                    # [11, 22, 33, 44]
+print(b)                                    # [11, 22, 33]：b 不受影响
+
+# ── 不可变类型（元组）：copy.copy 不拷贝，只是指向同一个对象 ──
+a = (11, 22, 33)
+b = copy.copy(a)
+print(id(a) == id(b))                       # True：同一个对象（不可变对象内容不会改变，无需拷贝）
+```
+
+> 补充：`copy.deepcopy` 对只包含不可变元素的元组同样直接返回原对象；若元组中嵌套了可变对象（如 `([1, 2], 3)`），深拷贝会创建新的元组与新的内层列表。
 
 
 
