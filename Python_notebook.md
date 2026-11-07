@@ -4037,6 +4037,25 @@ Header2: Value2
 body data goes here...
 ```
 
+**PUT 请求的格式**（用于**更新/替换**服务器上的资源，格式与 `POST` 相同，同样带 Body）：
+
+```
+PUT /path HTTP/1.1
+Header1: Value1
+Header2: Value2
+
+body data goes here...
+```
+
+**DELETE 请求的格式**（用于**删除**服务器上的资源，通常不带 Body，格式与 `GET` 类似）：
+
+```
+DELETE /path HTTP/1.1
+Header1: Value1
+Header2: Value2
+
+```
+
 **请求行详解**（第一行）：
 
 ```
