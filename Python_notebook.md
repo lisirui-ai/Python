@@ -2909,12 +2909,12 @@ class MiniOS(object):
         self.apps = []                      # 安装的应用程序名称列表
 
     def __str__(self):
-        return '%s 安装的软件列表为%s' % (self.name, str(self.apps))
+        return f'{self.name} 安装的软件列表为{self.apps}'
 
     def install_app(self, app):
         # 判断是否已经安装了软件
         if app.name in self.apps:
-            print('已经安装了%s，无需再次安装' % app.name)
+            print(f'已经安装了{app.name}，无需再次安装')
         else:
             app.install()                   # 多态：不同 app 子类的 install() 行为不同，这里无需区分类型
             self.apps.append(app.name)
@@ -2927,10 +2927,10 @@ class App(object):
         self.desc = desc
 
     def __str__(self):
-        return '%s 的当前版本是%s - %s' % (self.name, self.version, self.desc)
+        return f'{self.name} 的当前版本是{self.version} - {self.desc}'
 
     def install(self):
-        print('将%s [%s] 的执行程序复制到程序目录...' % (self.name, self.version))
+        print(f'将{self.name} [{self.version}] 的执行程序复制到程序目录...')
 
 
 class PyCharm(App):
@@ -5520,7 +5520,7 @@ while True:
             # 返回值 client_socket : socket.socket，与该客户端通信的新 socket
             # 返回值 client_addr   : tuple[str, int]，客户端的 (IP, 端口)
             client_socket, client_addr = tcp_server_socket.accept()
-            print('{} 已连接'.format(client_addr))
+            print(f'{client_addr} 已连接')
 
             # 将新客户端的 fd → socket 映射存入字典，后续 O(1) 查找
             fd_to_socket[client_socket.fileno()] = client_socket
@@ -6390,7 +6390,7 @@ def build_response(request_text):
         # 文件读取成功：状态码 200
         response_header = 'HTTP/1.1 200 OK\r\n'
     # Content-Length 告诉浏览器响应体的字节数（必须用 bytes 的长度，而不是 str）
-    response_header += 'Content-Length: %d\r\n' % len(response_body)
+    response_header += f'Content-Length: {len(response_body)}\r\n'
     # 空行：响应头结束
     response_header += '\r\n'
     # 头是 str，体是 bytes，需先把头 encode 后再拼接
