@@ -6684,99 +6684,9 @@ if __name__ == '__main__':
 
 ---
 
-#### 16.12.5 单进程非阻塞版
+#### 16.12.5 epoll 版（仅 Linux）
 
-不使用多进程/多线程，而是把套接字设置为**非阻塞**，在一个进程里**轮询**所有连接（原理见 16.8.2）。
-
-```python
-# 导入 socket 模块：网络编程接口
-import socket
-
-
-class WebServer(object):
-    """单进程非阻塞静态 Web 服务器"""
-
-    def __init__(self, port):
-        """初始化监听套接字
-
-        Args:
-            port (int): 监听的端口号
-
-        Returns:
-            None
-        """
-        # 创建 TCP 套接字（IPv4 + 流式）
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # 设置端口复用
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # 绑定端口，ip 为空表示本机所有网卡
-        self.server_socket.bind(('', port))
-        # 开始监听，全连接队列长度为 128
-        self.server_socket.listen(128)
-        # setblocking(False)：设置为非阻塞，没有新连接时 accept 不再等待，而是直接抛出 BlockingIOError
-        self.server_socket.setblocking(False)
-        # 列表：保存所有已连接客户端的套接字，元素类型是 socket.socket
-        self.client_socket_list = []
-
-    def run_forever(self):
-        """循环：先检查有无新连接，再轮询所有已连接的客户端
-
-        Returns:
-            None
-        """
-        # 死循环：不停地轮询（所以 CPU 占用高）
-        while True:
-            # try：尝试非阻塞 accept
-            try:
-                # 非阻塞 accept：有客户端连接时返回 (新套接字, 客户端地址)，没有时抛出 BlockingIOError
-                new_socket, new_addr = self.server_socket.accept()
-            # 捕获“暂时没有新连接”的异常
-            except BlockingIOError:
-                # 没有新客户端，什么也不做，继续往下轮询已有客户端
-                pass
-            # else：accept 成功（有新客户端）时才执行
-            else:
-                # 新连接的套接字同样设置为非阻塞，这样 recv 没数据时也不会卡住
-                new_socket.setblocking(False)
-                # 加入客户端列表，下面的循环会轮询到它
-                self.client_socket_list.append(new_socket)
-
-            # client_socket_list[:]：切片得到列表的副本，因为循环内会 remove 元素（遍历时不要修改原列表）
-            for client_socket in self.client_socket_list[:]:
-                # try：尝试非阻塞 recv
-                try:
-                    # 非阻塞 recv：有数据返回 bytes，没有数据时抛出 BlockingIOError；decode 解码为 str
-                    request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
-                # 捕获“这个客户端暂时没发数据”的异常
-                except BlockingIOError:
-                    # 这个客户端暂时没发数据，continue 跳过，轮到下一个
-                    continue
-                # 非空字符串为真：说明收到了数据
-                if request_text:
-                    # 有数据：生成并发送响应（带 Content-Length，浏览器可用长连接）
-                    client_socket.sendall(build_response(request_text))
-                # 空字符串：recv 返回空表示对方已关闭连接
-                else:
-                    # 客户端已关闭，服务器也关闭这个套接字
-                    client_socket.close()
-                    # 从列表中移除，以后不再轮询它
-                    self.client_socket_list.remove(client_socket)
-
-
-# 仅当直接运行本文件时才启动服务器
-if __name__ == '__main__':
-    # 创建服务器对象（监听 7890 端口）并开始轮询
-    WebServer(7890).run_forever()
-```
-
-- 响应头必须带 `Content-Length`，浏览器才知道响应何时结束，从而复用连接（长连接）；否则只能靠关闭连接来表示结束。
-- **缺点**：`while True` 空转，**CPU 占用很高**，且连接数越多每轮轮询越慢。
-
----
-
-#### 16.12.6 epoll 版（仅 Linux）
-
-用 `epoll` 让**操作系统内核**帮我们监视所有套接字，有事件才返回，避免空转（epoll 详解见 16.8.1）。
+> 用 `epoll` 让**操作系统内核**帮我们监视所有套接字，只有套接字就绪（有新连接或有数据）时才返回，一个进程就能同时服务大量客户端，既不用为每个连接创建进程/线程，也不会因反复轮询而白白占用 CPU（epoll 详解见 16.8.1）。
 
 ```python
 # 导入 select 模块：提供 epoll 等 IO 多路复用接口（epoll 仅 Linux 支持）
@@ -6857,6 +6767,9 @@ if __name__ == '__main__':
     WebServer(7890).run_forever()
 ```
 
+> - **优点**：单进程即可支撑大量并发连接，没有进程/线程的创建与切换开销；内核只通知就绪的套接字，无空转，CPU 占用低；监视的套接字数量不受 `select` 的 1024 限制，效率不随连接数增多而明显下降。
+> - **缺点**：仅 Linux 支持（Windows 无 `epoll`）；编程较复杂，需要自己维护 fd 与套接字的对应关系和连接状态；单进程中任何一个耗时的处理都会阻塞其他连接，也无法利用多核。
+
 > **ET 模式注意**：边缘触发下事件只通知一次，严谨的写法应把套接字设为非阻塞并循环 `accept`/`recv` 直到抛出 `BlockingIOError`；上面的示例沿用教材写法做了简化，默认的 LT 模式（去掉 `EPOLLET`）更不易漏事件。
 >
 > **IO 多路复用的本质**：`select / poll / epoll` 让**一个进程同时等待多个套接字**，任意一个就绪就立即返回处理（也称 *event driven IO*，事件驱动）。
@@ -6867,9 +6780,9 @@ if __name__ == '__main__':
 
 ---
 
-#### 16.12.7 gevent 协程版
+#### 16.12.6 gevent 协程版
 
-用协程（`gevent`）为每个客户端创建一个**协程**，代码像多线程一样简单，开销却小得多（协程详见第十七章）。
+> 用协程（`gevent`）为每个客户端创建一个**协程**，代码像多线程一样简单，开销却小得多（协程详见第十七章）。
 
 ```python
 # 安装：pip install gevent（gevent 是第三方协程库）
@@ -6948,16 +6861,18 @@ if __name__ == '__main__':
     WebServer(7890).run_forever()
 ```
 
+> - **优点**：代码写法接近同步的多线程，简单易懂；协程由用户态调度，创建和切换开销极小，单进程可轻松支撑上万个连接；`monkey.patch_all()` 让现有阻塞代码无需修改即可自动切换；跨平台，不像 `epoll` 仅限 Linux。
+> - **缺点**：依赖第三方库 `gevent`，需要打猴子补丁，且必须在使用 `socket` 之前调用；协程是协作式调度，某个协程里的 CPU 密集计算或未被补丁覆盖的阻塞调用会卡住所有协程；单进程只能用一个 CPU 核心。
+
 ---
 
-#### 16.12.8 并发方案对比与 C10K 问题
+#### 16.12.7 并发方案对比与 C10K 问题
 
 | 方案 | 实现方式 | 优点 | 缺点 |
 |------|---------|------|------|
 | 单任务 | `accept` 后直接处理 | 最简单 | 同一时刻只能服务一个客户端 |
 | 多进程 | 一个连接一个进程 | 真并行（多核），隔离性好 | 创建/切换开销大，占内存 |
 | 多线程 | 一个连接一个线程 | 比进程轻量 | 仍有切换开销；受 GIL 影响，不适合 CPU 密集 |
-| 单进程非阻塞 | 轮询所有套接字 | 无需多进程/线程 | 空转，CPU 占用高 |
 | epoll | 内核监视所有套接字 | 高并发、无空转 | 仅 Linux；编程较复杂 |
 | gevent 协程 | 一个连接一个协程 | 代码简单、开销极小 | 依赖第三方库，需打补丁 |
 
