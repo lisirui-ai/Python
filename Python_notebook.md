@@ -6578,6 +6578,85 @@ if __name__ == '__main__':
 > **优点**：多个客户端同时被服务，进程间互不影响。\
 > **缺点**：进程**创建与切换开销大**，每个进程占用独立内存，连接数多时系统资源吃紧。
 
+**优化：预先创建进程池**
+
+> 上面版本的瓶颈在于**每来一个客户端就要创建一个进程**，创建进程要复制或初始化独立的地址空间，开销大、延迟高。优化思路是**提前创建好固定数量的工作进程（进程池）并反复复用**：服务器启动时就创建 N 个进程，每个工作进程各自循环 `accept` 同一个监听套接字，来一个连接就处理一个，处理完继续等下一个，不再为每个连接创建和销毁进程。
+>
+> - **为什么多个进程可以同时 `accept` 同一个监听套接字**：监听套接字是父进程创建后传给各个子进程的，它们指向内核里同一个对象；内核保证每个新连接只会交给其中一个进程，不会重复处理。
+> - **为什么不直接把客户端套接字提交给 `multiprocessing.Pool`**：提交任务需要把套接字序列化后跨进程传递，父进程还要保证传递完成前不能 `close`，写法麻烦、容易出错，所以更常见的做法是让工作进程自己 `accept`（称为 *prefork* 模型，Apache、Gunicorn 等都采用类似思路）。
+>
+> ```python
+> # 导入 multiprocessing 模块：多进程（Process 类用来创建工作进程）
+> import multiprocessing
+> # 导入 os 模块：用来获取当前进程的 PID，方便观察是哪个工作进程处理了请求
+> import os
+> # 导入 socket 模块：网络编程接口
+> import socket
+>
+> # 工作进程的数量（进程池大小），同一时刻最多同时服务这么多个客户端
+> PROCESS_COUNT = 4
+>
+>
+> def worker_loop(listen_socket):
+>     """工作进程的主循环：不断 accept 并处理客户端（进程创建一次，反复复用）
+>
+>     Args:
+>         listen_socket (socket.socket): 父进程创建好的监听套接字，所有工作进程共用
+>
+>     Returns:
+>         None
+>     """
+>     # 死循环：工作进程一直存活，处理完一个客户端再等下一个
+>     while True:
+>         # accept() 阻塞等待新客户端，返回 (与该客户端通信的套接字, 客户端地址 (ip, port))
+>         client_socket, client_address = listen_socket.accept()
+>         # os.getpid() 返回当前进程 PID（int），打印出来可以看到请求被不同的工作进程轮流处理
+>         print(os.getpid(), client_address)
+>         # 复用 16.12.2 中的 handle_client：接收请求、发送响应并关闭连接
+>         handle_client(client_socket)
+>
+>
+> def main():
+>     """主控制入口：创建监听套接字，预先启动固定数量的工作进程
+>
+>     Returns:
+>         None
+>     """
+>     # 创建 TCP 套接字（IPv4 + 流式）
+>     listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+>     # 设置端口复用
+>     listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+>     # 绑定 8888 端口，ip 为空表示本机所有网卡
+>     listen_socket.bind(('', 8888))
+>     # 变为被动监听套接字，全连接队列长度为 128
+>     listen_socket.listen(128)
+>     # 列表：保存所有工作进程对象，元素类型是 multiprocessing.Process
+>     process_list = []
+>     # 预先创建 PROCESS_COUNT 个工作进程
+>     for _ in range(PROCESS_COUNT):
+>         # Process(target=进程执行的函数, args=参数元组)：把监听套接字传给工作进程
+>         new_process = multiprocessing.Process(target=worker_loop, args=(listen_socket,))
+>         # start()：启动工作进程，开始执行 worker_loop
+>         new_process.start()
+>         # 记录进程对象，方便后面 join
+>         process_list.append(new_process)
+>     # 提示服务器已启动
+>     print(f'web server: {PROCESS_COUNT} worker processes serving HTTP on port 8888 ...')
+>     # 父进程自己不处理请求，遍历所有工作进程
+>     for worker in process_list:
+>         # join()：阻塞等待工作进程结束（工作进程是死循环，所以父进程会一直等待）
+>         worker.join()
+>
+>
+> # 仅当直接运行本文件时才启动服务器（Windows 下多进程必须放在这个判断里）
+> if __name__ == '__main__':
+>     # 调用主入口函数
+>     main()
+> ```
+
+> - **优点**：进程只在启动时创建一次，之后没有创建和销毁的开销，响应更快；进程数量固定，资源占用可控，不会因连接暴增而耗尽系统资源；多个进程可并行利用多核。
+> - **缺点**：并发数被限制为 `PROCESS_COUNT`，若所有工作进程都被慢客户端占住，新连接只能在队列里等待；没有请求时空闲进程也占用内存；进程数需要根据 CPU 核数和负载自行调节。
+
 ---
 
 #### 16.12.4 多线程版
