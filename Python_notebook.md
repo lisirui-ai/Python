@@ -6715,6 +6715,8 @@ class WebServer(object):
         self.server_socket.bind(('', port))
         # 开始监听，全连接队列长度为 128
         self.server_socket.listen(128)
+        # setblocking(False)：ET 模式要求套接字非阻塞，这样循环 accept 到没有新连接时会抛出 BlockingIOError 而不是卡住
+        self.server_socket.setblocking(False)
         # select.epoll()：创建 epoll 对象，由操作系统内核帮我们监视所有套接字
         self.epoll = select.epoll()
         # register(fd, 事件掩码)：注册要监视的文件描述符；fileno() 返回套接字的 fd（int）
@@ -6737,28 +6739,89 @@ class WebServer(object):
             for fd, event in epoll_list:
                 # 就绪的是监听套接字自己
                 if fd == self.server_socket.fileno():
-                    # 监听套接字可读：说明有新客户端，此时 accept 不会阻塞
-                    new_socket, new_addr = self.server_socket.accept()
-                    # 把新连接也注册到 epoll 中，监视它的可读事件
-                    self.epoll.register(new_socket.fileno(), select.EPOLLIN | select.EPOLLET)
-                    # 记录 fd 与套接字的对应关系，后面收到该 fd 的事件时才能找到它
-                    self.fd_socket[new_socket.fileno()] = new_socket
-                # 就绪的是某个客户端套接字，且事件是“可读”
-                elif event == select.EPOLLIN:
-                    # 通过 fd 找到套接字并 recv 接收数据（返回 bytes），decode 解码为 str
-                    request_text = self.fd_socket[fd].recv(1024).decode('utf-8', errors='ignore')
-                    # 非空字符串为真：收到了数据
-                    if request_text:
-                        # 有数据：返回响应
-                        self.fd_socket[fd].sendall(build_response(request_text))
-                    # 空字符串：对方已关闭连接
-                    else:
-                        # unregister(fd)：从 epoll 注销，不再监视它
-                        self.epoll.unregister(fd)
-                        # 服务器端也关闭套接字
-                        self.fd_socket[fd].close()
-                        # 删除字典中的记录，防止内存泄漏
-                        del self.fd_socket[fd]
+                    # ET 模式下通知只有一次，可能同时来了多个客户端，所以循环 accept 直到取空
+                    while True:
+                        # try：尝试非阻塞 accept
+                        try:
+                            # 非阻塞 accept：有新连接返回 (新套接字, 客户端地址)，没有时抛出 BlockingIOError
+                            new_socket, new_addr = self.server_socket.accept()
+                        # 捕获“全连接队列已取空”的异常
+                        except BlockingIOError:
+                            # 已取空，跳出内层循环，回到 poll() 等待下一次通知
+                            break
+                        # 新连接的套接字也要设为非阻塞，后面循环 recv 才能靠异常判断读空
+                        new_socket.setblocking(False)
+                        # 把新连接也注册到 epoll 中，监视它的可读事件
+                        self.epoll.register(new_socket.fileno(), select.EPOLLIN | select.EPOLLET)
+                        # 记录 fd 与套接字的对应关系，后面收到该 fd 的事件时才能找到它
+                        self.fd_socket[new_socket.fileno()] = new_socket
+                # 就绪的是某个客户端套接字，且事件包含“可读”（用 & 判断，因为 event 可能是多个事件的组合）
+                elif event & select.EPOLLIN:
+                    # 交给专门的方法处理这个客户端的可读事件
+                    self.handle_readable(fd)
+
+    def handle_readable(self, fd):
+        """处理某个客户端套接字的可读事件（ET 模式：循环 recv 直到读空）
+
+        Args:
+            fd (int): 就绪的客户端套接字的文件描述符
+
+        Returns:
+            None
+        """
+        # 通过 fd 找回对应的客户端套接字
+        client_socket = self.fd_socket[fd]
+        # 用 bytes 累积收到的所有数据，最后再统一解码（避免多字节字符被拆开）
+        request_data = b''
+        # 标记对方是否已关闭连接
+        is_closed = False
+        # 循环 recv 直到缓冲区读空
+        while True:
+            # try：尝试非阻塞 recv
+            try:
+                # 非阻塞 recv：有数据返回 bytes，缓冲区为空时抛出 BlockingIOError
+                data = client_socket.recv(1024)
+            # 捕获“缓冲区已读空”的异常
+            except BlockingIOError:
+                # 已读空，跳出循环
+                break
+            # 捕获“对方异常断开（RST）”的异常，浏览器关闭页面时可能出现
+            except ConnectionResetError:
+                # 按连接已关闭处理
+                is_closed = True
+                # 跳出循环
+                break
+            # recv 返回空 bytes：对方已关闭连接
+            if not data:
+                # 记录连接已关闭
+                is_closed = True
+                # 跳出循环
+                break
+            # 把本次读到的数据拼接到累积变量
+            request_data += data
+        # 收到了数据且连接还正常：生成并返回响应
+        if request_data and not is_closed:
+            # 响应可能较大（如图片），非阻塞套接字发不完会抛异常，所以发送时临时改回阻塞模式
+            # （代价：发送期间会阻塞整个事件循环，示例为简化而接受，真实项目会监视可写事件分批发送）
+            client_socket.setblocking(True)
+            # try：尝试发送响应
+            try:
+                # build_response 复用 16.12.2 的函数，返回 bytes；sendall 保证全部发出
+                client_socket.sendall(build_response(request_data.decode('utf-8', errors='ignore')))
+            # 捕获“对方已断开”的异常，避免一个客户端出错拖垮整个服务器
+            except (BrokenPipeError, ConnectionResetError):
+                # 按连接已关闭处理
+                is_closed = True
+            # 发送完再改回非阻塞，以便下次继续用异常判断读空（套接字若已出错，改模式不会报错）
+            client_socket.setblocking(False)
+        # 对方已关闭连接：做清理
+        if is_closed:
+            # unregister(fd)：从 epoll 注销，不再监视它
+            self.epoll.unregister(fd)
+            # 服务器端也关闭套接字
+            client_socket.close()
+            # 删除字典中的记录，防止内存泄漏
+            del self.fd_socket[fd]
 
 
 # 仅当直接运行本文件时才启动服务器
@@ -6770,8 +6833,28 @@ if __name__ == '__main__':
 > - **优点**：单进程即可支撑大量并发连接，没有进程/线程的创建与切换开销；内核只通知就绪的套接字，无空转，CPU 占用低；监视的套接字数量不受 `select` 的 1024 限制，效率不随连接数增多而明显下降。
 > - **缺点**：仅 Linux 支持（Windows 无 `epoll`）；编程较复杂，需要自己维护 fd 与套接字的对应关系和连接状态；单进程中任何一个耗时的处理都会阻塞其他连接，也无法利用多核。
 
-> **ET 模式注意**：边缘触发下事件只通知一次，严谨的写法应把套接字设为非阻塞并循环 `accept`/`recv` 直到抛出 `BlockingIOError`；上面的示例沿用教材写法做了简化，默认的 LT 模式（去掉 `EPOLLET`）更不易漏事件。
+> **边缘触发（ET）与水平触发（LT）**：这是 `epoll` 的两种触发模式，默认是 LT；类比门铃，LT 是你没开门它就一直响，ET 是只在按下的瞬间响一声，没听见就错过了。
+
+| 对比项 | 水平触发 LT（默认） | 边缘触发 ET（`EPOLLET`） |
+|---|---|---|
+| 通知时机 | 只要缓冲区里还有数据没读完，每次调用 `poll()` 都会继续通知 | 只在状态**变化**的那一刻通知一次，如有新数据到达 |
+| 没读完会怎样 | 下次 `poll()` 仍会返回，不会丢事件 | 不会因为“还有剩余数据”而再次通知，除非又有新数据到达，否则剩下的数据可能长时间无人处理 |
+| 编程要求 | 宽松，读多少都行 | 严格，必须一次把数据读完 |
+| 效率 | 稍低，可能被重复通知 | 稍高，通知次数少 |
+
+> **为什么 ET 模式下，套接字应设为非阻塞并循环 `accept` / `recv`**：
 >
+> - **为什么要循环读**：ET 只在状态变化时通知一次。若对方发来 3000 字节，只调用一次 `recv(1024)`，剩下的数据留在缓冲区里，内核不会因为“还有剩余数据”而再次通知，只有等对方再发新数据时才会有新通知，这部分数据可能长时间没人处理；`accept` 同理，同一时刻可能有多个客户端完成握手，只 `accept` 一次，其余连接会滞留在全连接队列里。所以必须循环读，直到确认读空。
+> - **为什么必须非阻塞**：判断“读空”靠的是“再读一次发现没数据”。阻塞套接字没数据时，`recv` / `accept` 会一直等待，整个事件循环卡死，其他连接都无法处理；非阻塞套接字没数据时会立刻抛出 `BlockingIOError`，这正是“已读空”的信号，捕获后跳出循环，回到 `poll()` 等待下一次通知。
+> - **LT 模式为什么没有这个要求**：
+>   - **不会丢事件**：LT 是“只要缓冲区还有数据，每次 `poll()` 都会再通知”。这次只 `recv` 了一部分，剩下的下一轮 `poll()` 会再次返回该 fd，下次接着读；监听套接字同理，全连接队列里还有连接，下一轮 `poll()` 它仍然是可读的。所以不需要在一次事件里读空。
+>   - **阻塞也不会卡死**：`poll()` 报告“可读”说明此刻缓冲区里**有数据**（或有连接在等待），此时调用一次 `recv` / `accept` 通常会立刻返回，不会阻塞。阻塞套接字的风险主要出现在“读空后再读一次”，而 LT 不需要这样做。（个别情况下就绪通知后连接可能因网络错误被撤销，`accept` 理论上仍可能阻塞，所以生产环境即使用 LT 也建议设为非阻塞。）
+>   - **代价**：数据没读完会被重复通知，通知次数比 ET 多，效率略低；换来的是代码简单、不易出错。
+>
+> 上面 16.12.5 的服务器代码就是按 ET 的严格写法实现的：监听套接字和客户端套接字都设为非阻塞，`accept` / `recv` 都放在循环里，直到抛出 `BlockingIOError`。
+
+> **ET 模式注意**：边缘触发必须严格遵守“非阻塞 + 循环读到 `BlockingIOError`”，否则容易漏数据、漏连接；初学或追求稳妥时，使用默认的 LT 模式（去掉 `EPOLLET`，读写逻辑更简单）更不易出错。
+
 > **IO 多路复用的本质**：`select / poll / epoll` 让**一个进程同时等待多个套接字**，任意一个就绪就立即返回处理（也称 *event driven IO*，事件驱动）。
 >
 > - 它**本身没有并发能力**：任一时刻仍然只有一个进程/线程在工作；
