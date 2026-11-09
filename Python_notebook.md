@@ -6735,7 +6735,7 @@ class WebServer(object):
         while True:
             # poll()：不指定超时则阻塞，直到有事件发生；返回 list[tuple[int, int]]，即 [(fd, 事件), ...] 就绪列表
             epoll_list = self.epoll.poll()
-            # 逐个处理就绪的 (fd, event)
+            # 逐个处理就绪的 (fd, event)：解包元组，fd 是 int（文件描述符），event 是 int（事件位掩码，见下方说明）
             for fd, event in epoll_list:
                 # 就绪的是监听套接字自己
                 if fd == self.server_socket.fileno():
@@ -6755,8 +6755,17 @@ class WebServer(object):
                         self.epoll.register(new_socket.fileno(), select.EPOLLIN | select.EPOLLET)
                         # 记录 fd 与套接字的对应关系，后面收到该 fd 的事件时才能找到它
                         self.fd_socket[new_socket.fileno()] = new_socket
-                # 就绪的是某个客户端套接字，且事件包含“可读”（用 & 判断，因为 event 可能是多个事件的组合）
-                elif event & select.EPOLLIN:
+                # 就绪的是某个客户端套接字
+                else:
+                    # event 和 select.EPOLLIN 都是 int（整数），不是特殊数据结构，而是“位掩码”：整数的每个二进制位代表一种事件
+                    # EPOLLIN 的值是 1（二进制 0b00001，只有最低位为 1）；event 是内核把已发生的多个事件用 | 合并成的一个整数
+                    # 整数没有固定位数，运算时按低位对齐、高位补 0，例如“可读 + 挂断”：event=0b10001，EPOLLIN=0b00001，按位与=0b00001（非 0）
+                    # (event & select.EPOLLIN)：按位与，返回 int，只保留“可读”那一位；!= 0 得到 bool，不为 0 说明发生了可读事件
+                    is_readable = (event & select.EPOLLIN) != 0
+                    # 不可读（如只有出错/挂断标志）时不处理，跳过本次事件
+                    if not is_readable:
+                        # continue：跳过本次循环，处理下一个就绪的 fd
+                        continue
                     # 交给专门的方法处理这个客户端的可读事件
                     self.handle_readable(fd)
 
