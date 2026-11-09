@@ -6281,6 +6281,7 @@ tcp_syncookies         # 启用 SYN Cookie（最有效）：在完成三次握�
 #### 16.12.1 显示固定的页面
 
 ```python
+# 导入 socket 模块：提供网络编程接口（创建套接字、收发数据等）
 import socket
 
 
@@ -6289,49 +6290,58 @@ def handle_client(client_socket):
 
     Args:
         client_socket (socket.socket): 与该客户端通信的套接字
+
+    Returns:
+        None
     """
-    # recv(1024)：接收浏览器发来的 HTTP 请求，返回 bytes；decode 转成 str
+    # recv(1024)：最多接收 1024 字节，返回 bytes；decode 按 utf-8 解码为 str，errors='ignore' 忽略无法解码的字节
     recv_data = client_socket.recv(1024).decode('utf-8', errors='ignore')
-    # splitlines()：按行切割请求报文，返回 list[str]
+    # splitlines()：按行切割请求报文，返回 list[str]，每个元素是一行（不含换行符）
     request_header_lines = recv_data.splitlines()
-    # 遍历并打印每一行请求头，方便观察浏览器发送了什么
+    # 遍历请求报文的每一行，line 的类型是 str
     for line in request_header_lines:
+        # 打印该行，方便观察浏览器发送了什么
         print(line)
 
     # 响应头第一行（状态行）：协议版本 + 状态码 200（成功）+ 说明，\r\n 为行结束符
     response_headers = 'HTTP/1.1 200 OK\r\n'
     # 单独的一个 \r\n 即“空行”，用来分隔响应头与响应体
     response_headers += '\r\n'
-    # 响应体：浏览器将显示的内容
+    # 响应体：浏览器将显示的内容，类型是 str
     response_body = 'hello world'
     # 拼接为完整的响应报文（str 类型）
     response = response_headers + response_body
-    # send：只能发送 bytes，所以先 encode
+    # send：只能发送 bytes，所以先 encode 把 str 转成 bytes；返回值是实际发送的字节数 int（此处忽略）
     client_socket.send(response.encode('utf-8'))
     # 关闭与该客户端的连接（HTTP 短连接：响应完就断开）
     client_socket.close()
 
 
 def main():
-    """作为程序的主控制入口"""
-    # 创建 TCP 套接字（IPv4 + 流式）
+    """作为程序的主控制入口
+
+    Returns:
+        None
+    """
+    # socket.socket(family, type)：创建套接字对象；AF_INET 表示 IPv4，SOCK_STREAM 表示 TCP 流式协议
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # SO_REUSEADDR：服务器先关闭进入 TIME_WAIT 时，也能立即重新绑定同一端口
+    # setsockopt(层级, 选项, 值)：SO_REUSEADDR=1 表示服务器先关闭进入 TIME_WAIT 时，也能立即重新绑定同一端口
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # 绑定本机所有网卡的 7788 端口
+    # bind((ip, port))：绑定地址；ip 为空字符串表示本机所有网卡，7788 是端口号
     server_socket.bind(('', 7788))
-    # 开始监听，全连接队列最大长度为 128
+    # listen(backlog)：变为被动监听套接字，参数是全连接队列的最大长度
     server_socket.listen(128)
-    # 循环接受客户端连接
+    # 死循环：服务器要一直运行，不断接受客户端连接
     while True:
-        # accept 阻塞等待，返回 (与客户端通信的新套接字, 客户端地址)
+        # accept()：阻塞等待客户端连接，返回元组 (与客户端通信的新套接字, 客户端地址 (ip, port))
         client_socket, client_addr = server_socket.accept()
         # 当前版本：处理完一个客户端才能处理下一个（单任务）
         handle_client(client_socket)
 
 
-# 仅当直接运行本文件时才启动服务器
+# 仅当直接运行本文件时才启动服务器（被 import 时不会执行）
 if __name__ == '__main__':
+    # 调用主入口函数
     main()
 ```
 
@@ -6346,10 +6356,12 @@ if __name__ == '__main__':
 > 后续各版本都会复用本小节的 `build_response` 函数，把“解析请求 + 组织响应”独立出来，服务器只需关心“如何并发”。
 
 ```python
+# 导入 re 模块：正则表达式，用来解析请求行
 import re
+# 导入 socket 模块：网络编程接口
 import socket
 
-# 服务器存放静态资源的根目录
+# 服务器存放静态资源的根目录（相对路径，str 类型）
 DOCUMENTS_ROOT = './html'
 
 
@@ -6362,38 +6374,47 @@ def build_response(request_text):
     Returns:
         bytes: 响应头 + 响应体 拼接后的二进制数据，可直接 send
     """
-    # 按行切割请求报文，第 0 行是请求行，如：GET /index.html HTTP/1.1
+    # splitlines()：按行切割请求报文，返回 list[str]，第 0 行是请求行，如：GET /index.html HTTP/1.1
     request_lines = request_text.splitlines()
-    # 空请求（客户端已断开）直接返回空字节
+    # 空列表为假：说明请求为空（客户端已断开）
     if not request_lines:
+        # 直接返回空字节，调用方 send 空数据相当于什么都不发
         return b''
-    # 正则：[^/]+ 匹配到第一个 / 之前的内容（GET 和空格），(/[^ ]*) 捕获路径
+    # re.match(正则, 字符串)：从开头匹配，成功返回 Match 对象，失败返回 None
+    # 正则含义：[^/]+ 匹配到第一个 / 之前的内容（GET 和空格），(/[^ ]*) 捕获以 / 开头、到空格之前的路径
     match = re.match(r'[^/]+(/[^ ]*)', request_lines[0])
-    # 无法解析请求行时，当作访问首页（注：带查询参数如 /a.html?x=1 的路径本示例未处理，会当作文件名而返回 404）
+    # group(1)：取第 1 个括号捕获的内容（str）；匹配失败时当作访问首页 /
+    # 注：带查询参数如 /a.html?x=1 的路径本示例未处理，会当作文件名而返回 404
     file_name = match.group(1) if match else '/'
-    # 路径为 / 时，默认返回首页 index.html
+    # 路径为 / 表示访问网站根
     if file_name == '/':
+        # 默认返回首页 index.html
         file_name = '/index.html'
-    # 简单的安全检查：禁止用 .. 访问根目录之外的文件（路径穿越）
+    # 简单的安全检查：路径中含 .. 说明想访问根目录之外的文件（路径穿越攻击）
     if '..' in file_name:
+        # 改成一个不存在的文件，后面自然返回 404
         file_name = '/not_exist'
+    # try：尝试读取文件，文件不存在或无权限会抛出 IOError
     try:
-        # 以二进制模式（rb）打开文件，因为图片等资源不是文本
+        # open(路径, 'rb')：以二进制只读模式打开，因为图片等资源不是文本；with 结束时自动关闭文件
         with open(DOCUMENTS_ROOT + file_name, 'rb') as f:
-            # 读取整个文件内容，返回 bytes
+            # read()：读取整个文件内容，返回 bytes
             response_body = f.read()
+    # 捕获文件读取失败的异常
     except IOError:
-        # 文件不存在：状态码 404
+        # 响应体：提示文字，encode 转成 bytes（与文件内容类型保持一致）
         response_body = '====sorry, file not found===='.encode('utf-8')
+        # 状态行：404 表示资源未找到，\r\n 为行结束符
         response_header = 'HTTP/1.1 404 Not Found\r\n'
+    # else：try 没有异常时才执行
     else:
-        # 文件读取成功：状态码 200
+        # 状态行：200 表示成功
         response_header = 'HTTP/1.1 200 OK\r\n'
-    # Content-Length 告诉浏览器响应体的字节数（必须用 bytes 的长度，而不是 str）
+    # Content-Length：告诉浏览器响应体的字节数（必须用 bytes 的长度 len，而不是 str 的长度）
     response_header += f'Content-Length: {len(response_body)}\r\n'
-    # 空行：响应头结束
+    # 空行：响应头结束的标志
     response_header += '\r\n'
-    # 头是 str，体是 bytes，需先把头 encode 后再拼接
+    # 头是 str，体是 bytes，需先把头 encode 成 bytes 再拼接，返回 bytes
     return response_header.encode('utf-8') + response_body
 
 
@@ -6402,34 +6423,43 @@ def handle_client(client_socket):
 
     Args:
         client_socket (socket.socket): 与该客户端通信的套接字
+
+    Returns:
+        None
     """
-    # 接收并解码请求报文
+    # recv(1024) 接收请求，返回 bytes；decode 解码为 str
     request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
-    # 生成响应并发送；sendall 会保证数据全部发出
+    # build_response 生成响应（bytes）；sendall 会循环发送，保证数据全部发出（send 可能只发一部分）
     client_socket.sendall(build_response(request_text))
-    # 关闭连接
+    # 关闭与该客户端的连接
     client_socket.close()
 
 
 def main():
-    """作为程序的主控制入口"""
-    # 创建 TCP 套接字
+    """作为程序的主控制入口
+
+    Returns:
+        None
+    """
+    # 创建 TCP 套接字：AF_INET 为 IPv4，SOCK_STREAM 为 TCP
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # 允许端口立即复用
+    # 设置端口复用：服务器重启时可立即绑定同一端口
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # 绑定 7788 端口
+    # 绑定本机所有网卡的 7788 端口
     server_socket.bind(('', 7788))
-    # 开始监听
+    # 开始监听，全连接队列最大长度为 128
     server_socket.listen(128)
-    # 循环接受客户端
+    # 死循环：持续接受客户端
     while True:
-        # 取出一个已完成握手的连接
+        # accept() 阻塞等待，返回 (新套接字, 客户端地址)，取出一个已完成三次握手的连接
         client_socket, client_addr = server_socket.accept()
         # 同一时刻只能服务一个客户端
         handle_client(client_socket)
 
 
+# 仅当直接运行本文件时才启动服务器
 if __name__ == '__main__':
+    # 调用主入口函数
     main()
 ```
 
@@ -6458,7 +6488,9 @@ if __name__ == '__main__':
 > - **Windows 说明**：Windows 没有 `fork`，默认使用 `spawn`，套接字通过序列化（pickle）传给子进程，同样是新建一个指向同一连接的句柄，引用计数的原理一致。
 
 ```python
+# 导入 multiprocessing 模块：多进程（Process 类用来创建子进程）
 import multiprocessing
+# 导入 socket 模块：网络编程接口
 import socket
 
 
@@ -6470,26 +6502,36 @@ class WebServer(object):
 
         Args:
             server_address (tuple): (ip, port)，如 ('', 8888)
+
+        Returns:
+            None
         """
-        # 创建 TCP 套接字
+        # 创建 TCP 套接字（IPv4 + 流式），保存为对象属性，后面的方法要用
         self.listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # 允许立即使用上次绑定的端口
+        # 设置端口复用：允许立即使用上次绑定过的端口
         self.listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # 绑定地址
+        # 绑定地址 (ip, port)
         self.listen_socket.bind(server_address)
-        # 变为被动套接字，并指定全连接队列长度
+        # 变为被动套接字，并指定全连接队列长度为 128
         self.listen_socket.listen(128)
 
     def serve_forever(self):
-        """循环等待客户端连接，并为每个客户端创建一个进程"""
+        """循环等待客户端连接，并为每个客户端创建一个进程
+
+        Returns:
+            None
+        """
+        # 死循环：服务器一直运行
         while True:
-            # 阻塞等待新客户端
+            # accept() 阻塞等待新客户端，返回 (与该客户端通信的套接字, 客户端地址 (ip, port))
             client_socket, client_address = self.listen_socket.accept()
+            # 打印客户端地址，方便观察有哪些客户端连接
             print(client_address)
-            # 创建子进程，target 为子进程执行的方法，args 为传给它的参数元组
+            # Process(target=子进程执行的函数, args=传给函数的参数元组)：创建子进程对象，此时还没有运行
+            # args 只有一个元素时，元组末尾必须加逗号
             new_process = multiprocessing.Process(
                 target=self.handle_request, args=(client_socket,))
-            # 启动子进程
+            # start()：真正启动子进程，子进程开始执行 handle_request
             new_process.start()
             # 子进程已复制了父进程的套接字，父进程这里 close 只是减少一次引用计数，
             # 并不会真正关闭这个连接，子进程仍可继续使用
@@ -6500,25 +6542,36 @@ class WebServer(object):
 
         Args:
             client_socket (socket.socket): 与该客户端通信的套接字
+
+        Returns:
+            None
         """
-        # 接收请求
+        # recv(1024) 接收请求，返回 bytes；decode 解码为 str
         request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
-        # 复用 16.12.2 中的 build_response 生成响应并发送
+        # 复用 16.12.2 中的 build_response 生成响应（bytes），sendall 保证全部发出
         client_socket.sendall(build_response(request_text))
         # 子进程的这份引用也关闭后，连接才真正断开
         client_socket.close()
 
 
 def main():
-    """主控制入口"""
-    # 创建服务器对象，监听 8888 端口
+    """主控制入口
+
+    Returns:
+        None
+    """
+    # 创建服务器对象，监听 8888 端口（ip 为空表示本机所有网卡）
     httpd = WebServer(('', 8888))
+    # 提示服务器已启动
     print('web server: serving HTTP on port 8888 ...')
-    # 开始服务
+    # 开始服务（死循环，不会返回）
     httpd.serve_forever()
 
 
+# 仅当直接运行本文件时才启动服务器
+# 注意：Windows 下使用多进程必须放在 if __name__ == '__main__' 里，否则子进程会重复导入并无限创建进程
 if __name__ == '__main__':
+    # 调用主入口函数
     main()
 ```
 
@@ -6532,7 +6585,9 @@ if __name__ == '__main__':
 与多进程版几乎一样，只是把 `Process` 换成 `Thread`，线程更轻量。
 
 ```python
+# 导入 socket 模块：网络编程接口
 import socket
+# 导入 threading 模块：多线程（Thread 类用来创建子线程）
 import threading
 
 
@@ -6544,26 +6599,35 @@ class WebServer(object):
 
         Args:
             server_address (tuple): (ip, port)
+
+        Returns:
+            None
         """
-        # 创建 TCP 套接字
+        # 创建 TCP 套接字（IPv4 + 流式）
         self.listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # 允许端口立即复用
+        # 设置端口复用
         self.listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # 绑定地址
+        # 绑定地址 (ip, port)
         self.listen_socket.bind(server_address)
-        # 开始监听
+        # 开始监听，全连接队列长度为 128
         self.listen_socket.listen(128)
 
     def serve_forever(self):
-        """循环等待客户端连接，并为每个客户端创建一个线程"""
+        """循环等待客户端连接，并为每个客户端创建一个线程
+
+        Returns:
+            None
+        """
+        # 死循环：服务器一直运行
         while True:
-            # 阻塞等待新客户端
+            # accept() 阻塞等待新客户端，返回 (通信套接字, 客户端地址)
             client_socket, client_address = self.listen_socket.accept()
+            # 打印客户端地址
             print(client_address)
-            # 创建线程，target 为线程执行的方法，args 为参数元组
+            # Thread(target=线程执行的函数, args=参数元组)：创建线程对象，此时还没有运行
             new_thread = threading.Thread(
                 target=self.handle_request, args=(client_socket,))
-            # 启动线程
+            # start()：启动线程，线程开始执行 handle_request
             new_thread.start()
             # 注意：线程与主线程共享同一个套接字对象，
             # 主线程绝对不能在这里 close，否则子线程就无法使用它了
@@ -6573,22 +6637,31 @@ class WebServer(object):
 
         Args:
             client_socket (socket.socket): 与该客户端通信的套接字
+
+        Returns:
+            None
         """
-        # 接收请求
+        # recv(1024) 接收请求，返回 bytes；decode 解码为 str
         request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
-        # 发送响应
+        # 复用 build_response 生成响应（bytes），sendall 保证全部发出
         client_socket.sendall(build_response(request_text))
         # 由子线程负责关闭套接字
         client_socket.close()
 
 
 def main():
-    """主控制入口"""
-    # 创建服务器并运行
+    """主控制入口
+
+    Returns:
+        None
+    """
+    # 创建服务器对象并直接运行（死循环，不会返回）
     WebServer(('', 8888)).serve_forever()
 
 
+# 仅当直接运行本文件时才启动服务器
 if __name__ == '__main__':
+    # 调用主入口函数
     main()
 ```
 
@@ -6604,6 +6677,7 @@ if __name__ == '__main__':
 不使用多进程/多线程，而是把套接字设置为**非阻塞**，在一个进程里**轮询**所有连接（原理见 16.8.2）。
 
 ```python
+# 导入 socket 模块：网络编程接口
 import socket
 
 
@@ -6615,53 +6689,71 @@ class WebServer(object):
 
         Args:
             port (int): 监听的端口号
+
+        Returns:
+            None
         """
-        # 创建 TCP 套接字
+        # 创建 TCP 套接字（IPv4 + 流式）
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # 允许端口立即复用
+        # 设置端口复用
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # 绑定端口
+        # 绑定端口，ip 为空表示本机所有网卡
         self.server_socket.bind(('', port))
-        # 开始监听
+        # 开始监听，全连接队列长度为 128
         self.server_socket.listen(128)
-        # 设置为非阻塞：没有新连接时 accept 不再等待，而是直接抛出 BlockingIOError
+        # setblocking(False)：设置为非阻塞，没有新连接时 accept 不再等待，而是直接抛出 BlockingIOError
         self.server_socket.setblocking(False)
-        # 保存所有已连接客户端的套接字
+        # 列表：保存所有已连接客户端的套接字，元素类型是 socket.socket
         self.client_socket_list = []
 
     def run_forever(self):
-        """循环：先检查有无新连接，再轮询所有已连接的客户端"""
+        """循环：先检查有无新连接，再轮询所有已连接的客户端
+
+        Returns:
+            None
+        """
+        # 死循环：不停地轮询（所以 CPU 占用高）
         while True:
+            # try：尝试非阻塞 accept
             try:
-                # 非阻塞 accept：没有客户端 connect 时会抛出异常
+                # 非阻塞 accept：有客户端连接时返回 (新套接字, 客户端地址)，没有时抛出 BlockingIOError
                 new_socket, new_addr = self.server_socket.accept()
+            # 捕获“暂时没有新连接”的异常
             except BlockingIOError:
-                # 没有新客户端，什么也不做，继续往下
+                # 没有新客户端，什么也不做，继续往下轮询已有客户端
                 pass
+            # else：accept 成功（有新客户端）时才执行
             else:
-                # 新连接的套接字同样设置为非阻塞
+                # 新连接的套接字同样设置为非阻塞，这样 recv 没数据时也不会卡住
                 new_socket.setblocking(False)
-                # 加入客户端列表
+                # 加入客户端列表，下面的循环会轮询到它
                 self.client_socket_list.append(new_socket)
 
-            # 遍历副本，因为循环内会 remove 元素（遍历时不要修改原列表）
+            # client_socket_list[:]：切片得到列表的副本，因为循环内会 remove 元素（遍历时不要修改原列表）
             for client_socket in self.client_socket_list[:]:
+                # try：尝试非阻塞 recv
                 try:
-                    # 非阻塞 recv：没有数据时抛出 BlockingIOError
+                    # 非阻塞 recv：有数据返回 bytes，没有数据时抛出 BlockingIOError；decode 解码为 str
                     request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
+                # 捕获“这个客户端暂时没发数据”的异常
                 except BlockingIOError:
-                    # 这个客户端暂时没发数据，轮到下一个
+                    # 这个客户端暂时没发数据，continue 跳过，轮到下一个
                     continue
+                # 非空字符串为真：说明收到了数据
                 if request_text:
                     # 有数据：生成并发送响应（带 Content-Length，浏览器可用长连接）
                     client_socket.sendall(build_response(request_text))
+                # 空字符串：recv 返回空表示对方已关闭连接
                 else:
-                    # recv 返回空：客户端已关闭连接，服务器也关闭并移出列表
+                    # 客户端已关闭，服务器也关闭这个套接字
                     client_socket.close()
+                    # 从列表中移除，以后不再轮询它
                     self.client_socket_list.remove(client_socket)
 
 
+# 仅当直接运行本文件时才启动服务器
 if __name__ == '__main__':
+    # 创建服务器对象（监听 7890 端口）并开始轮询
     WebServer(7890).run_forever()
 ```
 
@@ -6675,7 +6767,9 @@ if __name__ == '__main__':
 用 `epoll` 让**操作系统内核**帮我们监视所有套接字，有事件才返回，避免空转（epoll 详解见 16.8.1）。
 
 ```python
+# 导入 select 模块：提供 epoll 等 IO 多路复用接口（epoll 仅 Linux 支持）
 import select
+# 导入 socket 模块：网络编程接口
 import socket
 
 
@@ -6687,51 +6781,67 @@ class WebServer(object):
 
         Args:
             port (int): 监听的端口号
+
+        Returns:
+            None
         """
-        # 创建 TCP 套接字
+        # 创建 TCP 套接字（IPv4 + 流式）
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # 允许端口立即复用
+        # 设置端口复用
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # 绑定端口
+        # 绑定端口，ip 为空表示本机所有网卡
         self.server_socket.bind(('', port))
-        # 开始监听
+        # 开始监听，全连接队列长度为 128
         self.server_socket.listen(128)
-        # 创建 epoll 对象
+        # select.epoll()：创建 epoll 对象，由操作系统内核帮我们监视所有套接字
         self.epoll = select.epoll()
-        # register(fd, 事件掩码)：EPOLLIN 表示可读；EPOLLET 为边缘触发模式
+        # register(fd, 事件掩码)：注册要监视的文件描述符；fileno() 返回套接字的 fd（int）
+        # EPOLLIN 表示“可读”事件，EPOLLET 表示边缘触发模式，用 | 按位或组合两个选项
         self.epoll.register(self.server_socket.fileno(), select.EPOLLIN | select.EPOLLET)
-        # 字典：文件描述符 fd → 对应的客户端套接字对象
+        # 字典：文件描述符 fd（int）→ 对应的客户端套接字对象，通过 poll 返回的 fd 找回套接字
         self.fd_socket = {}
 
     def run_forever(self):
-        """事件循环"""
+        """事件循环
+
+        Returns:
+            None
+        """
+        # 死循环：不断等待并处理事件
         while True:
-            # poll()：不指定超时则阻塞，返回 [(fd, 事件), ...] 就绪列表
+            # poll()：不指定超时则阻塞，直到有事件发生；返回 list[tuple[int, int]]，即 [(fd, 事件), ...] 就绪列表
             epoll_list = self.epoll.poll()
-            # 逐个处理就绪的 fd
+            # 逐个处理就绪的 (fd, event)
             for fd, event in epoll_list:
+                # 就绪的是监听套接字自己
                 if fd == self.server_socket.fileno():
-                    # 监听套接字可读：说明有新客户端，可以 accept
+                    # 监听套接字可读：说明有新客户端，此时 accept 不会阻塞
                     new_socket, new_addr = self.server_socket.accept()
                     # 把新连接也注册到 epoll 中，监视它的可读事件
                     self.epoll.register(new_socket.fileno(), select.EPOLLIN | select.EPOLLET)
-                    # 记录 fd 与套接字的对应关系
+                    # 记录 fd 与套接字的对应关系，后面收到该 fd 的事件时才能找到它
                     self.fd_socket[new_socket.fileno()] = new_socket
+                # 就绪的是某个客户端套接字，且事件是“可读”
                 elif event == select.EPOLLIN:
-                    # 客户端套接字可读：接收数据
+                    # 通过 fd 找到套接字并 recv 接收数据（返回 bytes），decode 解码为 str
                     request_text = self.fd_socket[fd].recv(1024).decode('utf-8', errors='ignore')
+                    # 非空字符串为真：收到了数据
                     if request_text:
                         # 有数据：返回响应
                         self.fd_socket[fd].sendall(build_response(request_text))
+                    # 空字符串：对方已关闭连接
                     else:
-                        # 空数据：客户端已关闭，从 epoll 注销并关闭套接字
+                        # unregister(fd)：从 epoll 注销，不再监视它
                         self.epoll.unregister(fd)
+                        # 服务器端也关闭套接字
                         self.fd_socket[fd].close()
-                        # 删除字典中的记录
+                        # 删除字典中的记录，防止内存泄漏
                         del self.fd_socket[fd]
 
 
+# 仅当直接运行本文件时才启动服务器
 if __name__ == '__main__':
+    # 创建服务器对象（监听 7890 端口）并开始事件循环
     WebServer(7890).run_forever()
 ```
 
@@ -6750,9 +6860,12 @@ if __name__ == '__main__':
 用协程（`gevent`）为每个客户端创建一个**协程**，代码像多线程一样简单，开销却小得多（协程详见第十七章）。
 
 ```python
-# 安装：pip install gevent
+# 安装：pip install gevent（gevent 是第三方协程库）
+# 从 gevent 导入 monkey：用来打猴子补丁
 from gevent import monkey
+# 导入 gevent 模块：提供 spawn 等协程调度接口
 import gevent
+# 导入 socket 模块：网络编程接口
 import socket
 
 # 猴子补丁：把标准库中会阻塞的操作（socket、time.sleep 等）替换为 gevent 的协程版本
@@ -6768,22 +6881,30 @@ class WebServer(object):
 
         Args:
             port (int): 监听的端口号
+
+        Returns:
+            None
         """
         # 创建 TCP 套接字（此时已被打补丁，阻塞时会自动切换协程）
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # 允许端口立即复用
+        # 设置端口复用
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # 绑定端口
+        # 绑定端口，ip 为空表示本机所有网卡
         self.server_socket.bind(('', port))
-        # 开始监听
+        # 开始监听，全连接队列长度为 128
         self.server_socket.listen(128)
 
     def run_forever(self):
-        """循环接收客户端，每个客户端交给一个协程处理"""
+        """循环接收客户端，每个客户端交给一个协程处理
+
+        Returns:
+            None
+        """
+        # 死循环：服务器一直运行
         while True:
-            # 阻塞时 gevent 会切换去执行其他协程
+            # accept() 返回 (新套接字, 客户端地址)；阻塞时 gevent 会切换去执行其他协程
             new_socket, new_addr = self.server_socket.accept()
-            # spawn(函数, 参数...)：创建并调度一个协程，返回 Greenlet 对象
+            # spawn(函数, 参数...)：创建并调度一个协程，返回 Greenlet 对象（此处不需要，忽略）
             gevent.spawn(self.handle_request, new_socket)
 
     def handle_request(self, client_socket):
@@ -6791,19 +6912,27 @@ class WebServer(object):
 
         Args:
             client_socket (socket.socket): 与该客户端通信的套接字
+
+        Returns:
+            None
         """
+        # 死循环：同一个连接可以多次收发（长连接）
         while True:
-            # 接收请求（阻塞时自动切换协程）
+            # recv(1024) 接收请求，返回 bytes；阻塞时自动切换协程；decode 解码为 str
             request_text = client_socket.recv(1024).decode('utf-8', errors='ignore')
             # 浏览器接收完数据后会主动关闭，此时 recv 返回空，服务器也要关闭
             if not request_text:
+                # 关闭套接字
                 client_socket.close()
+                # 跳出循环，协程结束
                 break
-            # 返回响应
+            # 返回响应（bytes），sendall 保证全部发出
             client_socket.sendall(build_response(request_text))
 
 
+# 仅当直接运行本文件时才启动服务器
 if __name__ == '__main__':
+    # 创建服务器对象（监听 7890 端口）并开始接收客户端
     WebServer(7890).run_forever()
 ```
 
