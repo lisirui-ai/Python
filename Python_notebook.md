@@ -6904,14 +6904,16 @@ if __name__ == '__main__':
 # 安装：pip install gevent（gevent 是第三方协程库）
 # 从 gevent 导入 monkey：用来打猴子补丁
 from gevent import monkey
-# 导入 gevent 模块：提供 spawn 等协程调度接口
-import gevent
-# 导入 socket 模块：网络编程接口
-import socket
 
-# 猴子补丁：把标准库中会阻塞的操作（socket、time.sleep 等）替换为 gevent 的协程版本
-# 必须在使用 socket 之前调用
+# !! 应尽早调用：放在其他模块导入之前，避免已导入的模块/已创建的对象仍持有旧的阻塞版本 !!
+# monkey.patch_all()：把 socket、time、threading 等标准库中会阻塞的操作替换为 gevent 的协程版本，
+# 使 time.sleep / socket.recv 等操作能触发协程切换；返回 bool（补丁是否成功）
 monkey.patch_all()
+
+# 导入 gevent 模块：提供 spawn 等协程调度接口（在打补丁之后导入）
+import gevent
+# 导入 socket 模块：网络编程接口（在打补丁之后导入，拿到的是 gevent 的协程版本）
+import socket
 
 
 class WebServer(object):
@@ -6978,7 +6980,7 @@ if __name__ == '__main__':
 ```
 
 > - **优点**：代码写法接近同步的多线程，简单易懂；协程由用户态调度，创建和切换开销极小，单进程可轻松支撑上万个连接；`monkey.patch_all()` 让现有阻塞代码无需修改即可自动切换；跨平台，不像 `epoll` 仅限 Linux。
-> - **缺点**：依赖第三方库 `gevent`，需要打猴子补丁，且必须在使用 `socket` 之前调用；协程是协作式调度，某个协程里的 CPU 密集计算或未被补丁覆盖的阻塞调用会卡住所有协程；单进程只能用一个 CPU 核心。
+> - **缺点**：依赖第三方库 `gevent`，需要打猴子补丁，且应尽早调用（放在其他模块导入之前）；协程是协作式调度，某个协程里的 CPU 密集计算或未被补丁覆盖的阻塞调用会卡住所有协程；单进程只能用一个 CPU 核心。
 
 ---
 
