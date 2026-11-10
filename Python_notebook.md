@@ -1588,41 +1588,54 @@ print(g.send(None))                 # 0（等价于 next(g)）
 ### 10.1 类与对象
 
 ```python
-# 定义类
+# 定义类：class 类名: 创建一个新的类对象（类名使用大驼峰命名）
 class Dog:
     """
     狗类，描述狗的属性和行为
     """
-    species = '犬科动物'      # 类属性（所有对象共享，在内存中只有一份）
-                               # 通过类名.的方式访问，避免与对象属性重名的二义性
+    # 类属性：直接写在类体中，所有对象共享，内存中只有一份（类型 str）
+    # 通过 类名. 的方式访问，避免与对象属性重名产生二义性
+    species = '犬科动物'
 
+    # 构造方法：对象实例化后自动调用，返回值必须是 None
     def __init__(self, name, age):
         """
         构造方法：对象实例化后自动调用
-        self 相当于 this 指针，在方法内部访问数据成员或方法要通过 self. 的方式
-        :param name: 狗的名字
-        :param age: 狗的年龄
+        self 相当于 this 指针，代表当前对象，在方法内部访问数据成员或方法要通过 self. 的方式
+        :param name: 狗的名字（str）
+        :param age: 狗的年龄（int）
         """
-        self.name = name    # 对象属性（每个对象独有，一个对象一份，不共享）
-        self.age = age      # self.数据成员=形参：在构造函数中定义数据成员及初始化
+        # 对象属性：self.数据成员 = 形参，在构造函数中定义并初始化，每个对象独有、不共享
+        self.name = name
+        # 同上：保存年龄
+        self.age = age
 
+    # 对象方法：第一个参数必须是 self，由解释器自动传入调用它的对象
     def bark(self):
-        """对象方法：第一个参数必须是 self"""
+        """对象方法：第一个参数必须是 self，无返回值（None）"""
+        # 通过 self.name 访问当前对象的名字，f-string 格式化后输出
         print(f'{self.name} 汪汪汪！')
 
+    # 魔法方法 __str__：print(对象) 或 str(对象) 时自动调用
     def __str__(self):
-        """print(对象) 时调用，返回对象的字符串描述"""
+        """print(对象) 时调用，必须返回 str 类型的对象描述"""
+        # 返回拼接好的描述字符串
         return f'Dog(name={self.name}, age={self.age})'
 
 # 创建对象（实例化）：类名() 创建对象时，解释器首先调用 __new__ 分配内存，再调用 __init__ 初始化
-dog = Dog('旺财', 3)             # 对象名=类名(实参)
-print(dog.name)                  # '旺财'（数据成员可以直接访问）
-print(Dog.species)               # '犬科动物'（类属性通过类名访问）
-dog.bark()                       # 旺财 汪汪汪！
+# 对象名 = 类名(实参)：实参依次传给 __init__ 中 self 之后的形参，返回 Dog 类型的对象
+dog = Dog('旺财', 3)
+# 数据成员可以直接通过 对象.属性名 访问，输出 '旺财'
+print(dog.name)
+# 类属性通过类名访问，输出 '犬科动物'
+print(Dog.species)
+# 调用对象方法：不用手动传 self，输出 旺财 汪汪汪！
+dog.bark()
 # 若类中未定义 __str__，print(dog) 输出的是对象的地址；定义后则调用 __str__
-print(dog)                       # Dog(name=旺财, age=3)（调用 __str__）
+# 输出 Dog(name=旺财, age=3)
+print(dog)
 
-# 自定义对象都是可变数据类型
+# 自定义对象都是可变数据类型（属性可以随时修改）
 # 类之间的关系只有依赖和被依赖
 ```
 
@@ -1631,19 +1644,28 @@ print(dog)                       # Dog(name=旺财, age=3)（调用 __str__）
 ### 10.2 封装
 
 ```python
-# 访问权限控制（Python 通过命名约定实现）
+# 访问权限控制（Python 通过命名约定实现，而不是关键字）
 class BankAccount:
+    # 构造方法：接收户主和余额，返回 None
     def __init__(self, owner, balance):
-        self.owner = owner            # 公开属性：可被外部直接访问
-        self._account_type = '储蓄'  # 受保护属性：约定内部使用（非强制）
-        self.__balance = balance      # 私有属性：被解释器重命名为 _BankAccount__balance，强制隐藏
-                                      # 即使在派生类中定义了同名的私有属性，两个私有属性仍是独立的
+        # 公开属性：可被外部直接访问（对象.owner）
+        self.owner = owner
+        # 受保护属性：单下划线开头，约定仅内部使用（非强制）
+        self._account_type = '储蓄'
+        # 私有属性：被解释器重命名为 _BankAccount__balance，从而强制隐藏
+        # 即使在派生类中定义了同名的私有属性，两个私有属性仍是独立的
+        self.__balance = balance
 
-    def get_balance(self):            # getter：获取私有属性
+    # getter：对外提供读取私有属性的公开接口
+    def get_balance(self):
+        # 返回私有属性 __balance 的值（数值类型）
         return self.__balance
 
-    def set_balance(self, amount):    # setter：修改私有属性（通过公开接口，读写分离）
+    # setter：通过公开接口修改私有属性（读写分离，便于做校验）
+    def set_balance(self, amount):
+        # 校验：只有金额大于 0 才允许修改，否则忽略
         if amount > 0:
+            # 校验通过后才真正修改私有属性
             self.__balance = amount
 ```
 
@@ -1754,42 +1776,57 @@ Student.testbug()                       # showbug
 ### 10.3 继承
 
 ```python
-# 单继承
+# 单继承：class 子类(父类)，子类自动获得父类的属性和方法
 class Animal:
+    # 父类构造方法：接收动物名字
     def __init__(self, name):
+        # 保存名字到对象属性
         self.name = name
 
+    # 父类对象方法：描述吃东西的行为
     def eat(self):
+        # 输出 "名字 在吃东西"
         print(f'{self.name} 在吃东西')
 
 # 子类继承父类所有公开方法（包括 __init__），但不继承私有方法
 # 可以继承私有属性，但不能通过 self.__继承的基类属性名 的形式访问
 class Dog(Animal):
+    # 子类新增的方法：父类中没有
     def bark(self):
+        # self.name 来自父类的 __init__（子类没有重写 __init__，所以直接继承）
         print(f'{self.name} 汪汪叫')
 
     # 方法重写（覆盖基类同名方法；函数名相同、参数列表不同，也会重写覆盖，不是重载）
     def eat(self):
+        # 子类自己的实现，调用 dog.eat() 时不再执行父类版本
         print(f'{self.name} 啃骨头')
 
 # super()：匿名父类对象；不实际创建对象，只是调用父类的方法，传入的 self 仍是派生类对象
 # 菱形继承的 __init__ 方法需要使用 super；super 只是执行代码（代码复用），不继承私有方法
 class Poodle(Dog):
+    # 子类重写构造方法：比父类多一个 color 参数
     def __init__(self, name, color):
-        super().__init__(name)         # 调用父类 __init__
+        # 调用父类（Dog -> Animal）的 __init__ 初始化 name，不需要手动传 self
+        super().__init__(name)
+        # 子类自己新增的属性：毛色
         self.color = color
 
+    # 重写 eat 方法，并在父类实现的基础上扩展
     def eat(self):
-        super().eat()                  # 调用父类 eat（复制基类代码，提高编程效率）
+        # 调用父类 eat（复用基类代码，提高编程效率）
+        super().eat()
+        # 子类额外的行为
         print('还要喝牛奶')
 ```
 
 ```python
 # 多继承（优先使用单继承，必要时才用多继承）
+# class 子类(父类1, 父类2)：同时继承多个父类（此处 Flyable、Swimmable 是假设已定义的类）
 class Duck(Flyable, Swimmable):
+    # pass：占位，表示类体暂时为空
     pass
 
-# 查看方法解析顺序（MRO，处理菱形继承问题）
+# 查看方法解析顺序（MRO，处理菱形继承问题），返回元组，元素是按查找顺序排列的类对象
 print(Duck.__mro__)
 # 从左到右，从继承图的下到上进行查找（C3算法）
 # 子类优先于父类；同层级按继承顺序；祖父类只访问一次
@@ -1808,29 +1845,43 @@ print(Duck.__mro__)
 3. 父类引用指向子类对象（用父类类型的变量接收子类对象）
 
 ```python
+# 父类：只负责定义接口标准
 class Animal:
+    # 抽象方法：父类定义方法名，具体实现交给子类
     def make_sound(self):
-        pass    # 父类定义接口标准（抽象方法）
+        # pass：空实现，仅占位
+        pass
 
+# 子类 Dog：继承 Animal 并重写 make_sound
 class Dog(Animal):
+    # 重写父类方法，给出狗的具体实现
     def make_sound(self):
         print("汪汪叫")
 
+# 子类 Cat：继承 Animal 并重写 make_sound
 class Cat(Animal):
+    # 重写父类方法，给出猫的具体实现
     def make_sound(self):
         print("喵喵叫")
 
+# 子类 Duck：继承 Animal 并重写 make_sound
 class Duck(Animal):
+    # 重写父类方法，给出鸭的具体实现
     def make_sound(self):
         print("嘎嘎叫")
 
 # 统一调用（父类引用指向子类对象）—— 无需区分具体类型
-def animal_sound(animal: Animal):    # 参数注解为父类类型
+# 参数注解 animal: Animal 只是提示（不强制检查），表示期望传入 Animal 或其子类对象
+def animal_sound(animal: Animal):
+    # 同一行代码，传入不同对象会执行不同的 make_sound，这就是多态
     animal.make_sound()
 
-animal_sound(Dog())    # 汪汪叫
-animal_sound(Cat())    # 喵喵叫
-animal_sound(Duck())   # 嘎嘎叫
+# 传入 Dog 对象，输出 汪汪叫
+animal_sound(Dog())
+# 传入 Cat 对象，输出 喵喵叫
+animal_sound(Cat())
+# 传入 Duck 对象，输出 嘎嘎叫
+animal_sound(Duck())
 ```
 
 > **鸭子类型（Duck Typing）**：Python 是动态类型语言，多态更灵活。
@@ -1851,31 +1902,45 @@ animal_sound(Duck())   # 嘎嘎叫
 # 抽象类：含有抽象方法的类；子类中必须实现抽象类中的各种抽象方法
 # 接口：仅包含抽象方法（无具体方法）的类，本质是"纯抽象类"
 
-# Python 中通过 abc 模块实现标准抽象类
+# Python 中通过 abc 模块实现标准抽象类：ABC 是抽象基类，abstractmethod 是抽象方法装饰器
 from abc import ABC, abstractmethod
 
-class Shape(ABC):    # 继承 ABC 标记为抽象类
+# 继承 ABC 标记为抽象类，抽象类不能被实例化
+class Shape(ABC):
+    # 抽象方法：用 @abstractmethod 修饰，子类必须重写
     @abstractmethod
-    def area(self):    # 抽象方法：用 @abstractmethod 修饰
+    def area(self):
+        # 抽象方法只定义接口，无需实现
         pass
 
+    # 第二个抽象方法：周长
     @abstractmethod
     def perimeter(self):
         pass
 
+# 具体子类：实现了全部抽象方法，才能被实例化
 class Circle(Shape):
+    # 构造方法：接收半径 r（int 或 float）
     def __init__(self, r):
+        # 保存半径
         self.r = r
 
-    def area(self):                # 必须实现所有抽象方法，否则实例化时报错
+    # 必须实现所有抽象方法，否则实例化时报错
+    def area(self):
+        # 返回圆面积（float）：π * r²
         return 3.14 * self.r ** 2
 
+    # 实现周长抽象方法
     def perimeter(self):
+        # 返回圆周长（float）：2 * π * r
         return 2 * 3.14 * self.r
 
-# Shape()    # TypeError: Can't instantiate abstract class
+# 实例化抽象类会报错：TypeError: Can't instantiate abstract class
+# Shape()
+# 创建半径为 5 的圆
 c = Circle(5)
-print(c.area())   # 78.5
+# 调用 area 方法，输出 78.5
+print(c.area())
 ```
 
 
@@ -1907,53 +1972,53 @@ print(c.area())   # 78.5
 
 ```python
 # coding=utf-8
-print('******多继承使用类名.__init__ 发生的状态******')
+print('******多继承使用类名.__init__ 发生的状态******')  # 打印开始标记，便于在输出中区分示例
 
 
-class Parent(object):
+class Parent(object):  # 定义祖先类，显式继承 object（Python 3 中可省略）
     """祖先类：只接收 name 一个参数"""
 
-    def __init__(self, name):
-        print('parent 的init 开始被调用')
+    def __init__(self, name):  # 构造方法：参数 name（str）为姓名，返回 None
+        print('parent 的init 开始被调用')  # 输出 Parent 初始化开始，用来观察调用顺序
         self.name = name                    # 保存姓名
-        print('parent 的init 结束被调用')
+        print('parent 的init 结束被调用')  # 输出 Parent 初始化结束，用来观察调用顺序
 
 
-class Son1(Parent):
+class Son1(Parent):  # 定义子类 Son1，继承 Parent
     """子类 1：额外拥有 age 属性"""
 
-    def __init__(self, name, age):
-        print('Son1 的init 开始被调用')
+    def __init__(self, name, age):  # 构造方法：参数 name（str）、age（int），返回 None
+        print('Son1 的init 开始被调用')  # 输出 Son1 初始化开始
         self.age = age                      # 保存年龄
         Parent.__init__(self, name)         # 通过类名直接调用父类 __init__，self 必须手动传入
-        print('Son1 的init 结束被调用')
+        print('Son1 的init 结束被调用')  # 输出 Son1 初始化结束
 
 
-class Son2(Parent):
+class Son2(Parent):  # 定义子类 Son2，继承 Parent
     """子类 2：额外拥有 gender 属性"""
 
-    def __init__(self, name, gender):
-        print('Son2 的init 开始被调用')
+    def __init__(self, name, gender):  # 构造方法：参数 name（str）、gender（str），返回 None
+        print('Son2 的init 开始被调用')  # 输出 Son2 初始化开始
         self.gender = gender                # 保存性别
         Parent.__init__(self, name)         # 通过类名直接调用父类 __init__
-        print('Son2 的init 结束被调用')
+        print('Son2 的init 结束被调用')  # 输出 Son2 初始化结束
 
 
-class Grandson(Son1, Son2):
+class Grandson(Son1, Son2):  # 定义孙子类，同时继承 Son1、Son2（菱形继承）
     """孙子类：同时继承 Son1 和 Son2（菱形继承）"""
 
-    def __init__(self, name, age, gender):
-        print('Grandson 的init 开始被调用')
+    def __init__(self, name, age, gender):  # 构造方法：参数 name（str）、age（int）、gender（str），返回 None
+        print('Grandson 的init 开始被调用')  # 输出 Grandson 初始化开始
         Son1.__init__(self, name, age)      # 单独调用父类 Son1 的初始化方法
         Son2.__init__(self, name, gender)   # 单独调用父类 Son2 的初始化方法
-        print('Grandson 的init 结束被调用')
+        print('Grandson 的init 结束被调用')  # 输出 Grandson 初始化结束
 
 
 gs = Grandson('grandson', 12, '男')         # 创建对象，触发整条初始化链
 print('姓名：', gs.name)                     # grandson
 print('年龄：', gs.age)                      # 12
 print('性别：', gs.gender)                   # 男
-print('******多继承使用类名.__init__ 发生的状态******\n\n')
+print('******多继承使用类名.__init__ 发生的状态******\n\n')  # 打印结束标记，字符串末尾的 \n\n 表示额外输出两个换行（空行）
 ```
 
 > 运行结果（`Parent` 的 `__init__` 被执行了 **2 次**）：
@@ -1979,48 +2044,48 @@ Grandson 的init 结束被调用
 #### 10.6.2 多继承中 `super()` 调用所有父类被重写的方法
 
 ```python
-print('******多继承使用super().__init__ 发生的状态******')
+print('******多继承使用super().__init__ 发生的状态******')  # 打印开始标记
 
 
-class Parent(object):
+class Parent(object):  # 定义祖先类，显式继承 object（Python 3 中可省略）
     def __init__(self, name, *args, **kwargs):      # 为避免多继承报错，使用不定长参数接受多余参数
-        print('parent 的init 开始被调用')
+        print('parent 的init 开始被调用')  # 输出 Parent 初始化开始，用来观察调用顺序
         self.name = name                            # 保存姓名；多余的 args/kwargs 到此为止不再向上传递
-        print('parent 的init 结束被调用')
+        print('parent 的init 结束被调用')  # 输出 Parent 初始化结束，用来观察调用顺序
 
 
-class Son1(Parent):
+class Son1(Parent):  # 定义子类 Son1，继承 Parent
     def __init__(self, name, age, *args, **kwargs):  # 不定长参数：接收后续类需要的参数
-        print('Son1 的init 开始被调用')
+        print('Son1 的init 开始被调用')  # 输出 Son1 初始化开始
         self.age = age                               # 保存年龄
         super().__init__(name, *args, **kwargs)      # 按 MRO 调用下一个类的 __init__（此时下一个是 Son2，而不是 Parent）
-        print('Son1 的init 结束被调用')
+        print('Son1 的init 结束被调用')  # 输出 Son1 初始化结束
 
 
-class Son2(Parent):
+class Son2(Parent):  # 定义子类 Son2，继承 Parent
     def __init__(self, name, gender, *args, **kwargs):  # 不定长参数
-        print('Son2 的init 开始被调用')
+        print('Son2 的init 开始被调用')  # 输出 Son2 初始化开始
         self.gender = gender                         # 保存性别
         super().__init__(name, *args, **kwargs)      # 调用 MRO 中的下一个类（Parent）
-        print('Son2 的init 结束被调用')
+        print('Son2 的init 结束被调用')  # 输出 Son2 初始化结束
 
 
-class Grandson(Son1, Son2):
-    def __init__(self, name, age, gender):
-        print('Grandson 的init 开始被调用')
+class Grandson(Son1, Son2):  # 定义孙子类，同时继承 Son1、Son2（菱形继承）
+    def __init__(self, name, age, gender):  # 构造方法：参数 name（str）、age（int）、gender（str），返回 None
+        print('Grandson 的init 开始被调用')  # 输出 Grandson 初始化开始
         # 多继承时，相对于使用类名.__init__ 要把每个父类全部写一遍
         # 而 super 只用一句话，执行了全部父类的方法，这也是为何多继承需要全部传参的一个原因
         # super(Grandson, self).__init__(name, age, gender)   # Python 2 写法，与下一行等价
-        super().__init__(name, age, gender)
-        print('Grandson 的init 结束被调用')
+        super().__init__(name, age, gender)  # 只写一句 super()，按 MRO 依次调用后续所有父类的 __init__，参数需全部传递
+        print('Grandson 的init 结束被调用')  # 输出 Grandson 初始化结束
 
 
 print(Grandson.__mro__)                              # 打印出来顺序是谁，将来调用的就是谁
-gs = Grandson('grandson', 12, '男')
-print('姓名：', gs.name)
-print('年龄：', gs.age)
-print('性别：', gs.gender)
-print('******多继承使用super().__init__ 发生的状态******\n\n')
+gs = Grandson('grandson', 12, '男')  # 创建 Grandson 对象，触发整条初始化链，返回 Grandson 实例
+print('姓名：', gs.name)  # 输出姓名：grandson
+print('年龄：', gs.age)  # 输出年龄：12
+print('性别：', gs.gender)  # 输出性别：男
+print('******多继承使用super().__init__ 发生的状态******\n\n')  # 打印结束标记，字符串末尾的 \n\n 表示额外输出两个换行（空行）
 ```
 
 > 运行结果（`Parent` 只被执行 **1 次**）：
@@ -2054,36 +2119,36 @@ Grandson 的init 结束被调用
 #### 10.6.3 单继承中的 `super()`
 
 ```python
-print('******单继承使用super().__init__ 发生的状态******')
+print('******单继承使用super().__init__ 发生的状态******')  # 打印开始标记
 
 
-class Parent(object):
-    def __init__(self, name):
-        print('parent 的init 开始被调用')
-        self.name = name
-        print('parent 的init 结束被调用')
+class Parent(object):  # 定义祖先类，显式继承 object（Python 3 中可省略）
+    def __init__(self, name):  # 构造方法：参数 name（str）为姓名，返回 None
+        print('parent 的init 开始被调用')  # 输出 Parent 初始化开始，用来观察调用顺序
+        self.name = name  # 保存姓名到对象属性
+        print('parent 的init 结束被调用')  # 输出 Parent 初始化结束，用来观察调用顺序
 
 
-class Son1(Parent):
-    def __init__(self, name, age):
-        print('Son1 的init 开始被调用')
-        self.age = age
+class Son1(Parent):  # 定义子类 Son1，继承 Parent
+    def __init__(self, name, age):  # 构造方法：参数 name（str）、age（int），返回 None
+        print('Son1 的init 开始被调用')  # 输出 Son1 初始化开始
+        self.age = age  # 保存年龄到对象属性
         super().__init__(name)              # 单继承：只能传父类 __init__ 所需的参数，不能提供全部参数
-        print('Son1 的init 结束被调用')
+        print('Son1 的init 结束被调用')  # 输出 Son1 初始化结束
 
 
-class Grandson(Son1):
-    def __init__(self, name, age, gender):
-        print('Grandson 的init 开始被调用')
+class Grandson(Son1):  # 定义孙子类，单继承 Son1
+    def __init__(self, name, age, gender):  # 构造方法：参数 name（str）、age（int）、gender（str），返回 None
+        print('Grandson 的init 开始被调用')  # 输出 Grandson 初始化开始
         super().__init__(name, age)         # 单继承：只传 Son1.__init__ 需要的 name、age
-        print('Grandson 的init 结束被调用')
+        print('Grandson 的init 结束被调用')  # 输出 Grandson 初始化结束
 
 
-gs = Grandson('grandson', 12, '男')
+gs = Grandson('grandson', 12, '男')  # 创建 Grandson 对象，触发整条初始化链，返回 Grandson 实例
 print('姓名：', gs.name)                     # grandson
 print('年龄：', gs.age)                      # 12
 # print('性别：', gs.gender)                 # 报错：gender 没有被保存到对象上
-print('******单继承使用super().__init__ 发生的状态******\n\n')
+print('******单继承使用super().__init__ 发生的状态******\n\n')  # 打印结束标记，字符串末尾的 \n\n 表示额外输出两个换行（空行）
 ```
 
 > **`super().__init__` 与 `类名.__init__` 的总结**：
@@ -2097,15 +2162,15 @@ print('******单继承使用super().__init__ 发生的状态******\n\n')
 #### 10.6.4 面试题：类属性的继承与修改
 
 ```python
-class Parent(object):
+class Parent(object):  # 定义祖先类，显式继承 object（Python 3 中可省略）
     x = 1                                   # 父类的类属性
 
 
-class Child1(Parent):
+class Child1(Parent):  # 定义子类 Child1，继承 Parent
     pass                                    # 不定义 x，向上查找
 
 
-class Child2(Parent):
+class Child2(Parent):  # 定义子类 Child2，继承 Parent
     pass                                    # 不定义 x，向上查找
 
 
@@ -2126,8 +2191,8 @@ print(Parent.x, Child1.x, Child2.x)         # 3 2 3
 
 ```python
 c1 = Child1()                               # 通过对象访问类属性
-c2 = Child2()
-p = Parent()
+c2 = Child2()  # 创建 Child2 对象
+p = Parent()  # 创建 Parent 对象
 print(c1.x, c2.x, p.x)                      # 1 1 1（三个对象都没有实例属性 x，向上查找类属性）
 c1.x = 2                                    # 给对象 c1 新增实例属性 x（不再是修改类属性）
 print(c1.x, c2.x, p.x)                      # 2 1 1
@@ -2149,17 +2214,17 @@ print(c1.x, c2.x, p.x)                      # 2 1 3
 > - 类属性属于**类**
 
 ```python
-class Province(object):
+class Province(object):  # 定义省份类
     # 类属性：属于类，所有对象共享
-    country = '中国'
+    country = '中国'  # 类属性（str）：所有对象共享，只保存一份
 
-    def __init__(self, name):
+    def __init__(self, name):  # 构造方法：参数 name（str）为姓名，返回 None
         # 实例属性：属于对象，每个对象各有一份
-        self.name = name
+        self.name = name  # 保存姓名到对象属性
 
 
 # 创建一个实例对象
-obj = Province('山东省')
+obj = Province('山东省')  # 创建实例对象，返回 Province 实例
 # 直接访问实例属性：需要通过对象来访问
 print(obj.name)                             # 山东省
 # 直接访问类属性：通过类访问
@@ -2203,24 +2268,24 @@ print(Province.country)                     # 中国
 > ---
 
 ```python
-class Foo(object):
-    def __init__(self, name):
-        self.name = name
+class Foo(object):  # 定义类 Foo
+    def __init__(self, name):  # 构造方法：参数 name（str）为姓名，返回 None
+        self.name = name  # 保存姓名到对象属性
 
-    def ord_func(self):
+    def ord_func(self):  # 实例方法：至少一个 self 参数，由对象调用
         """定义实例方法，至少有一个 self 参数"""
         # print(self.name)
-        print('实例方法')
+        print('实例方法')  # 输出提示，说明执行的是实例方法
 
-    @classmethod
-    def class_func(cls):
+    @classmethod  # 装饰器：声明下面的方法是类方法
+    def class_func(cls):  # 类方法：至少一个 cls 参数，调用时自动传入当前类
         """定义类方法，至少有一个 cls 参数"""
-        print('类方法')
+        print('类方法')  # 输出提示，说明执行的是类方法
 
-    @staticmethod
-    def static_func():
+    @staticmethod  # 装饰器：声明下面的方法是静态方法
+    def static_func():  # 静态方法：无默认参数，不依赖对象或类
         """定义静态方法，无默认参数"""
-        print('静态方法')
+        print('静态方法')  # 输出提示，说明执行的是静态方法
 
 
 f = Foo('中国')                              # 创建对象
@@ -2244,18 +2309,18 @@ Foo.static_func()                            # 调用静态方法（类调用）
 
 ```python
 # ############### 定义 ###############
-class Foo:
-    def func(self):
-        pass
+class Foo:  # 定义类 Foo
+    def func(self):  # 普通实例方法：调用时需要括号
+        pass  # 占位，什么也不做
 
     # 定义 property 属性
-    @property
-    def prop(self):
-        pass
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def prop(self):  # property 属性：只能有 self 一个参数；方法体省略
+        pass  # 占位，什么也不做
 
 
 # ############### 调用 ###############
-foo_obj = Foo()
+foo_obj = Foo()  # 创建对象，返回 Foo 实例
 foo_obj.func()                              # 调用实例方法：需要括号
 foo_obj.prop                                # 调用 property 属性：无需括号
 ```
@@ -2272,26 +2337,26 @@ foo_obj.prop                                # 调用 property 属性：无需括
 
 ```python
 # ############### 定义 ###############
-class Pager:
-    def __init__(self, current_page):
+class Pager:  # 定义分页类
+    def __init__(self, current_page):  # 构造方法：参数 current_page（int）为当前页码
         # 用户当前请求的页码（第一页、第二页...）
-        self.current_page = current_page
+        self.current_page = current_page  # 保存当前页码
         # 每页默认显示 10 条数据
-        self.per_items = 10
+        self.per_items = 10  # 每页显示的数据条数（固定为 10）
 
-    @property
-    def start(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def start(self):  # property：计算起始值 m，返回 int
         val = (self.current_page - 1) * self.per_items   # 起始值 m
-        return val
+        return val  # 返回计算结果（int）
 
-    @property
-    def end(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def end(self):  # property：计算结束值 n，返回 int
         val = self.current_page * self.per_items         # 结束值 n
-        return val
+        return val  # 返回计算结果（int）
 
 
 # ############### 调用 ###############
-p = Pager(1)
+p = Pager(1)  # 创建分页对象，当前为第 1 页
 print(p.start)                              # 就是起始值，即：m（0）
 print(p.end)                                # 就是结束值，即：n（10）
 ```
@@ -2311,14 +2376,14 @@ print(p.end)                                # 就是结束值，即：n（10）
 
 ```python
 # ############### 定义 ###############
-class Goods:
-    @property
-    def price(self):
-        return 'laowang'
+class Goods:  # 定义商品类
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def price(self):  # price 属性的 getter
+        return 'laowang'  # 返回字符串 'laowang'，作为属性的值
 
 
 # ############### 调用 ###############
-obj = Goods()
+obj = Goods()  # 创建商品对象，返回 Goods 实例
 result = obj.price                          # 自动执行 @property 修饰的 price 方法，并获取方法的返回值
 print(result)                               # laowang
 ```
@@ -2328,22 +2393,22 @@ print(result)                               # laowang
 ```python
 # coding=utf-8
 # ############### 定义 ###############
-class Goods:
-    @property
-    def price(self):
-        print('@property')
+class Goods:  # 定义商品类
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def price(self):  # price 的 getter / deleter（同名方法，由装饰器区分）
+        print('@property')  # 输出提示：获取属性时执行了这里
 
-    @price.setter
-    def price(self, value):
-        print('@price.setter')
+    @price.setter  # 装饰器：声明下面的方法在 对象.price = 值 时执行
+    def price(self, value):  # setter 方法：除 self 外必须有一个 value 参数，接收被赋的值
+        print('@price.setter')  # 输出提示：给属性赋值时执行了这里
 
-    @price.deleter
-    def price(self):
-        print('@price.deleter')
+    @price.deleter  # 装饰器：声明下面的方法在 del 对象.price 时执行
+    def price(self):  # price 的 getter / deleter（同名方法，由装饰器区分）
+        print('@price.deleter')  # 输出提示：删除属性时执行了这里
 
 
 # ############### 调用 ###############
-obj = Goods()
+obj = Goods()  # 创建商品对象，返回 Goods 实例
 obj.price                                   # 自动执行 @property 修饰的 price 方法，并获取方法的返回值
 obj.price = 123                             # 自动执行 @price.setter 修饰的 price 方法，并将 123 赋值给方法的参数
 del obj.price                               # 自动执行 @price.deleter 修饰的 price 方法
@@ -2354,26 +2419,26 @@ del obj.price                               # 自动执行 @price.deleter 修饰
 > 由于具有三种访问方式，可以根据它们的访问特点，分别将三个方法定义为对同一个属性：**获取、修改、删除**：
 
 ```python
-class Goods(object):
-    def __init__(self):
+class Goods(object):  # 定义商品类
+    def __init__(self):  # 构造方法：初始化原价和折扣
         self.original_price = 100           # 原价
         self.discount = 0.8                 # 折扣
 
-    @property
-    def price(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def price(self):  # 定义 price 方法（名字相同是为了让三个装饰器绑定到同一个属性）
         new_price = self.original_price * self.discount   # 实际价格 = 原价 * 折扣
-        return new_price
+        return new_price  # 返回实际价格（float）
 
-    @price.setter
-    def price(self, value):
+    @price.setter  # 装饰器：声明下面的方法在 对象.price = 值 时执行
+    def price(self, value):  # setter 方法：除 self 外必须有一个 value 参数，接收被赋的值
         self.original_price = value         # 修改商品原价
 
-    @price.deleter
-    def price(self):
+    @price.deleter  # 装饰器：声明下面的方法在 del 对象.price 时执行
+    def price(self):  # 定义 price 方法（名字相同是为了让三个装饰器绑定到同一个属性）
         del self.original_price             # 删除商品原价
 
 
-obj = Goods()
+obj = Goods()  # 创建商品对象，返回 Goods 实例
 print(obj.price)                            # 获取商品价格：80.0
 obj.price = 200                             # 修改商品原价
 print(obj.price)                            # 160.0
@@ -2385,14 +2450,14 @@ del obj.price                               # 删除商品原价，保证后面�
 > 当使用类属性的方式创建 property 属性时，经典类和新式类无区别。
 
 ```python
-class Foo:
-    def get_bar(self):
-        return 'laowang'
+class Foo:  # 定义类 Foo
+    def get_bar(self):  # 定义 getter 方法，返回字符串
+        return 'laowang'  # 返回字符串，作为属性的值
 
     BAR = property(get_bar)                 # 创建 property 对象，赋给类属性 BAR
 
 
-obj = Foo()
+obj = Foo()  # 创建对象，返回 Foo 实例
 result = obj.BAR                            # 自动调用 get_bar 方法，并获取方法的返回值
 print(result)                               # laowang
 ```
@@ -2412,53 +2477,53 @@ print(result)                               # laowang
 
 ```python
 # coding=utf-8
-class Foo(object):
-    def get_bar(self):
-        print('getter...')
-        return 'laowang'
+class Foo(object):  # 定义类 Foo
+    def get_bar(self):  # 定义 getter 方法，返回字符串
+        print('getter...')  # 输出提示：getter 被调用
+        return 'laowang'  # 返回字符串，作为属性的值
 
-    def set_bar(self, value):
+    def set_bar(self, value):  # 定义 setter 方法，参数为 self 与 value
         """必须两个参数（self 与 value）"""
-        print('setter...')
-        return 'set value' + value
+        print('setter...')  # 输出提示：setter 被调用
+        return 'set value' + value  # setter 的返回值不会被使用，仅作演示
 
-    def del_bar(self):
-        print('deleter...')
-        return 'laowang'
+    def del_bar(self):  # 定义 deleter 方法，只有 self 参数
+        print('deleter...')  # 输出提示：deleter 被调用
+        return 'laowang'  # 返回字符串，作为属性的值
 
-    BAR = property(get_bar, set_bar, del_bar, 'description...')
+    BAR = property(get_bar, set_bar, del_bar, 'description...')  # 创建 property 对象（fget, fset, fdel, doc）并赋给类属性 BAR
 
 
-obj = Foo()
+obj = Foo()  # 创建对象，返回 Foo 实例
 obj.BAR                                     # 自动调用第一个参数中定义的方法：get_bar
 obj.BAR = 'alex'                            # 自动调用第二个参数中定义的方法：set_bar，并将 'alex' 当作参数传入
 desc = Foo.BAR.__doc__                      # 自动获取第四个参数中设置的值：description...
-print(desc)
+print(desc)  # 输出属性描述：description...
 del obj.BAR                                 # 自动调用第三个参数中定义的方法：del_bar
 ```
 
 > 同样可以用类属性方式将三个方法定义为对同一个属性的**获取、修改、删除**：
 
 ```python
-class Goods(object):
-    def __init__(self):
+class Goods(object):  # 定义商品类
+    def __init__(self):  # 构造方法：无额外参数，返回 None
         self.original_price = 100           # 原价
         self.discount = 0.8                 # 折扣
 
-    def get_price(self):
+    def get_price(self):  # 定义 getter 方法，返回实际价格
         new_price = self.original_price * self.discount   # 实际价格 = 原价 * 折扣
-        return new_price
+        return new_price  # 返回实际价格（float）
 
-    def set_price(self, value):
-        self.original_price = value
+    def set_price(self, value):  # 定义 setter 方法，参数 value 为新的原价
+        self.original_price = value  # 修改商品原价
 
-    def del_price(self):
-        del self.original_price
+    def del_price(self):  # 定义 deleter 方法，删除原价属性
+        del self.original_price  # 删除对象上的原价属性
 
-    PRICE = property(get_price, set_price, del_price, '价格属性描述...')
+    PRICE = property(get_price, set_price, del_price, '价格属性描述...')  # 把三个方法绑定到类属性 PRICE，对应获取 / 修改 / 删除
 
 
-obj = Goods()
+obj = Goods()  # 创建商品对象，返回 Goods 实例
 obj.PRICE                                   # 获取商品价格
 obj.PRICE = 200                             # 修改商品原价
 del obj.PRICE                               # 删除商品原价
@@ -2469,37 +2534,37 @@ del obj.PRICE                               # 删除商品原价
 > Web 框架 Django 的视图中 `request.POST` 就是使用**类属性方式**创建的属性（下面为简化后的核心部分）：
 
 ```python
-class WSGIRequest(http.HttpRequest):
-    def __init__(self, environ):
+class WSGIRequest(http.HttpRequest):  # Django 请求类，继承 HttpRequest
+    def __init__(self, environ):  # 构造方法：参数 environ（dict）为 WSGI 环境字典
         # ……（省略：解析 script_name、path_info、method、编码、content_length 等）
         self.environ = environ                              # 保存 WSGI 的 environ 字典
         self.META = environ                                 # META 是 environ 的别名
 
-    @cached_property
-    def GET(self):
+    @cached_property  # 装饰器：首次访问计算结果并缓存，之后直接使用缓存
+    def GET(self):  # GET 参数属性，返回 QueryDict
         # WSGI 规范说 QUERY_STRING 可能不存在
-        raw_query_string = get_bytes_from_wsgi(self.environ, 'QUERY_STRING', '')
-        return http.QueryDict(raw_query_string, encoding=self._encoding)
+        raw_query_string = get_bytes_from_wsgi(self.environ, 'QUERY_STRING', '')  # 从 environ 中取出原始查询字符串
+        return http.QueryDict(raw_query_string, encoding=self._encoding)  # 把查询字符串解析为 QueryDict 并返回
 
     # ############### 看这里看这里 ###############
-    def _get_post(self):
-        if not hasattr(self, '_post'):
+    def _get_post(self):  # POST 的 getter 方法
+        if not hasattr(self, '_post'):  # 判断是否已加载过 POST 数据
             self._load_post_and_files()                     # 第一次访问时才加载 POST 和上传的文件
-        return self._post
+        return self._post  # 返回缓存的 POST 数据
 
     # ############### 看这里看这里 ###############
-    def _set_post(self, post):
-        self._post = post
+    def _set_post(self, post):  # POST 的 setter 方法，参数 post 为新的 POST 数据
+        self._post = post  # 保存新的 POST 数据
 
-    @cached_property
-    def COOKIES(self):
-        raw_cookie = get_str_from_wsgi(self.environ, 'HTTP_COOKIE', '')
-        return http.parse_cookie(raw_cookie)
+    @cached_property  # 装饰器：首次访问计算结果并缓存，之后直接使用缓存
+    def COOKIES(self):  # COOKIES 属性，返回 dict
+        raw_cookie = get_str_from_wsgi(self.environ, 'HTTP_COOKIE', '')  # 从 environ 中取出原始 Cookie 字符串
+        return http.parse_cookie(raw_cookie)  # 把 Cookie 字符串解析为 dict 并返回
 
-    def _get_files(self):
-        if not hasattr(self, '_files'):
-            self._load_post_and_files()
-        return self._files
+    def _get_files(self):  # FILES 的 getter 方法
+        if not hasattr(self, '_files'):  # 判断是否已加载过上传文件
+            self._load_post_and_files()  # 首次访问时加载 POST 和上传文件
+        return self._files  # 返回缓存的上传文件数据
 
     # ############### 看这里看这里 ###############
     POST = property(_get_post, _set_post)                   # request.POST 读取 / 赋值
@@ -2516,65 +2581,65 @@ class WSGIRequest(http.HttpRequest):
 
 ```python
 # 1. 私有属性添加 getter 和 setter 方法
-class Money(object):
-    def __init__(self):
+class Money(object):  # 定义金额类
+    def __init__(self):  # 构造方法：无额外参数，返回 None
         self.__money = 0                    # 私有属性
 
-    def getMoney(self):
+    def getMoney(self):  # getter 方法：读取私有属性
         return self.__money                 # getter：读取私有属性
 
-    def setMoney(self, value):
+    def setMoney(self, value):  # setter 方法：参数 value 为要设置的金额
         if isinstance(value, int):          # 边界判定：只允许整型
-            self.__money = value
-        else:
-            print('error:不是整型数字')
+            self.__money = value  # 校验通过，保存到私有属性
+        else:  # 否则（不满足条件）
+            print('error:不是整型数字')  # 输出错误提示
 ```
 
 ```python
 # 2. 使用 property 升级 getter 和 setter 方法
-class Money(object):
-    def __init__(self):
-        self.__money = 0
+class Money(object):  # 定义金额类
+    def __init__(self):  # 构造方法：无额外参数，返回 None
+        self.__money = 0  # 私有属性：初始金额为 0（外部不能直接访问）
 
-    def getMoney(self):
-        return self.__money
+    def getMoney(self):  # getter 方法：读取私有属性
+        return self.__money  # 返回私有属性的值
 
-    def setMoney(self, value):
-        if isinstance(value, int):
-            self.__money = value
-        else:
-            print('error:不是整型数字')
+    def setMoney(self, value):  # setter 方法：参数 value 为要设置的金额
+        if isinstance(value, int):  # 边界判定：isinstance 判断 value 是否为 int，返回 bool
+            self.__money = value  # 校验通过，保存到私有属性
+        else:  # 否则（不满足条件）
+            print('error:不是整型数字')  # 输出错误提示
 
     # 定义一个属性，当对这个 money 设置值时调用 setMoney，当获取值时调用 getMoney
-    money = property(getMoney, setMoney)
+    money = property(getMoney, setMoney)  # 把 getter / setter 绑定到类属性 money，之后可像属性一样读写
 
 
-a = Money()
+a = Money()  # 创建对象，返回 Money 实例
 a.money = 100                               # 调用 setMoney 方法
 print(a.money)                              # 调用 getMoney 方法：100
 ```
 
 ```python
 # 3. 使用 @property 取代 getter 和 setter 方法（重新实现一个属性的设置和读取方法，可做边界判定）
-class Money(object):
-    def __init__(self):
-        self.__money = 0
+class Money(object):  # 定义金额类
+    def __init__(self):  # 构造方法：无额外参数，返回 None
+        self.__money = 0  # 私有属性：初始金额为 0（外部不能直接访问）
 
     # 使用装饰器对 money 进行装饰，那么会自动添加一个叫 money 的属性，当调用获取 money 的值时，调用装饰的方法
-    @property
-    def money(self):
-        return self.__money
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def money(self):  # money 的 getter（被 @property 修饰后变成属性）
+        return self.__money  # 返回私有属性的值
 
     # 使用装饰器对 money 进行装饰，当对 money 设置值时，调用装饰的方法
-    @money.setter
-    def money(self, value):
-        if isinstance(value, int):
-            self.__money = value
-        else:
-            print('error:不是整型数字')
+    @money.setter  # 装饰器：声明下面的方法是 money 的 setter
+    def money(self, value):  # money 的 setter：对 money 赋值时调用，value 为被赋的值
+        if isinstance(value, int):  # 边界判定：isinstance 判断 value 是否为 int，返回 bool
+            self.__money = value  # 校验通过，保存到私有属性
+        else:  # 否则（不满足条件）
+            print('error:不是整型数字')  # 输出错误提示
 
 
-a = Money()
+a = Money()  # 创建对象，返回 Money 实例
 a.money = 100                               # 触发 setter
 print(a.money)                              # 触发 getter：100
 ```
@@ -2588,11 +2653,11 @@ print(a.money)                              # 触发 getter：100
 #### 10.9.1 `__doc__`：类的描述信息
 
 ```python
-class Foo:
+class Foo:  # 定义类 Foo
     """描述类信息，这是用于看片的神奇"""
 
-    def func(self):
-        pass
+    def func(self):  # 普通实例方法：调用时需要括号
+        pass  # 占位，什么也不做
 
 
 print(Foo.__doc__)                          # 输出：描述类信息，这是用于看片的神奇
@@ -2606,16 +2671,16 @@ print(Foo.__doc__)                          # 输出：描述类信息，这是�
 ```python
 # test.py
 # -*- coding:utf-8 -*-
-class Person(object):
-    def __init__(self):
-        self.name = 'laowang'
+class Person(object):  # 定义人类
+    def __init__(self):  # 构造方法：无额外参数，返回 None
+        self.name = 'laowang'  # 初始化姓名属性
 ```
 
 ```python
 # main.py
-from test import Person
+from test import Person  # 从 test 模块导入 Person 类
 
-obj = Person()
+obj = Person()  # 创建对象，返回 Person 实例
 print(obj.__module__)                       # 输出 test，即：输出模块
 print(obj.__class__)                        # 输出 <class 'test.Person'>，即：输出类
 ```
@@ -2625,10 +2690,10 @@ print(obj.__class__)                        # 输出 <class 'test.Person'>，即
 > 通过类创建对象时，**自动触发执行**。
 
 ```python
-class Person:
-    def __init__(self, name):
-        self.name = name
-        self.age = 18
+class Person:  # 定义人类
+    def __init__(self, name):  # 构造方法：参数 name（str）为姓名，返回 None
+        self.name = name  # 保存姓名到对象属性
+        self.age = 18  # 年龄固定初始化为 18
 
 
 obj = Person('laowang')                     # 自动执行类中的 __init__ 方法
@@ -2641,9 +2706,9 @@ obj = Person('laowang')                     # 自动执行类中的 __init__ 方
 > 此方法一般无须定义，因为 Python 是一门高级语言，程序员在使用时无需关心内存的分配和释放，因为此工作都是交给 Python 解释器来执行，所以 `__del__` 的调用是由解释器在进行垃圾回收时自动触发执行的。
 
 ```python
-class Foo:
-    def __del__(self):
-        pass
+class Foo:  # 定义类 Foo
+    def __del__(self):  # 析构方法：对象被回收时由解释器自动调用
+        pass  # 占位，什么也不做
 ```
 
 #### 10.9.5 `__call__`：对象后面加括号触发执行
@@ -2651,12 +2716,12 @@ class Foo:
 > `__init__` 方法的执行是由**创建对象**触发的，即：`对象 = 类名()`；而 `__call__` 方法的执行是由**对象后加括号**触发的，即：`对象()` 或者 `类()()`。
 
 ```python
-class Foo:
-    def __init__(self):
-        pass
+class Foo:  # 定义类 Foo
+    def __init__(self):  # 构造方法：无额外参数，返回 None
+        pass  # 占位，什么也不做
 
-    def __call__(self, *args, **kwargs):
-        print('__call__')
+    def __call__(self, *args, **kwargs):  # 使对象可调用：args 为位置参数元组，kwargs 为关键字参数字典
+        print('__call__')  # 输出提示：__call__ 被触发
 
 
 obj = Foo()                                 # 执行 __init__
@@ -2668,27 +2733,27 @@ obj()                                       # 执行 __call__
 > 实例属性属于对象；类属性和方法等属于类，即：
 
 ```python
-class Province(object):
+class Province(object):  # 定义省份类
     country = 'China'                       # 类属性
 
-    def __init__(self, name, count):
+    def __init__(self, name, count):  # 构造方法：参数 name（str）、count（int）
         self.name = name                    # 实例属性
         self.count = count                  # 实例属性
 
-    def func(self, *args, **kwargs):
-        print('func')
+    def func(self, *args, **kwargs):  # 定义实例方法 func，接收任意参数
+        print('func')  # 输出提示
 
 
 # 获取类的属性，即：类属性、方法
-print(Province.__dict__)
+print(Province.__dict__)  # 输出类的 __dict__（dict）：包含类属性和方法
 # 输出：{'__module__': '__main__', 'country': 'China', '__init__': <function Province.__init__ at 0x...>,
 #        'func': <function Province.func at 0x...>, '__dict__': <attribute '__dict__' of 'Province' objects>,
 #        '__weakref__': <attribute '__weakref__' of 'Province' objects>, '__doc__': None}
 
-obj1 = Province('山东', 10000)
+obj1 = Province('山东', 10000)  # 创建第一个对象
 print(obj1.__dict__)                        # 获取对象 obj1 的属性：{'name': '山东', 'count': 10000}
 
-obj2 = Province('山西', 20000)
+obj2 = Province('山西', 20000)  # 创建第二个对象
 print(obj2.__dict__)                        # 获取对象 obj2 的属性：{'name': '山西', 'count': 20000}
 ```
 
@@ -2697,12 +2762,12 @@ print(obj2.__dict__)                        # 获取对象 obj2 的属性：{'na
 > 如果一个类中定义了 `__str__` 方法，那么在打印对象时，默认输出该方法的返回值。
 
 ```python
-class Foo:
-    def __str__(self):
-        return 'laowang'
+class Foo:  # 定义类 Foo
+    def __str__(self):  # 定义 __str__：print(对象) 时调用，必须返回 str
+        return 'laowang'  # 返回字符串，作为属性的值
 
 
-obj = Foo()
+obj = Foo()  # 创建对象，返回 Foo 实例
 print(obj)                                  # 输出：laowang
 ```
 
@@ -2712,18 +2777,18 @@ print(obj)                                  # 输出：laowang
 
 ```python
 # -*- coding:utf-8 -*-
-class Foo(object):
-    def __getitem__(self, key):
-        print('__getitem__', key)
+class Foo(object):  # 定义类 Foo
+    def __getitem__(self, key):  # 下标取值：obj[key] 时触发，key 为下标 / 键
+        print('__getitem__', key)  # 输出提示及键
 
-    def __setitem__(self, key, value):
-        print('__setitem__', key, value)
+    def __setitem__(self, key, value):  # 下标赋值：obj[key] = value 时触发
+        print('__setitem__', key, value)  # 输出提示及键值
 
-    def __delitem__(self, key):
-        print('__delitem__', key)
+    def __delitem__(self, key):  # 下标删除：del obj[key] 时触发
+        print('__delitem__', key)  # 输出提示及键
 
 
-obj = Foo()
+obj = Foo()  # 创建对象，返回 Foo 实例
 result = obj['k1']                          # 自动触发执行 __getitem__
 obj['k2'] = 'laowang'                       # 自动触发执行 __setitem__
 del obj['k1']                               # 自动触发执行 __delitem__
@@ -2741,45 +2806,45 @@ del obj['k1']                               # 自动触发执行 __delitem__
 > - 名称不存在时主动抛出 `ValueError`，避免悄悄返回 `None` 导致后续调用才报错
 
 ```python
-class Animal():
+class Animal():  # 定义类 Animal，继承 
     """动物基类：定义统一接口"""
 
-    def eat(self):
-        pass
+    def eat(self):  # 定义方法 eat，无额外参数
+        pass  # 占位，什么也不做
 
-    def voice(self):
-        pass
-
-
-class Dog(Animal):
-    def eat(self):
-        print('狗吃骨头')
-
-    def voice(self):
-        print('狗叫汪汪')
+    def voice(self):  # 定义方法 voice，无额外参数
+        pass  # 占位，什么也不做
 
 
-class Cat(Animal):
-    def eat(self):
-        print('猫吃鱼')
+class Dog(Animal):  # 定义类 Dog，继承 Animal
+    def eat(self):  # 定义方法 eat，无额外参数
+        print('狗吃骨头')  # 输出狗的吃东西行为
 
-    def voice(self):
-        print('猫叫喵喵')
+    def voice(self):  # 定义方法 voice，无额外参数
+        print('狗叫汪汪')  # 输出狗的叫声
 
 
-class FactoryMode():
+class Cat(Animal):  # 定义类 Cat，继承 Animal
+    def eat(self):  # 定义方法 eat，无额外参数
+        print('猫吃鱼')  # 输出猫的吃东西行为
+
+    def voice(self):  # 定义方法 voice，无额外参数
+        print('猫叫喵喵')  # 输出猫的叫声
+
+
+class FactoryMode():  # 定义类 FactoryMode，继承 
     """工厂类：用字典映射代替 if 判断，根据名称创建对应的动物对象"""
 
     # 类属性：名称 -> 类 的映射表，新增动物只需在这里加一行
-    _animals = {
+    _animals = {  # 把 { 的结果保存到变量 _animals
         'dog': Dog,                         # 键为名称字符串，值为类本身（注意不加括号）
-        'cat': Cat,
+        'cat': Cat,  # 字典项：键 cat，值 Cat
     }
 
-    def create_ani(self, animal_name):
+    def create_ani(self, animal_name):  # 定义方法 create_ani，参数：animal_name
         cls = self._animals.get(animal_name)    # 按名称查类，找不到返回 None
         if cls is None:                         # 名称不存在时给出明确错误
-            raise ValueError(f'未知的动物类型：{animal_name}')
+            raise ValueError(f'未知的动物类型：{animal_name}')  # 主动抛出 ValueError 异常，提示传入了未知名称
         return cls()                            # 调用类创建对象，返回 Animal 子类实例
 
 
@@ -2803,37 +2868,37 @@ animal.voice()                              # 猫叫喵喵
 # @ 开头的是装饰器
 # @property：将方法变为属性访问（getter）
 # @方法名.setter：定义 setter
-class Circle:
-    def __init__(self, radius):
-        self._radius = radius
+class Circle:  # 定义类 Circle
+    def __init__(self, radius):  # 定义方法 __init__，参数：radius
+        self._radius = radius  # 保存 radius 到对象属性 _radius
 
-    @property
-    def radius(self):
-        return self._radius
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def radius(self):  # 定义方法 radius，无额外参数
+        return self._radius  # 返回 self._radius
 
-    @radius.setter
-    def radius(self, value):
-        if value > 0:
-            self._radius = value
+    @radius.setter  # 装饰器：声明 radius 的 setter 方法
+    def radius(self, value):  # 定义方法 radius，参数：value
+        if value > 0:  # 条件判断：value > 0
+            self._radius = value  # 保存 value 到对象属性 _radius
 
-c = Circle(5)
+c = Circle(5)  # 把 Circle(5) 的结果保存到变量 c
 print(c.radius)    # 像属性一样访问（不加括号）
 c.radius = 10      # 像属性一样赋值
 
 # @classmethod：类方法（通过类名调用，第一个参数是 cls）
 # 私有类属性的访问通过类方法
-class Dog:
+class Dog:  # 定义类 Dog
     _count = 0      # 私有类属性
 
-    @classmethod
-    def get_count(cls):
-        return cls._count
+    @classmethod  # 装饰器：声明下面的方法是类方法
+    def get_count(cls):  # 定义方法 get_count，无额外参数
+        return cls._count  # 返回 cls._count
 
 # @staticmethod：静态方法（不依赖实例或类，相当于普通函数）
-class MathUtils:
-    @staticmethod
-    def add(a, b):
-        return a + b
+class MathUtils:  # 定义类 MathUtils
+    @staticmethod  # 装饰器：声明下面的方法是静态方法
+    def add(a, b):  # 定义方法 add，参数：a、b
+        return a + b  # 返回 a + b
 
 print(MathUtils.add(1, 2))   # 3
 
@@ -2852,20 +2917,20 @@ print(MathUtils.add(1, 2))   # 3
 # __new__ 是由 object 基类提供的内置静态方法，返回对象的引用
 # 然后使用 __init__ 方法初始化对象属性
 
-class Singleton:
+class Singleton:  # 定义类 Singleton
     """单例模式：通过重写 __new__ 实现"""
     _instance = None    # 类属性：保存唯一实例
 
-    def __new__(cls):
+    def __new__(cls):  # 定义方法 __new__，无额外参数
         if cls._instance is None:       # 首次创建：分配空间
-            cls._instance = super().__new__(cls)
+            cls._instance = super().__new__(cls)  # 调用 object.__new__ 真正分配内存，得到新对象并保存到类属性
         return cls._instance            # 后续创建：直接返回已有实例
 
-    def __init__(self):
-        pass
+    def __init__(self):  # 构造方法：无额外参数，返回 None
+        pass  # 占位，什么也不做
 
-a = Singleton()
-b = Singleton()
+a = Singleton()  # 把 Singleton() 的结果保存到变量 a
+b = Singleton()  # 把 Singleton() 的结果保存到变量 b
 print(id(a) == id(b))    # True（同一个对象）
 ```
 
@@ -2876,141 +2941,141 @@ print(id(a) == id(b))    # True（同一个对象）
 ```python
 #! /usr/bin/env python
 # coding: utf-8
-import random
-import time
+import random  # 导入随机数模块，用于生成消息随机数
+import time  # 导入时间模块，用于获取时间戳 / 当前时间
 
 
-class Message(object):
+class Message(object):  # 定义类 Message，继承 object
     """一条消息：包含接收方、随机数与若干消息体"""
 
-    def __init__(self, msgarr=[], toacc=''):
+    def __init__(self, msgarr=[], toacc=''):  # 定义方法 __init__，参数：msgarr=[]、toacc=''
         self.msgbody = msgarr                               # MsgDict 对象实例的列表或者空列表
         self.toacc = toacc                                  # toacc 为字符串（单发）或者列表（批量发）
         self.msgrandom = random.randint(1, 1000000000)      # 消息随机数，由随机函数产生
-        self.msgrequest = {
+        self.msgrequest = {  # 保存 { 到对象属性 msgrequest
             'To_Account': toacc,                            # 消息接收方账号
             'MsgRandom': self.msgrandom,                    # 消息随机数
             'MsgBody': [t.msg for t in msgarr]              # 每个消息体通过 @property msg 转成字典
         }
 
-    def del_option(self, option):
+    def del_option(self, option):  # 定义方法 del_option，参数：option
         # 删除除了三个必填项之外的可选项
-        if option in (set(self.msgrequest) - set(['To_Account', 'MsgRandom', 'MsgBody'])):
-            self.__dict__.pop(option)
-            self.msgrequest.pop(option)
+        if option in (set(self.msgrequest) - set(['To_Account', 'MsgRandom', 'MsgBody'])):  # 条件判断：option in (set(self.msgrequest) - set(['To_Account', 'MsgRandom', 'MsgBody']))
+            self.__dict__.pop(option)  # 从对象的属性字典中删除该可选项（不存在会抛 KeyError）
+            self.msgrequest.pop(option)  # 从请求字典中删除该可选项
 
-    def append_msg(self, msg):
-        self.msgbody.append(msg)
-        self.msgrequest['MsgBody'].append(msg.msg)
+    def append_msg(self, msg):  # 定义方法 append_msg，参数：msg
+        self.msgbody.append(msg)  # 把消息体对象追加到列表末尾
+        self.msgrequest['MsgBody'].append(msg.msg)  # 同步把消息体字典（msg 属性）追加到请求字典
 
-    def insert_msg(self, index, msg):
-        self.msgbody.insert(index, msg)
+    def insert_msg(self, index, msg):  # 定义方法 insert_msg，参数：index、msg
+        self.msgbody.insert(index, msg)  # 在指定位置插入消息体对象
         self.msgrequest['MsgBody'].insert(index, msg.msg)   # 原稿此处漏写 index，应为 insert(index, msg.msg)
 
-    def del_msg(self, index):
-        if index in range(len(self.msgbody)):
-            del self.msgbody[index]
-            del self.msgrequest['MsgBody'][index]
+    def del_msg(self, index):  # 定义方法 del_msg，参数：index
+        if index in range(len(self.msgbody)):  # 条件判断：index in range(len(self.msgbody))
+            del self.msgbody[index]  # 删除指定位置的消息体对象
+            del self.msgrequest['MsgBody'][index]  # 同步删除请求字典中对应位置的消息体
 
-    def set_from(self, fromacc):
+    def set_from(self, fromacc):  # 定义方法 set_from，参数：fromacc
         # 指定消息的发送方，默认为服务器发送
-        self.fromacc = fromacc
-        self.msgrequest['From_Account'] = fromacc
+        self.fromacc = fromacc  # 保存 fromacc 到对象属性 fromacc
+        self.msgrequest['From_Account'] = fromacc  # 同步更新 msgrequest 字典中的 From_Account 字段
 
-    def set_to(self, toacc):
+    def set_to(self, toacc):  # 定义方法 set_to，参数：toacc
         # 指定消息的接收方，可以为 String（单发），可以为 List（批量发送）
-        self.toacc = toacc
-        self.msgrequest['To_Account'] = toacc
+        self.toacc = toacc  # 保存 toacc 到对象属性 toacc
+        self.msgrequest['To_Account'] = toacc  # 同步更新 msgrequest 字典中的 To_Account 字段
 
-    def refresh_random(self):
-        self.msgrandom = random.randint(1, 1000000000)
+    def refresh_random(self):  # 定义方法 refresh_random，无额外参数
+        self.msgrandom = random.randint(1, 1000000000)  # 保存 random.randint(1, 1000000000) 到对象属性 msgrandom
         self.msgrequest['MsgRandom'] = self.msgrandom       # 原稿此处末尾多了一个逗号，会变成元组，应去掉
 
-    def set_sync(self, sync):
+    def set_sync(self, sync):  # 定义方法 set_sync，参数：sync
         # 同步选项：1，把消息同步到 From_Account 在线终端和漫游上
         #           2，消息不同步至 From_Account
         #           若不填写，默认情况下会将消息同步；仅在单发单聊消息中可调用
-        self.sync = sync
-        self.msgrequest['SyncOtherMachine'] = sync
+        self.sync = sync  # 保存 sync 到对象属性 sync
+        self.msgrequest['SyncOtherMachine'] = sync  # 同步更新 msgrequest 字典中的 SyncOtherMachine 字段
 
-    def set_timestamp(self):
+    def set_timestamp(self):  # 定义方法 set_timestamp，无额外参数
         # 设置消息时间戳，unix 时间，仅在单发单聊消息中可以调用
-        self.timestamp = int(time.time())
-        self.msgrequest['MsgTimeStamp'] = self.timestamp
+        self.timestamp = int(time.time())  # 保存 int(time.time()) 到对象属性 timestamp
+        self.msgrequest['MsgTimeStamp'] = self.timestamp  # 同步更新 msgrequest 字典中的 MsgTimeStamp 字段
 
-    def set_offlinepush(self, pushflag=0, desc='', ext='', sound=''):
+    def set_offlinepush(self, pushflag=0, desc='', ext='', sound=''):  # 定义方法 set_offlinepush，参数：pushflag=0、desc=''、ext=''、sound=''
         # 仅适用于 APNs 推送，不适用于安卓厂商推送
-        self.msgrequest['OfflinePushInfo'] = {
-            'PushFlag': pushflag,
-            'Desc': desc,
-            'Ext': ext,
-            'Sound': sound
+        self.msgrequest['OfflinePushInfo'] = {  # 同步更新 msgrequest 字典中的 OfflinePushInfo 字段
+            'PushFlag': pushflag,  # 字典项：键 PushFlag，值 pushflag
+            'Desc': desc,  # 字典项：键 Desc，值 desc
+            'Ext': ext,  # 字典项：键 Ext，值 ext
+            'Sound': sound  # 字典项：键 Sound，值 sound
         }
 
 
-class MsgDict(object):
+class MsgDict(object):  # 定义类 MsgDict，继承 object
     """所有消息体的基类：统一 msgtype / msgcontent，并提供 msg 属性"""
 
-    def __init__(self, msgtype='', msgcontent={}):
+    def __init__(self, msgtype='', msgcontent={}):  # 定义方法 __init__，参数：msgtype=''、msgcontent={}
         self.msgtype = msgtype                              # 消息类型，如 TIMTextElem
         self.msgcontent = msgcontent                        # 消息内容（字典）
 
-    @property
-    def msg(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def msg(self):  # 定义方法 msg，无额外参数
         # 把消息体拼装成接口要求的字典，调用时像属性一样使用：obj.msg
-        return {
-            'MsgType': self.msgtype,
-            'MsgContent': self.msgcontent
+        return {  # 返回 {
+            'MsgType': self.msgtype,  # 字典项：键 MsgType，值 self.msgtype
+            'MsgContent': self.msgcontent  # 字典项：键 MsgContent，值 self.msgcontent
         }
 
-    def set_content(self, content):
-        self.msgcontent = content
+    def set_content(self, content):  # 定义方法 set_content，参数：content
+        self.msgcontent = content  # 保存 content 到对象属性 msgcontent
 
 
-class TextMsg(MsgDict):
+class TextMsg(MsgDict):  # 定义类 TextMsg，继承 MsgDict
     """文本消息"""
 
-    def __init__(self, text='', msgtype='TIMTextElem'):
-        self.text = text
-        content = {'Text': text}
+    def __init__(self, text='', msgtype='TIMTextElem'):  # 定义方法 __init__，参数：text=''、msgtype='TIMTextElem'
+        self.text = text  # 保存 text 到对象属性 text
+        content = {'Text': text}  # 把 {'Text': text} 的结果保存到变量 content
         super(TextMsg, self).__init__(msgtype=msgtype, msgcontent=content)   # 调用父类初始化
 
-    def set_text(self, text):
-        self.text = text
+    def set_text(self, text):  # 定义方法 set_text，参数：text
+        self.text = text  # 保存 text 到对象属性 text
         self.msgcontent['Text'] = text                      # 属性与 msgcontent 保持同步
 
 
-class LocationMsg(MsgDict):
+class LocationMsg(MsgDict):  # 定义类 LocationMsg，继承 MsgDict
     """地理位置消息"""
 
-    def __init__(self, desc='', latitude=0, longitude=0, msgtype='TIMLocationElem'):
-        self.desc = desc
-        self.latitude = latitude
-        self.longitude = longitude
-        content = {
+    def __init__(self, desc='', latitude=0, longitude=0, msgtype='TIMLocationElem'):  # 定义方法 __init__，参数：desc=''、latitude=0、longitude=0、msgtype='TIMLocationElem'
+        self.desc = desc  # 保存 desc 到对象属性 desc
+        self.latitude = latitude  # 保存 latitude 到对象属性 latitude
+        self.longitude = longitude  # 保存 longitude 到对象属性 longitude
+        content = {  # 把 { 的结果保存到变量 content
             'Desc': desc,                                   # 地理位置描述信息，String
             'Latitude': latitude,                           # 纬度，Number
             'Longitude': longitude                          # 经度，Number
         }
-        super(LocationMsg, self).__init__(msgtype=msgtype, msgcontent=content)
+        super(LocationMsg, self).__init__(msgtype=msgtype, msgcontent=content)  # 调用父类 MsgDict 的构造方法，传入消息类型与内容字典
 
-    def set_desc(self, desc):
-        self.desc = desc
-        self.msgcontent['Desc'] = desc
+    def set_desc(self, desc):  # 定义方法 set_desc，参数：desc
+        self.desc = desc  # 保存 desc 到对象属性 desc
+        self.msgcontent['Desc'] = desc  # 同步更新 msgcontent 字典中的 Desc 字段
 
-    def set_location(self, latitude, longitude):
-        self.latitude = latitude
-        self.longitude = longitude
-        self.msgcontent['Latitude'] = latitude
-        self.msgcontent['Longitude'] = longitude
+    def set_location(self, latitude, longitude):  # 定义方法 set_location，参数：latitude、longitude
+        self.latitude = latitude  # 保存 latitude 到对象属性 latitude
+        self.longitude = longitude  # 保存 longitude 到对象属性 longitude
+        self.msgcontent['Latitude'] = latitude  # 同步更新 msgcontent 字典中的 Latitude 字段
+        self.msgcontent['Longitude'] = longitude  # 同步更新 msgcontent 字典中的 Longitude 字段
 
-    def set_latitude(self, latitude):
-        self.latitude = latitude
-        self.msgcontent['Latitude'] = latitude
+    def set_latitude(self, latitude):  # 定义方法 set_latitude，参数：latitude
+        self.latitude = latitude  # 保存 latitude 到对象属性 latitude
+        self.msgcontent['Latitude'] = latitude  # 同步更新 msgcontent 字典中的 Latitude 字段
 
-    def set_longitude(self, longitude):
-        self.longitude = longitude
-        self.msgcontent['Longitude'] = longitude
+    def set_longitude(self, longitude):  # 定义方法 set_longitude，参数：longitude
+        self.longitude = longitude  # 保存 longitude 到对象属性 longitude
+        self.msgcontent['Longitude'] = longitude  # 同步更新 msgcontent 字典中的 Longitude 字段
 ```
 
 > 其余消息类型的设计思路完全一致（子类构造时拼装 `content` 字典 → `super().__init__` → 为每个字段提供 `set_xxx` 方法并同步更新 `msgcontent`）：
@@ -3028,40 +3093,40 @@ class LocationMsg(MsgDict):
 > ---
 
 ```python
-class ImageInfo(object):
+class ImageInfo(object):  # 定义类 ImageInfo，继承 object
     """图片下载信息：不继承 MsgDict，仅用 @property info 输出字典"""
 
-    def __init__(self, itype=1, size=0, width=0, height=0, url=''):
+    def __init__(self, itype=1, size=0, width=0, height=0, url=''):  # 定义方法 __init__，参数：itype=1、size=0、width=0、height=0、url=''
         self.itype = itype                  # 图片类型：1-原图，2-大图，3-缩略图，0-其他
         self.size = size                    # 图片数据大小，Number
         self.width = width                  # 图片宽度，Number
         self.height = height                # 图片高度，Number
         self.url = url                      # 图片下载地址，String
 
-    @property
-    def info(self):
-        return {
-            'Type': self.itype,
-            'Size': self.size,
-            'Width': self.width,
-            'Height': self.height,
-            'URL': self.url
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def info(self):  # 定义方法 info，无额外参数
+        return {  # 返回 {
+            'Type': self.itype,  # 字典项：键 Type，值 self.itype
+            'Size': self.size,  # 字典项：键 Size，值 self.size
+            'Width': self.width,  # 字典项：键 Width，值 self.width
+            'Height': self.height,  # 字典项：键 Height，值 self.height
+            'URL': self.url  # 字典项：键 URL，值 self.url
         }
 
-    def set_type(self, itype):
-        self.itype = itype
+    def set_type(self, itype):  # 定义方法 set_type，参数：itype
+        self.itype = itype  # 保存 itype 到对象属性 itype
 
-    def set_size(self, size):
-        self.size = size
+    def set_size(self, size):  # 定义方法 set_size，参数：size
+        self.size = size  # 保存 size 到对象属性 size
 
-    def set_width(self, width):
-        self.width = width
+    def set_width(self, width):  # 定义方法 set_width，参数：width
+        self.width = width  # 保存 width 到对象属性 width
 
-    def set_height(self, height):
-        self.height = height
+    def set_height(self, height):  # 定义方法 set_height，参数：height
+        self.height = height  # 保存 height 到对象属性 height
 
-    def set_url(self, url):
-        self.url = url
+    def set_url(self, url):  # 定义方法 set_url，参数：url
+        self.url = url  # 保存 url 到对象属性 url
 ```
 
 > **原稿中的几处笔误（学习时注意避免）**：
@@ -3081,22 +3146,22 @@ class ImageInfo(object):
 > 截取其中的配置类 `WechatConf`，该类存储所有和微信开发相关的配置信息，同时维护配置信息的有效性。核心设计：**双下划线私有属性 + `@property` 读取 + `@xxx.setter` 修改并联动更新**。
 
 ```python
-from __future__ import unicode_literals
-import time
+from __future__ import unicode_literals  # 兼容 Python 2：让字符串字面量默认为 unicode
+import time  # 导入时间模块，用于获取时间戳 / 当前时间
 
-from wechat_sdk.lib.crypto import BasicCrypto
-from wechat_sdk.lib.request import WechatRequest
-from wechat_sdk.exceptions import NeedParamError
-from wechat_sdk.utils import disable_urllib3_warning
+from wechat_sdk.lib.crypto import BasicCrypto  # 导入加解密基础类
+from wechat_sdk.lib.request import WechatRequest  # 导入封装 HTTP 请求的类
+from wechat_sdk.exceptions import NeedParamError  # 导入缺少必要参数时抛出的异常类
+from wechat_sdk.utils import disable_urllib3_warning  # 导入关闭 urllib3 警告的工具函数
 
 
-class WechatConf(object):
+class WechatConf(object):  # 定义类 WechatConf，继承 object
     """WechatConf 配置类
 
     该类将会存储所有和微信开发相关的配置信息，同时也会维护配置信息的有效性。
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs):  # 定义方法 __init__，参数：**kwargs
         """
         :param kwargs: 配置信息字典，可用字典 key 值及对应解释如下：
             'token': 微信 Token
@@ -3118,173 +3183,173 @@ class WechatConf(object):
             'checkssl': 是否检查 SSL，默认不检查（False），可避免 urllib3 的 InsecurePlatformWarning 警告
         """
         self.__request = WechatRequest()                    # 私有属性：封装 HTTP 请求
-        if kwargs.get('checkssl') is not True:
+        if kwargs.get('checkssl') is not True:  # 条件判断：kwargs.get('checkssl') is not True
             disable_urllib3_warning()                       # 可解决 InsecurePlatformWarning 警告
 
-        self.__token = kwargs.get('token')
-        self.__appid = kwargs.get('appid')
-        self.__appsecret = kwargs.get('appsecret')
-        self.__encrypt_mode = kwargs.get('encrypt_mode', 'safe')
-        self.__encoding_aes_key = kwargs.get('encoding_aes_key')
-        self.__crypto = None
+        self.__token = kwargs.get('token')  # 从 kwargs 取出 token 保存到属性 __token，未传入则为 None
+        self.__appid = kwargs.get('appid')  # 从 kwargs 取出 appid 保存到属性 __appid，未传入则为 None
+        self.__appsecret = kwargs.get('appsecret')  # 从 kwargs 取出 appsecret 保存到属性 __appsecret，未传入则为 None
+        self.__encrypt_mode = kwargs.get('encrypt_mode', 'safe')  # 从 kwargs 取出 encrypt_mode 保存到属性 __encrypt_mode，未传入时默认 'safe'
+        self.__encoding_aes_key = kwargs.get('encoding_aes_key')  # 从 kwargs 取出 encoding_aes_key 保存到属性 __encoding_aes_key，未传入则为 None
+        self.__crypto = None  # 保存 None 到对象属性 __crypto
         self._update_crypto()                               # 根据当前配置更新加解密对象
 
-        self.__access_token_getfunc = kwargs.get('access_token_getfunc')
-        self.__access_token_setfunc = kwargs.get('access_token_setfunc')
-        self.__access_token_refreshfunc = kwargs.get('access_token_refreshfunc')
-        self.__access_token = kwargs.get('access_token')
-        self.__access_token_expires_at = kwargs.get('access_token_expires_at')
+        self.__access_token_getfunc = kwargs.get('access_token_getfunc')  # 从 kwargs 取出 access_token_getfunc 保存到属性 __access_token_getfunc，未传入则为 None
+        self.__access_token_setfunc = kwargs.get('access_token_setfunc')  # 从 kwargs 取出 access_token_setfunc 保存到属性 __access_token_setfunc，未传入则为 None
+        self.__access_token_refreshfunc = kwargs.get('access_token_refreshfunc')  # 从 kwargs 取出 access_token_refreshfunc 保存到属性 __access_token_refreshfunc，未传入则为 None
+        self.__access_token = kwargs.get('access_token')  # 从 kwargs 取出 access_token 保存到属性 __access_token，未传入则为 None
+        self.__access_token_expires_at = kwargs.get('access_token_expires_at')  # 从 kwargs 取出 access_token_expires_at 保存到属性 __access_token_expires_at，未传入则为 None
 
-        self.__jsapi_ticket_getfunc = kwargs.get('jsapi_ticket_getfunc')
-        self.__jsapi_ticket_setfunc = kwargs.get('jsapi_ticket_setfunc')
-        self.__jsapi_ticket_refreshfunc = kwargs.get('jsapi_ticket_refreshfunc')
-        self.__jsapi_ticket = kwargs.get('jsapi_ticket')
-        self.__jsapi_ticket_expires_at = kwargs.get('jsapi_ticket_expires_at')
+        self.__jsapi_ticket_getfunc = kwargs.get('jsapi_ticket_getfunc')  # 从 kwargs 取出 jsapi_ticket_getfunc 保存到属性 __jsapi_ticket_getfunc，未传入则为 None
+        self.__jsapi_ticket_setfunc = kwargs.get('jsapi_ticket_setfunc')  # 从 kwargs 取出 jsapi_ticket_setfunc 保存到属性 __jsapi_ticket_setfunc，未传入则为 None
+        self.__jsapi_ticket_refreshfunc = kwargs.get('jsapi_ticket_refreshfunc')  # 从 kwargs 取出 jsapi_ticket_refreshfunc 保存到属性 __jsapi_ticket_refreshfunc，未传入则为 None
+        self.__jsapi_ticket = kwargs.get('jsapi_ticket')  # 从 kwargs 取出 jsapi_ticket 保存到属性 __jsapi_ticket，未传入则为 None
+        self.__jsapi_ticket_expires_at = kwargs.get('jsapi_ticket_expires_at')  # 从 kwargs 取出 jsapi_ticket_expires_at 保存到属性 __jsapi_ticket_expires_at，未传入则为 None
 
-        self.__partnerid = kwargs.get('partnerid')
-        self.__partnerkey = kwargs.get('partnerkey')
-        self.__paysignkey = kwargs.get('paysignkey')
+        self.__partnerid = kwargs.get('partnerid')  # 从 kwargs 取出 partnerid 保存到属性 __partnerid，未传入则为 None
+        self.__partnerkey = kwargs.get('partnerkey')  # 从 kwargs 取出 partnerkey 保存到属性 __partnerkey，未传入则为 None
+        self.__paysignkey = kwargs.get('paysignkey')  # 从 kwargs 取出 paysignkey 保存到属性 __paysignkey，未传入则为 None
 
-    @property
-    def token(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def token(self):  # 定义方法 token，无额外参数
         """获取当前 Token"""
-        self._check_token()
-        return self.__token
+        self._check_token()  # 调用 self._check_token（本类方法），无参数
+        return self.__token  # 返回 self.__token
 
-    @token.setter
-    def token(self, token):
+    @token.setter  # 装饰器：声明 token 的 setter 方法
+    def token(self, token):  # 定义方法 token，参数：token
         """设置当前 Token"""
-        self.__token = token
+        self.__token = token  # 保存 token 到对象属性 __token
         self._update_crypto()                               # 改动 Token 需要重新更新 Crypto
 
-    @property
-    def appid(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def appid(self):  # 定义方法 appid，无额外参数
         """获取当前 App ID"""
-        return self.__appid
+        return self.__appid  # 返回 self.__appid
 
-    @property
-    def appsecret(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def appsecret(self):  # 定义方法 appsecret，无额外参数
         """获取当前 App Secret"""
-        return self.__appsecret
+        return self.__appsecret  # 返回 self.__appsecret
 
-    def set_appid_appsecret(self, appid, appsecret):
+    def set_appid_appsecret(self, appid, appsecret):  # 定义方法 set_appid_appsecret，参数：appid、appsecret
         """设置当前 App ID 及 App Secret"""
-        self.__appid = appid
-        self.__appsecret = appsecret
+        self.__appid = appid  # 保存 appid 到对象属性 __appid
+        self.__appsecret = appsecret  # 保存 appsecret 到对象属性 __appsecret
         self._update_crypto()                               # 改动 App ID 后需要重新更新 Crypto
 
-    @property
-    def encoding_aes_key(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def encoding_aes_key(self):  # 定义方法 encoding_aes_key，无额外参数
         """获取当前 EncodingAESKey"""
-        return self.__encoding_aes_key
+        return self.__encoding_aes_key  # 返回 self.__encoding_aes_key
 
-    @encoding_aes_key.setter
-    def encoding_aes_key(self, encoding_aes_key):
+    @encoding_aes_key.setter  # 装饰器：声明 encoding_aes_key 的 setter 方法
+    def encoding_aes_key(self, encoding_aes_key):  # 定义方法 encoding_aes_key，参数：encoding_aes_key
         """设置当前 EncodingAESKey"""
-        self.__encoding_aes_key = encoding_aes_key
+        self.__encoding_aes_key = encoding_aes_key  # 保存 encoding_aes_key 到对象属性 __encoding_aes_key
         self._update_crypto()                               # 改动 EncodingAESKey 需要重新更新 Crypto
 
-    @property
-    def encrypt_mode(self):
-        return self.__encrypt_mode
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def encrypt_mode(self):  # 定义方法 encrypt_mode，无额外参数
+        return self.__encrypt_mode  # 返回 self.__encrypt_mode
 
-    @encrypt_mode.setter
-    def encrypt_mode(self, encrypt_mode):
+    @encrypt_mode.setter  # 装饰器：声明 encrypt_mode 的 setter 方法
+    def encrypt_mode(self, encrypt_mode):  # 定义方法 encrypt_mode，参数：encrypt_mode
         """设置当前加密模式"""
-        self.__encrypt_mode = encrypt_mode
-        self._update_crypto()
+        self.__encrypt_mode = encrypt_mode  # 保存 encrypt_mode 到对象属性 __encrypt_mode
+        self._update_crypto()  # 调用 self._update_crypto（本类方法），无参数
 
-    @property
-    def crypto(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def crypto(self):  # 定义方法 crypto，无额外参数
         """获取当前 Crypto 实例"""
-        return self.__crypto
+        return self.__crypto  # 返回 self.__crypto
 
-    @property
-    def access_token(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def access_token(self):  # 定义方法 access_token，无额外参数
         """获取当前 access token 值，本方法会自行维护 access token 有效性"""
-        self._check_appid_appsecret()
-        if callable(self.__access_token_getfunc):
-            self.__access_token, self.__access_token_expires_at = self.__access_token_getfunc()
-        if self.__access_token:
-            now = time.time()
+        self._check_appid_appsecret()  # 调用 self._check_appid_appsecret（本类方法），无参数
+        if callable(self.__access_token_getfunc):  # 条件判断：callable(self.__access_token_getfunc)
+            self.__access_token, self.__access_token_expires_at = self.__access_token_getfunc()  # 调用用户提供的获取函数，同时得到 access token 及其过期时间戳（元组解包）
+        if self.__access_token:  # 条件判断：self.__access_token
+            now = time.time()  # 把 time.time() 的结果保存到变量 now
             if self.__access_token_expires_at - now > 60:   # 距离过期还有 60 秒以上则直接使用缓存
-                return self.__access_token
+                return self.__access_token  # 返回 self.__access_token
         self.grant_access_token()                           # 从腾讯服务器获取 access token 并更新
-        return self.__access_token
+        return self.__access_token  # 返回 self.__access_token
 
-    @property
-    def jsapi_ticket(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def jsapi_ticket(self):  # 定义方法 jsapi_ticket，无额外参数
         """获取当前 jsapi ticket 值，本方法会自行维护 jsapi ticket 有效性"""
-        self._check_appid_appsecret()
-        if callable(self.__jsapi_ticket_getfunc):
-            self.__jsapi_ticket, self.__jsapi_ticket_expires_at = self.__jsapi_ticket_getfunc()
-        if self.__jsapi_ticket:
-            now = time.time()
-            if self.__jsapi_ticket_expires_at - now > 60:
-                return self.__jsapi_ticket
+        self._check_appid_appsecret()  # 调用 self._check_appid_appsecret（本类方法），无参数
+        if callable(self.__jsapi_ticket_getfunc):  # 条件判断：callable(self.__jsapi_ticket_getfunc)
+            self.__jsapi_ticket, self.__jsapi_ticket_expires_at = self.__jsapi_ticket_getfunc()  # 调用用户提供的获取函数，同时得到 jsapi ticket 及其过期时间戳（元组解包）
+        if self.__jsapi_ticket:  # 条件判断：self.__jsapi_ticket
+            now = time.time()  # 把 time.time() 的结果保存到变量 now
+            if self.__jsapi_ticket_expires_at - now > 60:  # 条件判断：self.__jsapi_ticket_expires_at - now > 60
+                return self.__jsapi_ticket  # 返回 self.__jsapi_ticket
         self.grant_jsapi_ticket()                           # 从腾讯服务器获取 jsapi ticket 并更新
-        return self.__jsapi_ticket
+        return self.__jsapi_ticket  # 返回 self.__jsapi_ticket
 
-    @property
-    def partnerid(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def partnerid(self):  # 定义方法 partnerid，无额外参数
         """获取当前财付通商户身份标识"""
-        return self.__partnerid
+        return self.__partnerid  # 返回 self.__partnerid
 
-    @property
-    def partnerkey(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def partnerkey(self):  # 定义方法 partnerkey，无额外参数
         """获取当前财付通商户权限密钥 Key"""
-        return self.__partnerkey
+        return self.__partnerkey  # 返回 self.__partnerkey
 
-    @property
-    def paysignkey(self):
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    def paysignkey(self):  # 定义方法 paysignkey，无额外参数
         """获取商户签名密钥 Key"""
-        return self.__paysignkey
+        return self.__paysignkey  # 返回 self.__paysignkey
 
-    def grant_access_token(self):
+    def grant_access_token(self):  # 定义方法 grant_access_token，无额外参数
         """获取 access token 并更新当前配置
 
         :return: 返回的 JSON 数据包（传入 access_token_refreshfunc 参数后返回 None）
         """
-        self._check_appid_appsecret()
-        if callable(self.__access_token_refreshfunc):
-            self.__access_token, self.__access_token_expires_at = self.__access_token_refreshfunc()
-            return
-        response_json = self.__request.get(
-            url='https://api.weixin.qq.com/cgi-bin/token',
-            params={
-                'grant_type': 'client_credential',
-                'appid': self.__appid,
-                'secret': self.__appsecret,
+        self._check_appid_appsecret()  # 调用 self._check_appid_appsecret（本类方法），无参数
+        if callable(self.__access_token_refreshfunc):  # 条件判断：callable(self.__access_token_refreshfunc)
+            self.__access_token, self.__access_token_expires_at = self.__access_token_refreshfunc()  # 调用用户提供的刷新函数，更新 access token 及其过期时间戳
+            return  # 提前结束方法，返回 None
+        response_json = self.__request.get(  # 把 self.__request.get( 的结果保存到变量 response_json
+            url='https://api.weixin.qq.com/cgi-bin/token',  # 关键字参数 url：获取 access token 的接口地址
+            params={  # 关键字参数 params：请求查询参数（dict），下面逐项列出
+                'grant_type': 'client_credential',  # 字典项：键 grant_type，值 'client_credential'
+                'appid': self.__appid,  # 字典项：键 appid，值 self.__appid
+                'secret': self.__appsecret,  # 字典项：键 secret，值 self.__appsecret
             },
-            access_token=self.__access_token
+            access_token=self.__access_token  # 关键字参数 access_token：当前已有的 token（可能为 None）
         )
-        self.__access_token = response_json['access_token']
-        self.__access_token_expires_at = int(time.time()) + response_json['expires_in']
-        if callable(self.__access_token_setfunc):
-            self.__access_token_setfunc(self.__access_token, self.__access_token_expires_at)
-        return response_json
+        self.__access_token = response_json['access_token']  # 保存 response_json['access_token'] 到对象属性 __access_token
+        self.__access_token_expires_at = int(time.time()) + response_json['expires_in']  # 保存 int(time.time()) + response_json['expires_in'] 到对象属性 __access_token_expires_at
+        if callable(self.__access_token_setfunc):  # 条件判断：callable(self.__access_token_setfunc)
+            self.__access_token_setfunc(self.__access_token, self.__access_token_expires_at)  # 调用 self.__access_token_setfunc（保存的回调函数），参数：self.__access_token, self.__access_token_expires_at
+        return response_json  # 返回 response_json
 
-    def grant_jsapi_ticket(self):
+    def grant_jsapi_ticket(self):  # 定义方法 grant_jsapi_ticket，无额外参数
         """获取 jsapi ticket 并更新当前配置
 
         :return: 返回的 JSON 数据包（传入 jsapi_ticket_refreshfunc 参数后返回 None）
         """
-        self._check_appid_appsecret()
-        if callable(self.__jsapi_ticket_refreshfunc):
-            self.__jsapi_ticket, self.__jsapi_ticket_expires_at = self.__jsapi_ticket_refreshfunc()
-            return
-        response_json = self.__request.get(
-            url='https://api.weixin.qq.com/cgi-bin/ticket/getticket',
-            params={'type': 'jsapi'},
-            access_token=self.access_token,
+        self._check_appid_appsecret()  # 调用 self._check_appid_appsecret（本类方法），无参数
+        if callable(self.__jsapi_ticket_refreshfunc):  # 条件判断：callable(self.__jsapi_ticket_refreshfunc)
+            self.__jsapi_ticket, self.__jsapi_ticket_expires_at = self.__jsapi_ticket_refreshfunc()  # 调用用户提供的刷新函数，更新 jsapi ticket 及其过期时间戳
+            return  # 提前结束方法，返回 None
+        response_json = self.__request.get(  # 把 self.__request.get( 的结果保存到变量 response_json
+            url='https://api.weixin.qq.com/cgi-bin/ticket/getticket',  # 关键字参数 url：获取 jsapi ticket 的接口地址
+            params={'type': 'jsapi'},  # 关键字参数 params：指定获取 jsapi 类型的 ticket
+            access_token=self.access_token,  # 关键字参数 access_token：通过 property 获取有效的 access token
         )
-        self.__jsapi_ticket = response_json['ticket']
-        self.__jsapi_ticket_expires_at = int(time.time()) + response_json['expires_in']
-        if callable(self.__jsapi_ticket_setfunc):
-            self.__jsapi_ticket_setfunc(self.__jsapi_ticket, self.__jsapi_ticket_expires_at)
-        return response_json
+        self.__jsapi_ticket = response_json['ticket']  # 保存 response_json['ticket'] 到对象属性 __jsapi_ticket
+        self.__jsapi_ticket_expires_at = int(time.time()) + response_json['expires_in']  # 保存 int(time.time()) + response_json['expires_in'] 到对象属性 __jsapi_ticket_expires_at
+        if callable(self.__jsapi_ticket_setfunc):  # 条件判断：callable(self.__jsapi_ticket_setfunc)
+            self.__jsapi_ticket_setfunc(self.__jsapi_ticket, self.__jsapi_ticket_expires_at)  # 调用 self.__jsapi_ticket_setfunc（保存的回调函数），参数：self.__jsapi_ticket, self.__jsapi_ticket_expires_at
+        return response_json  # 返回 response_json
 
-    def get_access_token(self):
+    def get_access_token(self):  # 定义方法 get_access_token，无额外参数
         """获取 Access Token 及 Access Token 过期日期，仅供缓存使用
 
         如果希望得到原生的 Access Token 请求数据请使用 grant_access_token。
@@ -3292,47 +3357,47 @@ class WechatConf(object):
 
         :return: dict 对象，key 包括 access_token 及 access_token_expires_at
         """
-        self._check_appid_appsecret()
-        return {
-            'access_token': self.access_token,
-            'access_token_expires_at': self.__access_token_expires_at,
+        self._check_appid_appsecret()  # 调用 self._check_appid_appsecret（本类方法），无参数
+        return {  # 返回 {
+            'access_token': self.access_token,  # 字典项：键 access_token，值 self.access_token
+            'access_token_expires_at': self.__access_token_expires_at,  # 字典项：键 access_token_expires_at，值 self.__access_token_expires_at
         }
 
-    def get_jsapi_ticket(self):
+    def get_jsapi_ticket(self):  # 定义方法 get_jsapi_ticket，无额外参数
         """获取 Jsapi Ticket 及 Jsapi Ticket 过期日期，仅供缓存使用（用法同 get_access_token）
 
         :return: dict 对象，key 包括 jsapi_ticket 及 jsapi_ticket_expires_at
         """
-        self._check_appid_appsecret()
-        return {
-            'jsapi_ticket': self.jsapi_ticket,
-            'jsapi_ticket_expires_at': self.__jsapi_ticket_expires_at,
+        self._check_appid_appsecret()  # 调用 self._check_appid_appsecret（本类方法），无参数
+        return {  # 返回 {
+            'jsapi_ticket': self.jsapi_ticket,  # 字典项：键 jsapi_ticket，值 self.jsapi_ticket
+            'jsapi_ticket_expires_at': self.__jsapi_ticket_expires_at,  # 字典项：键 jsapi_ticket_expires_at，值 self.__jsapi_ticket_expires_at
         }
 
-    def _check_token(self):
+    def _check_token(self):  # 定义方法 _check_token，无额外参数
         """检查 Token 是否存在
 
         :raises NeedParamError: Token 参数没有在初始化的时候提供
         """
-        if not self.__token:
-            raise NeedParamError('Please provide Token parameter in the construction of class.')
+        if not self.__token:  # 条件判断：not self.__token
+            raise NeedParamError('Please provide Token parameter in the construction of class.')  # 缺少 Token 时抛出 NeedParamError 异常
 
-    def _check_appid_appsecret(self):
+    def _check_appid_appsecret(self):  # 定义方法 _check_appid_appsecret，无额外参数
         """检查 AppID 和 AppSecret 是否存在
 
         :raises NeedParamError: AppID 或 AppSecret 参数没有在初始化的时候完整提供
         """
-        if not self.__appid or not self.__appsecret:
-            raise NeedParamError('Please provide app_id and app_secret parameters in the construction of class.')
+        if not self.__appid or not self.__appsecret:  # 条件判断：not self.__appid or not self.__appsecret
+            raise NeedParamError('Please provide app_id and app_secret parameters in the construction of class.')  # 缺少 app_id / app_secret 时抛出 NeedParamError 异常
 
-    def _update_crypto(self):
+    def _update_crypto(self):  # 定义方法 _update_crypto，无额外参数
         """根据当前配置内容更新 Crypto 类"""
-        if self.__encrypt_mode in ['compatible', 'safe'] and self.__encoding_aes_key is not None:
-            if self.__token is None or self.__appid is None:
-                raise NeedParamError('Please provide token and appid parameters in the construction of class.')
-            self.__crypto = BasicCrypto(self.__token, self.__encoding_aes_key, self.__appid)
-        else:
-            self.__crypto = None
+        if self.__encrypt_mode in ['compatible', 'safe'] and self.__encoding_aes_key is not None:  # 条件判断：self.__encrypt_mode in ['compatible', 'safe'] and self.__encoding_aes_key is not None
+            if self.__token is None or self.__appid is None:  # 条件判断：self.__token is None or self.__appid is None
+                raise NeedParamError('Please provide token and appid parameters in the construction of class.')  # 缺少 token / appid 时抛出 NeedParamError 异常
+            self.__crypto = BasicCrypto(self.__token, self.__encoding_aes_key, self.__appid)  # 保存 BasicCrypto(self.__token, self.__encoding_aes_key, self.__appid) 到对象属性 __crypto
+        else:  # 否则（不满足条件）
+            self.__crypto = None  # 保存 None 到对象属性 __crypto
 ```
 
 > **从 `WechatConf` 学到的类设计要点**：
