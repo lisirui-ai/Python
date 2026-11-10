@@ -3743,13 +3743,39 @@ reload_test.test()                          # ---2---
 | 12.1.4 中的现象 | 对应 5.3 的知识点 |
 |---|---|
 | `from common import HANDLE_FLAG` 只拿到导入瞬间的值，之后 `common` 里改了也感知不到 | **变量名是指针**：`from ... import` 相当于 `HANDLE_FLAG = common.HANDLE_FLAG`，本模块多了一个名字，指向当时的 `False` 对象 |
-| `HANDLE_FLAG = True` 只改了本模块的名字，`common` 里依然是 `False` | **不可变类型**（`bool`）：修改会让变量名指向一个**新对象**，其他指向原对象的名字不受影响，与 5.3 中 `a += 1` 后 `b` 仍指向原对象同理 |
+| `HANDLE_FLAG = True` 只改了本模块的名字，`common` 里依然是 `False` | **不可变类型**（`bool`）：`True`、`False` 是两个不同的对象，赋值是让本模块的名字改为指向 `True`，并没有修改原来的 `False` 对象，其他指向 `False` 的名字不受影响，与 5.3 中 `a += 1` 后 `b` 仍指向原对象同理 |
 | `from common import RECV_DATA_LIST` 后，`append` 在两个模块里都能看到 | **可变类型**：原地修改不改变指向，所有指向该对象的名字都能看到变化，与 5.3 中 `t2.append(4)` 后 `t1` 也变化同理 |
 | `import common` 后用 `common.HANDLE_FLAG = True`，所有模块都能看到 | 修改的是 `common` 模块对象的属性，各模块都通过同一个模块对象访问，取到的始终是最新的值 |
 
 > ---
 >
-> **一句话概括**：`from 模块 import 变量` 是在自己模块里新建了一个名字，指向当时的对象，之后与原模块的名字互不影响；`import 模块` 是通过模块对象访问属性，每次都读取最新值。
+> **一句话概括**：`from 模块 import 变量` 是在自己模块里新建了一个名字，指向当时的对象，之后任何一方**重新赋值**，另一方的名字都不会跟着变（但如果对象是可变类型，原地修改仍然共享）；`import 模块` 是通过模块对象访问属性，每次都读取最新值。
+>
+> **注意**：即使是列表这样的可变类型，如果导入后在本模块写 `RECV_DATA_LIST = []`（**重新赋值**而不是 `append`），本模块的名字就改为指向一个新列表，与 `common` 里的列表脱钩，其他模块也看不到后续的修改。要保持共享，只能原地修改（如 `append`、`clear`），不要重新赋值。
+
+> **补充：模块本身是一个对象，属性存放在它的命名空间里**
+>
+> - **模块是对象**：`import common` 执行后，Python 会创建一个类型为 `module` 的**模块对象**，并让当前模块里的名字 `common` 指向它；模块文件里定义的变量、函数、类，都是这个模块对象的**属性**。
+> - **属性存放在命名空间里**：每个模块对象都有自己的**命名空间**，本质是一个字典，可通过 `模块名.__dict__` 查看（类和对象的 `__dict__` 见 10.11.6），键是名字（`str`），值是名字指向的对象。模块里写 `HANDLE_FLAG = False`，就是在这个字典里添加了键 `'HANDLE_FLAG'`。
+> - **模块只会被导入一次**：导入后的模块对象缓存在 `sys.modules` 中（见 12.1.3），所以不同模块里的 `import common` 拿到的是**同一个模块对象**，改了它的属性，所有模块都能看到。
+> - **`from common import X` 做了什么**：先拿到 `common` 模块对象，再把 `X` 在其命名空间里指向的对象，绑定到**当前模块自己的命名空间**里。此后当前模块的 `X` 和 `common` 里的 `X` 是两个独立的名字，只是恰好指向同一个对象。
+> - **函数里的 `global X`**：表示函数里对 `X` 的赋值作用于**函数所在模块**的全局命名空间，也就是当前模块自己命名空间里的名字，不会影响 `common` 里的 `X`，这就是示例中“错误写法”无效的原因。
+>
+> ```python
+> import sys                                  # sys 模块：sys.modules 是已导入模块的缓存字典
+> import common                               # 导入 common 模块，名字 common 指向模块对象
+>
+> print(type(common))                         # <class 'module'>：模块本身是一个对象
+> print(type(common.__dict__))                # <class 'dict'>：模块的命名空间就是一个字典
+> print(common.__dict__['HANDLE_FLAG'])       # False：属性就存放在这个字典里，等价于 common.HANDLE_FLAG
+> print(sys.modules['common'] is common)      # True：缓存中的模块对象就是 common 指向的那个对象
+>
+> import common as c2                         # 再次导入：不会重新执行模块，而是从缓存里取同一个模块对象
+> print(c2 is common)                         # True：两个名字指向同一个模块对象
+>
+> common.HANDLE_FLAG = True                   # 通过模块对象修改属性，即修改了模块命名空间字典里的值
+> print(c2.HANDLE_FLAG)                       # True：通过另一个名字访问，看到的是同一个模块对象的最新值
+> ```
 
 > `common.py` 模块：存放多个模块共享的变量
 
