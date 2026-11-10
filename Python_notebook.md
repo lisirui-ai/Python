@@ -1880,79 +1880,7 @@ print(c.area())   # 78.5
 
 
 
-### 10.5 装饰器
-
-```python
-# @ 开头的是装饰器
-# @property：将方法变为属性访问（getter）
-# @方法名.setter：定义 setter
-class Circle:
-    def __init__(self, radius):
-        self._radius = radius
-
-    @property
-    def radius(self):
-        return self._radius
-
-    @radius.setter
-    def radius(self, value):
-        if value > 0:
-            self._radius = value
-
-c = Circle(5)
-print(c.radius)    # 像属性一样访问（不加括号）
-c.radius = 10      # 像属性一样赋值
-
-# @classmethod：类方法（通过类名调用，第一个参数是 cls）
-# 私有类属性的访问通过类方法
-class Dog:
-    _count = 0      # 私有类属性
-
-    @classmethod
-    def get_count(cls):
-        return cls._count
-
-# @staticmethod：静态方法（不依赖实例或类，相当于普通函数）
-class MathUtils:
-    @staticmethod
-    def add(a, b):
-        return a + b
-
-print(MathUtils.add(1, 2))   # 3
-
-```
-
-
-
-### 10.6 单例模式（Singleton）
-
-单例：保证一个类只有一个实例对象，每次 `类名()` 创建的对象内存地址相同。
-
-```python
-# __new__：使用 类名() 创建对象时，Python 解释器首先调用 __new__ 为对象分配空间
-# __new__ 是由 object 基类提供的内置静态方法，返回对象的引用
-# 然后使用 __init__ 方法初始化对象属性
-
-class Singleton:
-    """单例模式：通过重写 __new__ 实现"""
-    _instance = None    # 类属性：保存唯一实例
-
-    def __new__(cls):
-        if cls._instance is None:       # 首次创建：分配空间
-            cls._instance = super().__new__(cls)
-        return cls._instance            # 后续创建：直接返回已有实例
-
-    def __init__(self):
-        pass
-
-a = Singleton()
-b = Singleton()
-print(id(a) == id(b))    # True（同一个对象）
-```
-
-
-
-### 10.7 魔法方法
+### 10.5 魔法方法
 
 
 | 方法                       | 触发时机                                                               |
@@ -1973,9 +1901,9 @@ print(id(a) == id(b))    # True（同一个对象）
 
 
 
-### 10.8 多继承与 MRO 顺序
+### 10.6 多继承与 MRO 顺序
 
-#### 10.8.1 单独调用父类的方法（`类名.__init__`）
+#### 10.6.1 单独调用父类的方法（`类名.__init__`）
 
 ```python
 # coding=utf-8
@@ -2048,7 +1976,7 @@ Grandson 的init 结束被调用
 ******多继承使用类名.__init__ 发生的状态******
 ```
 
-#### 10.8.2 多继承中 `super()` 调用所有父类被重写的方法
+#### 10.6.2 多继承中 `super()` 调用所有父类被重写的方法
 
 ```python
 print('******多继承使用super().__init__ 发生的状态******')
@@ -2119,11 +2047,11 @@ Grandson 的init 结束被调用
 > **注意**：
 >
 > 1. 以上 2 个代码执行的结果不同
-> 2. 如果 2 个子类中都继承了父类，当在子类中通过**父类名**调用时，`Parent` 被执行了 2 次，这种方式弊大于利（10.8.1 中的实例）
+> 2. 如果 2 个子类中都继承了父类，当在子类中通过**父类名**调用时，`Parent` 被执行了 2 次，这种方式弊大于利（10.6.1 中的实例）
 > 3. 如果 2 个子类中都继承了父类，当在子类中通过 `super` 调用时，`Parent` 被执行了 1 次
 > 4. Python 里我们只讲**重写**，不讲**重载**（C++ 里讲重载：相同方法名字根据形参类型不同，调用不同函数）；Python 里不能出现相同的函数名，子类中覆盖父类中相同函数
 
-#### 10.8.3 单继承中的 `super()`
+#### 10.6.3 单继承中的 `super()`
 
 ```python
 print('******单继承使用super().__init__ 发生的状态******')
@@ -2166,7 +2094,7 @@ print('******单继承使用super().__init__ 发生的状态******\n\n')
 > 4. 单继承时，使用 `super` 方法，则**不能全部传递**，只能传父类方法所需的参数，否则会报错
 > 5. 多继承时，相对于使用类名 `.__init__` 方法，要把每个父类全部写一遍，而使用 `super` 方法，只需写一句话便执行了全部父类的方法，这也是为何多继承需要全部传参的一个原因
 
-#### 10.8.4 面试题：类属性的继承与修改
+#### 10.6.4 面试题：类属性的继承与修改
 
 ```python
 class Parent(object):
@@ -2211,9 +2139,9 @@ print(c1.x, c2.x, p.x)                      # 2 1 3
 
 
 
-### 10.9 类属性、实例属性与三种方法
+### 10.7 类属性、实例属性与三种方法
 
-#### 10.9.1 类属性与实例属性
+#### 10.7.1 类属性与实例属性
 
 > 它们在定义和使用中有所区别，而最本质的区别是**内存中保存的位置不同**：
 >
@@ -2260,7 +2188,7 @@ print(Province.country)                     # 中国
 >
 > **应用场景**：通过类创建实例对象时，如果每个对象需要具有相同名字的属性，那么就使用类属性，用一份即可。
 
-#### 10.9.2 实例方法、静态方法和类方法
+#### 10.7.2 实例方法、静态方法和类方法
 
 > 方法包括：实例方法、静态方法和类方法，三种方法在内存中都归属于类，区别在于**调用方式不同**。
 >
@@ -2308,9 +2236,9 @@ Foo.static_func()                            # 调用静态方法（类调用）
 
 
 
-### 10.10 property 属性
+### 10.8 property 属性
 
-#### 10.10.1 什么是 property 属性
+#### 10.8.1 什么是 property 属性
 
 > property 属性是**一种用起来像是使用实例属性一样的特殊属性，可以对应于某个方法**。
 
@@ -2370,7 +2298,7 @@ print(p.end)                                # 就是结束值，即：n（10）
 
 > Python 的 property 属性的功能是：property 属性内部进行一系列的逻辑计算，最终将计算结果返回。
 
-#### 10.10.2 property 属性的两种定义方式
+#### 10.8.2 property 属性的两种定义方式
 
 > - **装饰器**：在方法上应用装饰器
 > - **类属性**：在类中定义值为 `property` 对象的类属性
@@ -2536,7 +2464,7 @@ obj.PRICE = 200                             # 修改商品原价
 del obj.PRICE                               # 删除商品原价
 ```
 
-#### 10.10.3 Django 框架中的 property 属性（了解）
+#### 10.8.3 Django 框架中的 property 属性（了解）
 
 > Web 框架 Django 的视图中 `request.POST` 就是使用**类属性方式**创建的属性（下面为简化后的核心部分）：
 
@@ -2584,7 +2512,7 @@ class WSGIRequest(http.HttpRequest):
 > - 定义 property 属性共有两种方式，分别是**装饰器**和**类属性**
 > - 通过使用 property 属性，能够**简化调用者在获取数据的流程**
 
-#### 10.10.4 property 属性的应用：为私有属性添加 getter 和 setter
+#### 10.8.4 property 属性的应用：为私有属性添加 getter 和 setter
 
 ```python
 # 1. 私有属性添加 getter 和 setter 方法
@@ -2653,11 +2581,11 @@ print(a.money)                              # 触发 getter：100
 
 
 
-### 10.11 魔法属性
+### 10.9 魔法属性
 
-> Python 的类属性中存在着一些具有特殊含义的属性（魔法属性），详情如下（`__init__`、`__del__`、`__call__`、`__str__`、`__getitem__` 等魔法方法的触发时机见 10.7 表格）：
+> Python 的类属性中存在着一些具有特殊含义的属性（魔法属性），详情如下（`__init__`、`__del__`、`__call__`、`__str__`、`__getitem__` 等魔法方法的触发时机见 10.5 表格）：
 
-#### 10.11.1 `__doc__`：类的描述信息
+#### 10.9.1 `__doc__`：类的描述信息
 
 ```python
 class Foo:
@@ -2670,7 +2598,7 @@ class Foo:
 print(Foo.__doc__)                          # 输出：描述类信息，这是用于看片的神奇
 ```
 
-#### 10.11.2 `__module__` 和 `__class__`
+#### 10.9.2 `__module__` 和 `__class__`
 
 > - `__module__`：表示当前操作的对象在哪个模块
 > - `__class__`：表示当前操作的对象的类是什么
@@ -2692,7 +2620,7 @@ print(obj.__module__)                       # 输出 test，即：输出模块
 print(obj.__class__)                        # 输出 <class 'test.Person'>，即：输出类
 ```
 
-#### 10.11.3 `__init__`：初始化方法
+#### 10.9.3 `__init__`：初始化方法
 
 > 通过类创建对象时，**自动触发执行**。
 
@@ -2706,7 +2634,7 @@ class Person:
 obj = Person('laowang')                     # 自动执行类中的 __init__ 方法
 ```
 
-#### 10.11.4 `__del__`：析构方法
+#### 10.9.4 `__del__`：析构方法
 
 > 当对象在内存中被释放时，**自动触发执行**。
 
@@ -2718,7 +2646,7 @@ class Foo:
         pass
 ```
 
-#### 10.11.5 `__call__`：对象后面加括号触发执行
+#### 10.9.5 `__call__`：对象后面加括号触发执行
 
 > `__init__` 方法的执行是由**创建对象**触发的，即：`对象 = 类名()`；而 `__call__` 方法的执行是由**对象后加括号**触发的，即：`对象()` 或者 `类()()`。
 
@@ -2735,7 +2663,7 @@ obj = Foo()                                 # 执行 __init__
 obj()                                       # 执行 __call__
 ```
 
-#### 10.11.6 `__dict__`：类或对象中的所有属性
+#### 10.9.6 `__dict__`：类或对象中的所有属性
 
 > 实例属性属于对象；类属性和方法等属于类，即：
 
@@ -2764,7 +2692,7 @@ obj2 = Province('山西', 20000)
 print(obj2.__dict__)                        # 获取对象 obj2 的属性：{'name': '山西', 'count': 20000}
 ```
 
-#### 10.11.7 `__str__`：打印对象时的输出
+#### 10.9.7 `__str__`：打印对象时的输出
 
 > 如果一个类中定义了 `__str__` 方法，那么在打印对象时，默认输出该方法的返回值。
 
@@ -2778,7 +2706,7 @@ obj = Foo()
 print(obj)                                  # 输出：laowang
 ```
 
-#### 10.11.8 `__getitem__`、`__setitem__`、`__delitem__`（了解即可）
+#### 10.9.8 `__getitem__`、`__setitem__`、`__delitem__`（了解即可）
 
 > 用于**索引操作**，如字典。以上分别表示获取、设置、删除数据。
 
@@ -2803,9 +2731,9 @@ del obj['k1']                               # 自动触发执行 __delitem__
 
 
 
-### 10.12 面向对象设计
+### 10.10 面向对象设计
 
-#### 10.12.1 封装、继承、多态
+#### 10.10.1 封装、继承、多态
 
 > 封装、继承、多态是面向对象的 **3 大特性**。
 
@@ -2966,7 +2894,7 @@ Linux 安装的软件列表为[]
 Linux 安装的软件列表为['PyCharm', 'Chrome']
 ```
 
-#### 10.12.2 工厂模式
+#### 10.10.2 工厂模式
 
 > **工厂模式**：把“创建哪个类的对象”的判断封装到一个工厂类中，调用者只需传入参数，不必关心具体类。新建 `factory.py` 文件，先定义基类及子类：
 
@@ -3015,7 +2943,75 @@ animal.voice()                              # 猫叫喵喵
 
 > 运行程序，发现通过传入参数的不同，工厂对象分别创建出 `dog` 和 `cat` 对象，并执行了对应的方法，工厂模式创建对象测试成功。
 
-#### 10.12.3 参考实例：腾讯即时通信模块的初级封装
+#### 10.10.3 装饰器模式
+
+```python
+# @ 开头的是装饰器
+# @property：将方法变为属性访问（getter）
+# @方法名.setter：定义 setter
+class Circle:
+    def __init__(self, radius):
+        self._radius = radius
+
+    @property
+    def radius(self):
+        return self._radius
+
+    @radius.setter
+    def radius(self, value):
+        if value > 0:
+            self._radius = value
+
+c = Circle(5)
+print(c.radius)    # 像属性一样访问（不加括号）
+c.radius = 10      # 像属性一样赋值
+
+# @classmethod：类方法（通过类名调用，第一个参数是 cls）
+# 私有类属性的访问通过类方法
+class Dog:
+    _count = 0      # 私有类属性
+
+    @classmethod
+    def get_count(cls):
+        return cls._count
+
+# @staticmethod：静态方法（不依赖实例或类，相当于普通函数）
+class MathUtils:
+    @staticmethod
+    def add(a, b):
+        return a + b
+
+print(MathUtils.add(1, 2))   # 3
+
+```
+
+#### 10.10.4 单例模式（Singleton）
+
+单例：保证一个类只有一个实例对象，每次 `类名()` 创建的对象内存地址相同。
+
+```python
+# __new__：使用 类名() 创建对象时，Python 解释器首先调用 __new__ 为对象分配空间
+# __new__ 是由 object 基类提供的内置静态方法，返回对象的引用
+# 然后使用 __init__ 方法初始化对象属性
+
+class Singleton:
+    """单例模式：通过重写 __new__ 实现"""
+    _instance = None    # 类属性：保存唯一实例
+
+    def __new__(cls):
+        if cls._instance is None:       # 首次创建：分配空间
+            cls._instance = super().__new__(cls)
+        return cls._instance            # 后续创建：直接返回已有实例
+
+    def __init__(self):
+        pass
+
+a = Singleton()
+b = Singleton()
+print(id(a) == id(b))    # True（同一个对象）
+```
+
+#### 10.10.5 参考实例：腾讯即时通信模块的初级封装
 
 > 下面的实例展示了如何用**继承 + `@property` + 方法封装**来设计一组协议消息类：`Message` 表示一条消息请求，`MsgDict` 是各种消息体的基类，其子类 `TextMsg`、`LocationMsg` 等分别对应不同的消息类型。
 
@@ -3217,7 +3213,7 @@ class ImageInfo(object):
 > - `FileMsg.set_uuid` 中 `self.msgcontent['UUID'] = UUID`，应为 `= uuid`
 > - 默认参数使用了可变对象（如 `msgarr=[]`、`msgcontent={}`、`imginfo=[]`），多个实例会**共享同一个默认对象**，更稳妥的写法是默认 `None` 后在函数体内新建
 
-#### 10.12.4 参考实例：微信开发包（wechat_sdk）中的类设计
+#### 10.10.6 参考实例：微信开发包（wechat_sdk）中的类设计
 
 > 微信开发包（Python 实现）可用于学习类的设计，项目地址：
 >
@@ -3756,7 +3752,7 @@ reload_test.test()                          # ---2---
 > **补充：模块本身是一个对象，属性存放在它的命名空间里**
 >
 > - **模块是对象**：`import common` 执行后，Python 会创建一个类型为 `module` 的**模块对象**，并让当前模块里的名字 `common` 指向它；模块文件里定义的变量、函数、类，都是这个模块对象的**属性**。
-> - **属性存放在命名空间里**：每个模块对象都有自己的**命名空间**，本质是一个字典，可通过 `模块名.__dict__` 查看（类和对象的 `__dict__` 见 10.11.6），键是名字（`str`），值是名字指向的对象。模块里写 `HANDLE_FLAG = False`，就是在这个字典里添加了键 `'HANDLE_FLAG'`。
+> - **属性存放在命名空间里**：每个模块对象都有自己的**命名空间**，本质是一个字典，可通过 `模块名.__dict__` 查看（类和对象的 `__dict__` 见 10.9.6），键是名字（`str`），值是名字指向的对象。模块里写 `HANDLE_FLAG = False`，就是在这个字典里添加了键 `'HANDLE_FLAG'`。
 > - **模块只会被导入一次**：导入后的模块对象缓存在 `sys.modules` 中（见 12.1.3），所以不同模块里的 `import common` 拿到的是**同一个模块对象**，改了它的属性，所有模块都能看到。
 > - **`from common import X` 做了什么**：先拿到 `common` 模块对象，再把 `X` 在其命名空间里指向的对象，绑定到**当前模块自己的命名空间**里。此后当前模块的 `X` 和 `common` 里的 `X` 是两个独立的名字，只是恰好指向同一个对象。
 > - **函数里的 `global X`**：表示函数里对 `X` 的赋值作用于**函数所在模块**的全局命名空间，也就是当前模块自己命名空间里的名字，不会影响 `common` 里的 `X`，这就是示例中“错误写法”无效的原因。
