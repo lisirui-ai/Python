@@ -3720,21 +3720,36 @@ def test():
 import reload_test                          # 第一次导入
 reload_test.test()                          # ---1---
 
-# 此时在另一个终端中把 reload_test.py 修改为：print('---2---')
+# 此时保持当前交互式会话不关闭，用编辑器把磁盘上的 reload_test.py 中 test() 的内容修改为：print('---2---')
 import reload_test                          # 再次 import：模块只会导入一次，修改不会生效
 reload_test.test()                          # 仍然是 ---1---
 
 # 如果用 reload 则可以重新导入
-from imp import reload                      # Python 3.4 以前写法；Python 3.12 起 imp 模块已被移除
-reload(reload_test)                         # <module 'reload_test' from '/Users/dongge/Desktop/reload_test.py'>
+from importlib import reload                # Python 3.4+ 推荐写法：从 importlib 模块导入 reload 函数
+reload(reload_test)                         # reload(module)：参数为已导入的模块对象，返回重新加载后的模块对象：<module 'reload_test' from '/Users/dongge/Desktop/reload_test.py'>
 reload_test.test()                          # ---2---
 ```
 
-> **版本说明**：Python 3.4+ 推荐使用 `from importlib import reload`（`reload(module)`；参数为已导入的**模块对象**，返回重新加载后的模块对象），`imp` 模块在 Python 3.12 中已被移除。
+> **版本说明**：Python 3.4+ 推荐使用 `from importlib import reload`（`reload(module)`；参数为已导入的**模块对象**，返回重新加载后的模块对象）。旧写法 `from imp import reload` 自 Python 3.4 起已被弃用，在 Python 3.12 中已被移除，新代码不要再使用。
 
 #### 12.1.4 多模块开发时的注意点
 
 > 下面用三个模块共同配合，演示 `from 模块 import 变量` 与 `import 模块` 在**修改共享变量**时的区别。
+
+> **背后的原理**：这是 [5.3 一切皆引用](#53-一切皆引用) 在多模块场景下的具体应用，下面各模块代码中的现象都可以用它解释：
+>
+> ---
+
+| 12.1.4 中的现象 | 对应 5.3 的知识点 |
+|---|---|
+| `from common import HANDLE_FLAG` 只拿到导入瞬间的值，之后 `common` 里改了也感知不到 | **变量名是指针**：`from ... import` 相当于 `HANDLE_FLAG = common.HANDLE_FLAG`，本模块多了一个名字，指向当时的 `False` 对象 |
+| `HANDLE_FLAG = True` 只改了本模块的名字，`common` 里依然是 `False` | **不可变类型**（`bool`）：修改会让变量名指向一个**新对象**，其他指向原对象的名字不受影响，与 5.3 中 `a += 1` 后 `b` 仍指向原对象同理 |
+| `from common import RECV_DATA_LIST` 后，`append` 在两个模块里都能看到 | **可变类型**：原地修改不改变指向，所有指向该对象的名字都能看到变化，与 5.3 中 `t2.append(4)` 后 `t1` 也变化同理 |
+| `import common` 后用 `common.HANDLE_FLAG = True`，所有模块都能看到 | 修改的是 `common` 模块对象的属性，各模块都通过同一个模块对象访问，取到的始终是最新的值 |
+
+> ---
+>
+> **一句话概括**：`from 模块 import 变量` 是在自己模块里新建了一个名字，指向当时的对象，之后与原模块的名字互不影响；`import 模块` 是通过模块对象访问属性，每次都读取最新值。
 
 > `common.py` 模块：存放多个模块共享的变量
 
