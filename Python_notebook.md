@@ -3682,15 +3682,15 @@ print(sys.path)
 import sys
 
 # append(path)：把新路径追加到列表末尾（优先级最低，其他目录找不到时才搜索它）
-sys.path.append('/home/wangdao/xxx')
+sys.path.append('/home/lisirui/xxx')
 # insert(0, path)：把新路径插入列表开头（优先级最高），可以确保先搜索这个路径
-sys.path.insert(0, '/home/wangdao/xxx')     # 可以确保先搜索这个路径
+sys.path.insert(0, '/home/lisirui/xxx')     # 可以确保先搜索这个路径
 
 # 在 IPython 中的实际效果
-# In [37]: sys.path.insert(0, '/home/python/xxxx')
+# In [37]: sys.path.insert(0, '/home/lisirui/xxx')
 # In [38]: sys.path
 # Out[38]:
-# ['/home/python/xxxx',                     ← 新插入的路径排在最前面
+# ['/home/lisirui/xxx',                     ← 新插入的路径排在最前面
 #  '',
 #  '/usr/bin',
 #  '/usr/lib/python35.zip',
