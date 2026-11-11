@@ -1947,6 +1947,8 @@ print(c.area())
 
 ### 10.5 魔法方法
 
+#### 10.5.1 魔法方法一览
+
 
 | 方法                       | 触发时机                                                               |
 | ------------------------ | ------------------------------------------------------------------ |
@@ -1963,6 +1965,86 @@ print(c.area())
 
 
 > `str` **方法不具备嵌套结构**；对象方法内可以直接访问其他对象的数据成员
+
+#### 10.5.2 `__init__`：初始化方法
+
+> 通过类创建对象时，**自动触发执行**。
+
+```python
+class Person:  # 定义人类
+    def __init__(self, name):  # 构造方法：参数 name（str）为姓名，返回 None
+        self.name = name  # 保存姓名到对象属性
+        self.age = 18  # 年龄固定初始化为 18
+
+
+obj = Person('laowang')                     # 自动执行类中的 __init__ 方法
+```
+
+#### 10.5.3 `__del__`：析构方法
+
+> 当对象在内存中被释放时，**自动触发执行**。
+
+> 此方法一般无须定义，因为 Python 是一门高级语言，程序员在使用时无需关心内存的分配和释放，因为此工作都是交给 Python 解释器来执行，所以 `__del__` 的调用是由解释器在进行垃圾回收时自动触发执行的。
+
+```python
+class Foo:  # 定义类 Foo
+    def __del__(self):  # 析构方法：对象被回收时由解释器自动调用
+        pass  # 占位，什么也不做
+```
+
+#### 10.5.4 `__call__`：对象后面加括号触发执行
+
+> `__init__` 方法的执行是由**创建对象**触发的，即：`对象 = 类名()`；而 `__call__` 方法的执行是由**对象后加括号**触发的，即：`对象()` 或者 `类()()`。
+
+```python
+class Foo:  # 定义类 Foo
+    def __init__(self):  # 构造方法：无额外参数，返回 None
+        pass  # 占位，什么也不做
+
+    def __call__(self, *args, **kwargs):  # 使对象可调用：args 为位置参数元组，kwargs 为关键字参数字典
+        print('__call__')  # 输出提示：__call__ 被触发
+
+
+obj = Foo()                                 # 执行 __init__
+obj()                                       # 执行 __call__
+```
+
+#### 10.5.5 `__str__`：打印对象时的输出
+
+> 如果一个类中定义了 `__str__` 方法，那么在打印对象时，默认输出该方法的返回值。
+
+```python
+class Foo:  # 定义类 Foo
+    def __str__(self):  # 定义 __str__：print(对象) 时调用，必须返回 str
+        return 'laowang'  # 返回字符串，作为属性的值
+
+
+obj = Foo()  # 创建对象，返回 Foo 实例
+print(obj)                                  # 输出：laowang
+```
+
+#### 10.5.6 `__getitem__`、`__setitem__`、`__delitem__`（了解即可）
+
+> 用于**索引操作**，如字典。以上分别表示获取、设置、删除数据。
+
+```python
+# -*- coding:utf-8 -*-
+class Foo(object):  # 定义类 Foo
+    def __getitem__(self, key):  # 下标取值：obj[key] 时触发，key 为下标 / 键
+        print('__getitem__', key)  # 输出提示及键
+
+    def __setitem__(self, key, value):  # 下标赋值：obj[key] = value 时触发
+        print('__setitem__', key, value)  # 输出提示及键值
+
+    def __delitem__(self, key):  # 下标删除：del obj[key] 时触发
+        print('__delitem__', key)  # 输出提示及键
+
+
+obj = Foo()  # 创建对象，返回 Foo 实例
+result = obj['k1']                          # 自动触发执行 __getitem__
+obj['k2'] = 'laowang'                       # 自动触发执行 __setitem__
+del obj['k1']                               # 自动触发执行 __delitem__
+```
 
 
 
@@ -2434,7 +2516,7 @@ del obj.PRICE                               # 自动调用第三个参数 del_pr
 
 ### 10.9 魔法属性
 
-> Python 的类属性中存在着一些具有特殊含义的属性（魔法属性），详情如下（`__init__`、`__del__`、`__call__`、`__str__`、`__getitem__` 等魔法方法的触发时机见 10.5 表格）：
+> Python 的类属性中存在着一些具有特殊含义的属性（魔法属性），详情如下：
 
 #### 10.9.1 `__doc__`：类的描述信息
 
@@ -2471,50 +2553,7 @@ print(obj.__module__)                       # 输出 test，即：输出模块
 print(obj.__class__)                        # 输出 <class 'test.Person'>，即：输出类
 ```
 
-#### 10.9.3 `__init__`：初始化方法
-
-> 通过类创建对象时，**自动触发执行**。
-
-```python
-class Person:  # 定义人类
-    def __init__(self, name):  # 构造方法：参数 name（str）为姓名，返回 None
-        self.name = name  # 保存姓名到对象属性
-        self.age = 18  # 年龄固定初始化为 18
-
-
-obj = Person('laowang')                     # 自动执行类中的 __init__ 方法
-```
-
-#### 10.9.4 `__del__`：析构方法
-
-> 当对象在内存中被释放时，**自动触发执行**。
-
-> 此方法一般无须定义，因为 Python 是一门高级语言，程序员在使用时无需关心内存的分配和释放，因为此工作都是交给 Python 解释器来执行，所以 `__del__` 的调用是由解释器在进行垃圾回收时自动触发执行的。
-
-```python
-class Foo:  # 定义类 Foo
-    def __del__(self):  # 析构方法：对象被回收时由解释器自动调用
-        pass  # 占位，什么也不做
-```
-
-#### 10.9.5 `__call__`：对象后面加括号触发执行
-
-> `__init__` 方法的执行是由**创建对象**触发的，即：`对象 = 类名()`；而 `__call__` 方法的执行是由**对象后加括号**触发的，即：`对象()` 或者 `类()()`。
-
-```python
-class Foo:  # 定义类 Foo
-    def __init__(self):  # 构造方法：无额外参数，返回 None
-        pass  # 占位，什么也不做
-
-    def __call__(self, *args, **kwargs):  # 使对象可调用：args 为位置参数元组，kwargs 为关键字参数字典
-        print('__call__')  # 输出提示：__call__ 被触发
-
-
-obj = Foo()                                 # 执行 __init__
-obj()                                       # 执行 __call__
-```
-
-#### 10.9.6 `__dict__`：类或对象中的所有属性
+#### 10.9.3 `__dict__`：类或对象中的所有属性
 
 > 实例属性属于对象；类属性和方法等属于类，即：
 
@@ -2541,43 +2580,6 @@ print(obj1.__dict__)                        # 获取对象 obj1 的属性：{'na
 
 obj2 = Province('山西', 20000)  # 创建第二个对象
 print(obj2.__dict__)                        # 获取对象 obj2 的属性：{'name': '山西', 'count': 20000}
-```
-
-#### 10.9.7 `__str__`：打印对象时的输出
-
-> 如果一个类中定义了 `__str__` 方法，那么在打印对象时，默认输出该方法的返回值。
-
-```python
-class Foo:  # 定义类 Foo
-    def __str__(self):  # 定义 __str__：print(对象) 时调用，必须返回 str
-        return 'laowang'  # 返回字符串，作为属性的值
-
-
-obj = Foo()  # 创建对象，返回 Foo 实例
-print(obj)                                  # 输出：laowang
-```
-
-#### 10.9.8 `__getitem__`、`__setitem__`、`__delitem__`（了解即可）
-
-> 用于**索引操作**，如字典。以上分别表示获取、设置、删除数据。
-
-```python
-# -*- coding:utf-8 -*-
-class Foo(object):  # 定义类 Foo
-    def __getitem__(self, key):  # 下标取值：obj[key] 时触发，key 为下标 / 键
-        print('__getitem__', key)  # 输出提示及键
-
-    def __setitem__(self, key, value):  # 下标赋值：obj[key] = value 时触发
-        print('__setitem__', key, value)  # 输出提示及键值
-
-    def __delitem__(self, key):  # 下标删除：del obj[key] 时触发
-        print('__delitem__', key)  # 输出提示及键
-
-
-obj = Foo()  # 创建对象，返回 Foo 实例
-result = obj['k1']                          # 自动触发执行 __getitem__
-obj['k2'] = 'laowang'                       # 自动触发执行 __setitem__
-del obj['k1']                               # 自动触发执行 __delitem__
 ```
 
 
@@ -3461,7 +3463,7 @@ reload_test.test()                          # ---2---
 > **补充：模块本身是一个对象，属性存放在它的命名空间里**
 >
 > - **模块是对象**：`import common` 执行后，Python 会创建一个类型为 `module` 的**模块对象**，并让当前模块里的名字 `common` 指向它；模块文件里定义的变量、函数、类，都是这个模块对象的**属性**。
-> - **属性存放在命名空间里**：每个模块对象都有自己的**命名空间**，本质是一个字典，可通过 `模块名.__dict__` 查看（类和对象的 `__dict__` 见 10.9.6），键是名字（`str`），值是名字指向的对象。模块里写 `HANDLE_FLAG = False`，就是在这个字典里添加了键 `'HANDLE_FLAG'`。
+> - **属性存放在命名空间里**：每个模块对象都有自己的**命名空间**，本质是一个字典，可通过 `模块名.__dict__` 查看（类和对象的 `__dict__` 见 10.9.3），键是名字（`str`），值是名字指向的对象。模块里写 `HANDLE_FLAG = False`，就是在这个字典里添加了键 `'HANDLE_FLAG'`。
 > - **模块只会被导入一次**：导入后的模块对象缓存在 `sys.modules` 中（见 12.1.3），所以不同模块里的 `import common` 拿到的是**同一个模块对象**，改了它的属性，所有模块都能看到。
 > - **`from common import X` 做了什么**：先拿到 `common` 模块对象，再把 `X` 在其命名空间里指向的对象，绑定到**当前模块自己的命名空间**里。此后当前模块的 `X` 和 `common` 里的 `X` 是两个独立的名字，只是恰好指向同一个对象。
 > - **函数里的 `global X`**：表示函数里对 `X` 的赋值作用于**函数所在模块**的全局命名空间，也就是当前模块自己命名空间里的名字，不会影响 `common` 里的 `X`，这就是示例中“错误写法”无效的原因。
