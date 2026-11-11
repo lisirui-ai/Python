@@ -2389,20 +2389,7 @@ del obj.price                               # 自动执行 @price.deleter 修饰
 **类属性方式：创建值为 property 对象的类属性**
 
 > 当使用类属性的方式创建 property 属性时，经典类和新式类无区别。
-
-```python
-class Foo:  # 定义类 Foo
-    def get_bar(self):  # 定义 getter 方法，返回字符串
-        return 'laowang'  # 返回字符串，作为属性的值
-
-    BAR = property(get_bar)                 # 创建 property 对象，赋给类属性 BAR
-
-
-obj = Foo()  # 创建对象，返回 Foo 实例
-result = obj.BAR                            # 自动调用 get_bar 方法，并获取方法的返回值
-print(result)                               # laowang
-```
-
+>
 > `property(fget=None, fset=None, fdel=None, doc=None)` 有四个参数：
 >
 > ---
