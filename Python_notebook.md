@@ -2354,49 +2354,9 @@ foo_obj.prop                                # 调用 property 属性：无需括
 > 在类的实例方法上应用 `@property` 装饰器。
 
 > Python 2 中的**经典类**只有一种 `@property` 装饰器（只读）；**新式类**具有三种。Python 3 中所有类都是新式类，因此下面三种访问方式都可使用。
-
-```python
-# ############### 定义 ###############
-class Goods:  # 定义商品类
-    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
-    def price(self):  # price 属性的 getter
-        return 'laowang'  # 返回字符串 'laowang'，作为属性的值
-
-
-# ############### 调用 ###############
-obj = Goods()  # 创建商品对象，返回 Goods 实例
-result = obj.price                          # 自动执行 @property 修饰的 price 方法，并获取方法的返回值
-print(result)                               # laowang
-```
-
-> 具有三种 `@property` 装饰器：
-
-```python
-# coding=utf-8
-# ############### 定义 ###############
-class Goods:  # 定义商品类
-    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
-    def price(self):  # price 的 getter / deleter（同名方法，由装饰器区分）
-        print('@property')  # 输出提示：获取属性时执行了这里
-
-    @price.setter  # 装饰器：声明下面的方法在 对象.price = 值 时执行
-    def price(self, value):  # setter 方法：除 self 外必须有一个 value 参数，接收被赋的值
-        print('@price.setter')  # 输出提示：给属性赋值时执行了这里
-
-    @price.deleter  # 装饰器：声明下面的方法在 del 对象.price 时执行
-    def price(self):  # price 的 getter / deleter（同名方法，由装饰器区分）
-        print('@price.deleter')  # 输出提示：删除属性时执行了这里
-
-
-# ############### 调用 ###############
-obj = Goods()  # 创建商品对象，返回 Goods 实例
-obj.price                                   # 自动执行 @property 修饰的 price 方法，并获取方法的返回值
-obj.price = 123                             # 自动执行 @price.setter 修饰的 price 方法，并将 123 赋值给方法的参数
-del obj.price                               # 自动执行 @price.deleter 修饰的 price 方法
-```
-
-> 属性有三种访问方式，并分别对应了三个被 `@property`、`@方法名.setter`、`@方法名.deleter` 修饰的方法。
-
+>
+> 具有三种 `@property` 装饰器：属性有三种访问方式，并分别对应了三个被 `@property`、`@方法名.setter`、`@方法名.deleter` 修饰的方法。
+>
 > 由于具有三种访问方式，可以根据它们的访问特点，分别将三个方法定义为对同一个属性：**获取、修改、删除**：
 
 ```python
@@ -2405,25 +2365,25 @@ class Goods(object):  # 定义商品类
         self.original_price = 100           # 原价
         self.discount = 0.8                 # 折扣
 
-    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
+    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号（getter）
     def price(self):  # 定义 price 方法（名字相同是为了让三个装饰器绑定到同一个属性）
         new_price = self.original_price * self.discount   # 实际价格 = 原价 * 折扣
         return new_price  # 返回实际价格（float）
 
-    @price.setter  # 装饰器：声明下面的方法在 对象.price = 值 时执行
+    @price.setter  # 装饰器：声明下面的方法在 对象.price = 值 时执行（setter）
     def price(self, value):  # setter 方法：除 self 外必须有一个 value 参数，接收被赋的值
         self.original_price = value         # 修改商品原价
 
-    @price.deleter  # 装饰器：声明下面的方法在 del 对象.price 时执行
+    @price.deleter  # 装饰器：声明下面的方法在 del 对象.price 时执行（deleter）
     def price(self):  # 定义 price 方法（名字相同是为了让三个装饰器绑定到同一个属性）
         del self.original_price             # 删除商品原价
 
 
 obj = Goods()  # 创建商品对象，返回 Goods 实例
-print(obj.price)                            # 获取商品价格：80.0
-obj.price = 200                             # 修改商品原价
-print(obj.price)                            # 160.0
-del obj.price                               # 删除商品原价，保证后面有人使用会报错
+print(obj.price)                            # 自动执行 @property 修饰的 price 方法，并获取返回值：80.0
+obj.price = 200                             # 自动执行 @price.setter 修饰的 price 方法，并将 200 赋值给 value 参数
+print(obj.price)                            # 原价已改为 200，因此输出：160.0
+del obj.price                               # 自动执行 @price.deleter 修饰的 price 方法，删除商品原价；之后再访问 obj.price 会报错
 ```
 
 **类属性方式：创建值为 property 对象的类属性**
