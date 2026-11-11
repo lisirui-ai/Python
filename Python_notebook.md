@@ -2315,7 +2315,7 @@ Foo.static_func()                            # 调用静态方法（类调用）
 
 ### 10.8 property 属性
 
-#### 10.8.1 什么是 property 属性
+#### 10.8.1 property 属性概述
 
 > property 属性是**一种用起来像是使用实例属性一样的特殊属性，可以对应于某个方法**。
 
@@ -2342,38 +2342,7 @@ foo_obj.prop                                # 调用 property 属性：无需括
 > - **定义时**，在实例方法的基础上添加 `@property` 装饰器；并且仅有一个 `self` 参数
 > - **调用时**，无需括号：方法 `foo_obj.func()`；property 属性 `foo_obj.prop`
 
-> **简单实例**：商城列表页不可能把数据库中的所有内容都显示到页面上，而是通过**分页**局部显示，所以向数据库请求数据时要指定获取从第 m 条到第 n 条的所有数据。分页功能包括：
->
-> - 根据用户请求的当前页和总数据条数计算出 m 和 n
-> - 根据 m 和 n 去数据库中请求数据
-
-```python
-# ############### 定义 ###############
-class Pager:  # 定义分页类
-    def __init__(self, current_page):  # 构造方法：参数 current_page（int）为当前页码
-        # 用户当前请求的页码（第一页、第二页...）
-        self.current_page = current_page  # 保存当前页码
-        # 每页默认显示 10 条数据
-        self.per_items = 10  # 每页显示的数据条数（固定为 10）
-
-    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
-    def start(self):  # property：计算起始值 m，返回 int
-        val = (self.current_page - 1) * self.per_items   # 起始值 m
-        return val  # 返回计算结果（int）
-
-    @property  # 装饰器：把下面的方法变成 property 属性，访问时无需括号
-    def end(self):  # property：计算结束值 n，返回 int
-        val = self.current_page * self.per_items         # 结束值 n
-        return val  # 返回计算结果（int）
-
-
-# ############### 调用 ###############
-p = Pager(1)  # 创建分页对象，当前为第 1 页
-print(p.start)                              # 就是起始值，即：m（0）
-print(p.end)                                # 就是结束值，即：n（10）
-```
-
-> Python 的 property 属性的功能是：property 属性内部进行一系列的逻辑计算，最终将计算结果返回。
+> **计算属性**：`property` 属性的方法体内可以进行一系列逻辑计算，并将计算结果返回，调用时像访问普通属性一样直接取值，因此常被称为**计算属性**。属性值不是预先存储的，而是在每次访问时根据其他数据实时计算得出。
 
 #### 10.8.2 property 属性的两种定义方式
 
