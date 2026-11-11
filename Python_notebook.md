@@ -2346,13 +2346,13 @@ foo_obj.prop                                # 调用 property 属性：无需括
 
 #### 10.8.2 property 属性的两种定义方式
 
-> - **装饰器**：在方法上应用装饰器
-> - **类属性**：在类中定义值为 `property` 对象的类属性
+> **装饰器**：在方法上应用装饰器
+> **类属性**：在类中定义值为 `property` 对象的类属性
 
 **装饰器方式**
 
 > 在类的实例方法上应用 `@property` 装饰器。
-
+>
 > Python 2 中的**经典类**只有一种 `@property` 装饰器（只读）；**新式类**具有三种。Python 3 中所有类都是新式类，因此下面三种访问方式都可使用。
 >
 > 具有三种 `@property` 装饰器：属性有三种访问方式，并分别对应了三个被 `@property`、`@方法名.setter`、`@方法名.deleter` 修饰的方法。
@@ -2415,39 +2415,12 @@ print(result)                               # laowang
 | 第四个（`doc`） | 字符串 | `类.属性.__doc__` 时获取，是该属性的描述信息 |
 
 > ---
-
-```python
-# coding=utf-8
-class Foo(object):  # 定义类 Foo
-    def get_bar(self):  # 定义 getter 方法，返回字符串
-        print('getter...')  # 输出提示：getter 被调用
-        return 'laowang'  # 返回字符串，作为属性的值
-
-    def set_bar(self, value):  # 定义 setter 方法，参数为 self 与 value
-        """必须两个参数（self 与 value）"""
-        print('setter...')  # 输出提示：setter 被调用
-        return 'set value' + value  # setter 的返回值不会被使用，仅作演示
-
-    def del_bar(self):  # 定义 deleter 方法，只有 self 参数
-        print('deleter...')  # 输出提示：deleter 被调用
-        return 'laowang'  # 返回字符串，作为属性的值
-
-    BAR = property(get_bar, set_bar, del_bar, 'description...')  # 创建 property 对象（fget, fset, fdel, doc）并赋给类属性 BAR
-
-
-obj = Foo()  # 创建对象，返回 Foo 实例
-obj.BAR                                     # 自动调用第一个参数中定义的方法：get_bar
-obj.BAR = 'alex'                            # 自动调用第二个参数中定义的方法：set_bar，并将 'alex' 当作参数传入
-desc = Foo.BAR.__doc__                      # 自动获取第四个参数中设置的值：description...
-print(desc)  # 输出属性描述：description...
-del obj.BAR                                 # 自动调用第三个参数中定义的方法：del_bar
-```
-
-> 同样可以用类属性方式将三个方法定义为对同一个属性的**获取、修改、删除**：
+>
+> 可以用类属性方式将三个方法定义为对同一个属性的**获取、修改、删除**，`property()` 的四个参数含义如上表：
 
 ```python
 class Goods(object):  # 定义商品类
-    def __init__(self):  # 构造方法：无额外参数，返回 None
+    def __init__(self):  # 构造方法：初始化原价和折扣
         self.original_price = 100           # 原价
         self.discount = 0.8                 # 折扣
 
@@ -2455,19 +2428,21 @@ class Goods(object):  # 定义商品类
         new_price = self.original_price * self.discount   # 实际价格 = 原价 * 折扣
         return new_price  # 返回实际价格（float）
 
-    def set_price(self, value):  # 定义 setter 方法，参数 value 为新的原价
+    def set_price(self, value):  # 定义 setter 方法：除 self 外必须有一个 value 参数，接收被赋的值
         self.original_price = value  # 修改商品原价
 
-    def del_price(self):  # 定义 deleter 方法，删除原价属性
+    def del_price(self):  # 定义 deleter 方法：只有 self 参数
         del self.original_price  # 删除对象上的原价属性
 
-    PRICE = property(get_price, set_price, del_price, '价格属性描述...')  # 把三个方法绑定到类属性 PRICE，对应获取 / 修改 / 删除
+    PRICE = property(get_price, set_price, del_price, '价格属性描述...')  # 创建 property 对象（fget, fset, fdel, doc）并赋给类属性 PRICE
 
 
 obj = Goods()  # 创建商品对象，返回 Goods 实例
-obj.PRICE                                   # 获取商品价格
-obj.PRICE = 200                             # 修改商品原价
-del obj.PRICE                               # 删除商品原价
+print(obj.PRICE)                            # 自动调用第一个参数 get_price，并获取返回值：80.0
+obj.PRICE = 200                             # 自动调用第二个参数 set_price，并将 200 赋值给 value 参数
+print(obj.PRICE)                            # 原价已改为 200，因此输出：160.0
+print(Goods.PRICE.__doc__)                  # 自动获取第四个参数 doc 设置的值：价格属性描述...
+del obj.PRICE                               # 自动调用第三个参数 del_price，删除商品原价；之后再访问 obj.PRICE 会报错
 ```
 
 #### 10.8.3 Django 框架中的 property 属性（了解）
