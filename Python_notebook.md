@@ -2432,55 +2432,9 @@ print(Goods.PRICE.__doc__)                  # 自动获取第四个参数 doc �
 del obj.PRICE                               # 自动调用第三个参数 del_price，删除商品原价；之后再访问 obj.PRICE 会报错
 ```
 
-#### 10.8.3 Django 框架中的 property 属性（了解）
+#### 10.8.3 property 属性的应用：为私有属性添加 getter 和 setter
 
-> Web 框架 Django 的视图中 `request.POST` 就是使用**类属性方式**创建的属性（下面为简化后的核心部分）：
-
-```python
-class WSGIRequest(http.HttpRequest):  # Django 请求类，继承 HttpRequest
-    def __init__(self, environ):  # 构造方法：参数 environ（dict）为 WSGI 环境字典
-        # ……（省略：解析 script_name、path_info、method、编码、content_length 等）
-        self.environ = environ                              # 保存 WSGI 的 environ 字典
-        self.META = environ                                 # META 是 environ 的别名
-
-    @cached_property  # 装饰器：首次访问计算结果并缓存，之后直接使用缓存
-    def GET(self):  # GET 参数属性，返回 QueryDict
-        # WSGI 规范说 QUERY_STRING 可能不存在
-        raw_query_string = get_bytes_from_wsgi(self.environ, 'QUERY_STRING', '')  # 从 environ 中取出原始查询字符串
-        return http.QueryDict(raw_query_string, encoding=self._encoding)  # 把查询字符串解析为 QueryDict 并返回
-
-    # ############### 看这里看这里 ###############
-    def _get_post(self):  # POST 的 getter 方法
-        if not hasattr(self, '_post'):  # 判断是否已加载过 POST 数据
-            self._load_post_and_files()                     # 第一次访问时才加载 POST 和上传的文件
-        return self._post  # 返回缓存的 POST 数据
-
-    # ############### 看这里看这里 ###############
-    def _set_post(self, post):  # POST 的 setter 方法，参数 post 为新的 POST 数据
-        self._post = post  # 保存新的 POST 数据
-
-    @cached_property  # 装饰器：首次访问计算结果并缓存，之后直接使用缓存
-    def COOKIES(self):  # COOKIES 属性，返回 dict
-        raw_cookie = get_str_from_wsgi(self.environ, 'HTTP_COOKIE', '')  # 从 environ 中取出原始 Cookie 字符串
-        return http.parse_cookie(raw_cookie)  # 把 Cookie 字符串解析为 dict 并返回
-
-    def _get_files(self):  # FILES 的 getter 方法
-        if not hasattr(self, '_files'):  # 判断是否已加载过上传文件
-            self._load_post_and_files()  # 首次访问时加载 POST 和上传文件
-        return self._files  # 返回缓存的上传文件数据
-
-    # ############### 看这里看这里 ###############
-    POST = property(_get_post, _set_post)                   # request.POST 读取 / 赋值
-    FILES = property(_get_files)                            # request.FILES 只读
-    REQUEST = property(_get_request)                        # request.REQUEST（已弃用，_get_request 同上省略）
-```
-
-> **重要总结**：
->
-> - 定义 property 属性共有两种方式，分别是**装饰器**和**类属性**
-> - 通过使用 property 属性，能够**简化调用者在获取数据的流程**
-
-#### 10.8.4 property 属性的应用：为私有属性添加 getter 和 setter
+> **方式一：普通 getter / setter 方法**：私有属性 `__money` 无法在类外直接访问，因此提供 `getMoney()` 和 `setMoney()` 两个方法来读取和设置，并在 `setMoney()` 中做边界判定（只允许整型）。缺点是调用时必须使用方法形式 `a.setMoney(100)`，不如直接属性赋值简洁。
 
 ```python
 # 1. 私有属性添加 getter 和 setter 方法
@@ -2497,6 +2451,8 @@ class Money(object):  # 定义金额类
         else:  # 否则（不满足条件）
             print('error:不是整型数字')  # 输出错误提示
 ```
+
+> **方式二：使用 `property()` 升级**：在方式一的基础上，用类属性方式 `money = property(getMoney, setMoney)` 把 getter 和 setter 绑定到属性 `money`，之后即可像普通属性一样读写 `a.money`，同时保留边界判定。
 
 ```python
 # 2. 使用 property 升级 getter 和 setter 方法
@@ -2521,6 +2477,8 @@ a = Money()  # 创建对象，返回 Money 实例
 a.money = 100                               # 调用 setMoney 方法
 print(a.money)                              # 调用 getMoney 方法：100
 ```
+
+> **方式三：使用 `@property` 装饰器**：用 `@property` 和 `@money.setter` 取代手动调用 `property()`，无需再单独定义 `getMoney`、`setMoney` 两个名称，代码更简洁，是实际开发中最常用的写法。
 
 ```python
 # 3. 使用 @property 取代 getter 和 setter 方法（重新实现一个属性的设置和读取方法，可做边界判定）
