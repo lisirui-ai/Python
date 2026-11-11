@@ -1958,6 +1958,12 @@ print(c.area())
 | `__del__(self)`          | 对象被销毁时调用                                                           |
 | `__call__(self, ...)`    | `obj()` 将对象当函数调用时触发（对象可以和函数一样调用）                                   |
 | `__len__(self)`          | `len(obj)` 时调用                                                     |
+| `__eq__(self, other)`    | `obj1 == obj2` 时调用，返回 `bool`（equal，等于）                                |
+| `__ne__(self, other)`    | `obj1 != obj2` 时调用，返回 `bool`（not equal，不等于）                           |
+| `__lt__(self, other)`    | `obj1 < obj2` 时调用，返回 `bool`（less than，小于）                              |
+| `__le__(self, other)`    | `obj1 <= obj2` 时调用，返回 `bool`（less than or equal，小于等于）                  |
+| `__gt__(self, other)`    | `obj1 > obj2` 时调用，返回 `bool`（greater than，大于）                           |
+| `__ge__(self, other)`    | `obj1 >= obj2` 时调用，返回 `bool`（greater than or equal，大于等于）               |
 | `__getitem__(self, key)` | `obj[key]` 下标访问时调用，得到 `__getitem__` 的返回值                           |
 | `__enter__(self)`        | 进入 `with` 语句块时调用（有返回值需用 `as` 后的变量名接收）                              |
 | `__exit__(self, ...)`    | 退出 `with` 语句块时调用                                                   |
@@ -2044,6 +2050,59 @@ obj = Foo()  # 创建对象，返回 Foo 实例
 result = obj['k1']                          # 自动触发执行 __getitem__
 obj['k2'] = 'laowang'                       # 自动触发执行 __setitem__
 del obj['k1']                               # 自动触发执行 __delitem__
+```
+
+#### 10.5.7 比较运算符：`__eq__`、`__ne__`、`__lt__`、`__le__`、`__gt__`、`__ge__`
+
+> 用于自定义对象之间的**比较运算**。`self` 是运算符左边的对象，`other` 是右边的对象，均返回 `bool`：
+>
+> ---
+
+| 运算符 | 魔法方法 | 含义 |
+| --- | --- | --- |
+| `==` | `__eq__(self, other)` | 等于 |
+| `!=` | `__ne__(self, other)` | 不等于 |
+| `<` | `__lt__(self, other)` | 小于 |
+| `<=` | `__le__(self, other)` | 小于等于 |
+| `>` | `__gt__(self, other)` | 大于 |
+| `>=` | `__ge__(self, other)` | 大于等于 |
+
+> ---
+>
+> - 未定义 `__lt__`、`__gt__` 等方法时，自定义对象之间使用 `<`、`>` 比较会抛出 `TypeError`
+> - 未定义 `__eq__` 时，`==` 默认比较两个对象是否为同一个对象（内存地址是否相同）
+> - 未定义 `__ne__` 时，默认对 `__eq__` 的结果取反，因此通常只需定义 `__eq__`
+
+```python
+class Student:  # 定义学生类
+    def __init__(self, name, score):  # 构造方法：参数 name（str）为姓名，score（int）为成绩
+        self.name = name  # 保存姓名
+        self.score = score  # 保存成绩
+
+    def __eq__(self, other):  # 等于比较：obj1 == obj2 时触发，other 为右侧对象，返回 bool
+        return self.score == other.score  # 以成绩作为比较依据
+
+    def __lt__(self, other):  # 小于比较：obj1 < obj2 时触发，other 为右侧对象，返回 bool
+        return self.score < other.score  # 以成绩作为比较依据
+
+    def __le__(self, other):  # 小于等于比较：obj1 <= obj2 时触发，返回 bool
+        return self.score <= other.score  # 以成绩作为比较依据
+
+    def __gt__(self, other):  # 大于比较：obj1 > obj2 时触发，返回 bool
+        return self.score > other.score  # 以成绩作为比较依据
+
+    def __ge__(self, other):  # 大于等于比较：obj1 >= obj2 时触发，返回 bool
+        return self.score >= other.score  # 以成绩作为比较依据
+
+
+s1 = Student('laowang', 80)  # 创建学生对象 s1，成绩 80
+s2 = Student('xiaoli', 90)  # 创建学生对象 s2，成绩 90
+print(s1 == s2)                             # 自动触发 s1.__eq__(s2)：False
+print(s1 != s2)                             # 未定义 __ne__，默认对 __eq__ 的结果取反：True
+print(s1 < s2)                              # 自动触发 s1.__lt__(s2)：True
+print(s1 <= s2)                             # 自动触发 s1.__le__(s2)：True
+print(s1 > s2)                              # 自动触发 s1.__gt__(s2)：False
+print(s1 >= s2)                             # 自动触发 s1.__ge__(s2)：False
 ```
 
 
