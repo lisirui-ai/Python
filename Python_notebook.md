@@ -2107,6 +2107,44 @@ print(s1 >= s2)                             # 自动触发 s1.__ge__(s2)：False
 
 
 
+#### 10.5.8 上下文管理：`__enter__` 和 `__exit__`
+
+> 同时实现了 `__enter__` 和 `__exit__` 两个方法的对象称为**上下文管理器**，可以配合 `with` 语句使用：
+>
+> - `__enter__(self)`：进入 `with` 代码块前自动触发，返回值会赋给 `as` 后面的变量
+> - `__exit__(self, exc_type, exc_value, traceback)`：离开 `with` 代码块时自动触发，无论块内是否发生异常都会执行。无异常时三个参数均为 `None`；有异常时分别为异常类型、异常对象、回溯信息
+> - `__exit__` 返回 `True` 时异常被抑制，`with` 之后的代码继续执行；返回 `False` 或 `None` 时异常继续向外传播
+> - 对象没有实现这两个方法时，使用 `with` 会报错
+
+```python
+class MyResource:  # 定义上下文管理器类
+    def __enter__(self):  # 进入 with 块时触发，返回值赋给 as 后的变量
+        print('__enter__：进入 with 块')  # 输出提示：__enter__ 被触发
+        return self  # 返回对象自身，作为 as 后面的变量 res
+
+    def __exit__(self, exc_type, exc_value, traceback):  # 离开 with 块时触发：参数为异常类型、异常对象、回溯信息，无异常时均为 None
+        print('__exit__：离开 with 块')  # 输出提示：__exit__ 被触发
+        if exc_type is not None:  # 判断块内是否发生了异常
+            print('捕获到异常：', exc_type.__name__)  # 输出异常类型的名称
+        return False  # 返回 bool：False 表示不抑制异常，异常继续向外传播
+
+
+# 情况一：块内无异常
+with MyResource() as res:  # 创建对象并触发 __enter__，返回值赋给 res
+    print('with 块内的代码')  # 输出提示：正在执行块内代码
+# 输出：__enter__：进入 with 块 → with 块内的代码 → __exit__：离开 with 块
+
+# 情况二：块内有异常，__exit__ 仍会执行，异常随后继续传播
+try:  # 在外层捕获传播出来的异常
+    with MyResource() as res:  # 创建对象并触发 __enter__
+        1 / 0  # 抛出 ZeroDivisionError，立即离开 with 块
+except ZeroDivisionError:  # 捕获从 with 块传播出来的异常
+    print('外层捕获：ZeroDivisionError')  # 输出提示：异常已传播到外层
+# 输出：__enter__：进入 with 块 → __exit__：离开 with 块 → 捕获到异常： ZeroDivisionError → 外层捕获：ZeroDivisionError
+```
+
+
+
 ### 10.6 多继承与 MRO 顺序
 
 > **多继承**：一个子类**同时继承多个父类**，写法是 `class 子类(父类1, 父类2, ...)`，子类可以同时拥有所有父类的属性和方法。
@@ -3929,7 +3967,9 @@ def m3():
         f.write('Python 之禅')
 ```
 
-> **说明**：`with` 的作用和使用 `try/finally` 语句是一样的。`open()` 的返回值赋值给变量 `f`，当离开 `with` 代码块的时候，系统会自动调用 `f.close()` 方法。其实现原理建立在**上下文管理器（Context Manager）**之上。
+> **说明**：`with` 的作用和使用 `try/finally` 语句是一样的。`open()` 的返回值赋值给变量 `f`，当离开 `with` 代码块的时候，系统会自动调用 `f.close()` 方法。其实现原理建立在 **上下文管理器（Context Manager）** 之上。
+
+> **异常处理**：`with` 代码块内发生异常时，系统同样会自动调用 `f.close()` 关闭文件，随后异常继续向外传播，可由外层的 `try/except` 捕获。这与 `try/finally` 中 `finally` 块无论是否发生异常都会执行的效果一致。
 
 #### 13.7.2 什么是上下文（context）
 
