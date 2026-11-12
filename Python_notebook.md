@@ -3741,33 +3741,38 @@ from my_package.module_a import func_a         # 直接使用：func_a()
 
 ### 13.1 文件分类与路径
 
-```
-文本文件：存储字符流（.txt, .py, .csv 等）
-二进制文件：存储字节流（图片、音视频、Excel 等；内存中是什么，磁盘中就是什么）；使用 rb 打开二进制文件进行复制粘贴、上传等；通信使用字节流
+> **文件分类**：
+>
+> - **文本文件**：存储字符流（`.txt`、`.py`、`.csv` 等）
+> - **二进制文件**：存储字节流（图片、音视频、Excel 等），内存中是什么，磁盘中就是什么；使用 `rb` 打开二进制文件进行复制粘贴、上传等；通信使用字节流
 
-编码：UTF-8 编码中，一个汉字占 3B，一个英文字母占 1B
+> **编码**：UTF-8 编码中，一个汉字占 3 B，一个英文字母占 1 B。
 
-路径写法：
-  - Windows：\ 分隔且绝对路径从盘符出发
-  - Linux：/ 分隔；win 风格路径在 Python 接口中使用需要双转义（\\ 作为分隔符）
-  - Python 中 win 风格路径也可以使用 / 分隔（推荐）
-  - . 代表当前目录；相对路径相对于当前进程/当前 py 文件的路径
-  - win 系统中换行在磁盘中是 \r\n，占两个字节
-```
+> **路径写法**：
+>
+> - Windows：使用 `\` 分隔，且绝对路径从盘符出发
+> - Linux：使用 `/` 分隔；Windows 风格路径在 Python 接口中使用时需要双转义（`\\` 作为分隔符）
+> - Python 中 Windows 风格路径也可以使用 `/` 分隔（推荐）
+> - `.` 代表当前目录；相对路径相对于当前进程 / 当前 `.py` 文件所在的路径
+
+> **换行符**：Windows 系统中换行在磁盘中是 `\r\n`，占两个字节。
 
 
 
 ### 13.2 打开与关闭
 
 ```python
-# open(文件路径, 模式, encoding=编码)
-# open 函数返回的是文件对象，且是上下文管理器对象（文件对象有 __enter__ 与 __exit__ 魔法方法）
-# 文件对象的 __enter__ 魔法方法返回自身，__exit__ 魔法方法执行 close 方法
+# open(file, mode='r', encoding=None)：打开文件，返回文件对象
+#   file：str 类型，文件路径（相对路径或绝对路径）
+#   mode：str 类型，打开模式，默认 'r'（只读文本模式）
+#   encoding：str 类型，文本模式下使用的字符编码，如 'utf-8'；二进制模式不能指定
+#   返回值：文件对象（文本模式下为 TextIOWrapper 类型），同时也是上下文管理器对象
+# 文件对象实现了 __enter__ 与 __exit__ 魔法方法：
+#   __enter__ 返回文件对象自身，__exit__ 内部执行 close 方法
 
-# 推荐使用 with 语句（自动关闭，安全）
-with open('data.txt', 'r', encoding='utf-8') as f:
-    content = f.read()
-# with 块结束后自动调用 f.close()，释放资源
+# 推荐使用 with 语句（自动关闭，安全）；with 块结束后自动调用 f.close()，释放资源
+with open('data.txt', 'r', encoding='utf-8') as f:  # 以只读文本模式、utf-8 编码打开文件，返回值赋给 f（文件对象）
+    content = f.read()  # read()：读取全部内容，返回 str 类型；文件为空时返回空字符串 ''
 ```
 
 
@@ -3791,11 +3796,11 @@ with open('data.txt', 'r', encoding='utf-8') as f:
 
 ```python
 # a+ 模式：默认指针在文件末尾，直接读会读不到内容，需先 seek(0) 归位
-with open('test.txt', 'a+', encoding='utf-8') as f:
-    f.write('追加一行\n')
-    f.seek(0)           # 移动指针到文件开头（0=开头基准，偏移0字节）
-    content = f.read()  # 读取全部内容
-    print(content)
+with open('test.txt', 'a+', encoding='utf-8') as f:  # 以追加读写模式打开，文件不存在则创建；写入位置固定在末尾
+    f.write('追加一行\n')  # write(s)：参数 s 为 str，写入文件末尾；返回写入的字符数（int），此处未接收
+    f.seek(0)  # seek(offset)：把读写指针移到文件开头；offset=0 表示偏移 0 个字节
+    content = f.read()  # read()：从指针处读到文件末尾，返回 str；指针已在开头，故返回全部内容
+    print(content)  # 输出文件的全部内容
 ```
 
 > **文本模式 vs 二进制模式**：
@@ -3808,41 +3813,42 @@ with open('test.txt', 'a+', encoding='utf-8') as f:
 ### 13.4 读写操作
 
 ```python
-# 读操作
-with open('data.txt', 'r', encoding='utf-8') as f:
-    content = f.read()                   # 读取全部内容（一次性读入内存，适合小文件）
-    line = f.readline()                  # 读取一行（含 \n）
-    lines = f.readlines()                # 读取所有行，返回列表（每行含 \n）
+# ========== 读操作 ==========
+with open('data.txt', 'r', encoding='utf-8') as f:  # 以只读文本模式打开，返回文件对象 f
+    content = f.read()  # read()：读取全部内容，返回 str；一次性读入内存，适合小文件
+    line = f.readline()  # readline()：读取一行（含末尾 \n），返回 str；此时指针已在末尾，返回 ''
+    lines = f.readlines()  # readlines()：读取剩余所有行，返回 list[str]（每个元素含 \n）；此时指针在末尾，返回 []
     # 文本文件读和写的 line 一般都带换行 \n；文本文件的 read 方法返回的是字符串
 
     # 光标在文件末尾时，读取会得到空字符串，空字符串是假
     # 推荐：逐行迭代（大文件内存友好）
-    f.seek(0)                            # 读写前注意先用 seek 归位读写指针
-    for line in f:
-        print(line.strip())              # strip() 去除换行符
+    f.seek(0)  # seek(0)：读写指针归位到文件开头；前面已读到末尾，不归位则下面的循环读不到内容
+    for line in f:  # 文件对象本身是迭代器，每次迭代取一行（str，含 \n），不会一次性读入内存
+        print(line.strip())  # strip()：去除字符串两端空白字符（含 \n），返回新 str；print 再自动换行
 
-# 写操作
-with open('output.txt', 'w', encoding='utf-8') as f:
-    f.write('Hello World\n')
-    f.writelines(['line1\n', 'line2\n'])
+# ========== 写操作 ==========
+with open('output.txt', 'w', encoding='utf-8') as f:  # 'w'：只写，文件存在则清空覆盖，不存在则创建
+    f.write('Hello World\n')  # write(s)：写入字符串 s，不会自动换行，返回写入的字符数（int）
+    f.writelines(['line1\n', 'line2\n'])  # writelines(iterable)：依次写入每个 str，不自动换行，返回 None
 
+# ========== 二进制读写 ==========
 # 使用 rb 打开二进制文件（图片、音乐、视频）进行复制粘贴、上传等
-with open('source.png', 'rb') as src:
-    data = src.read()                    # 读取字节流对象（bytes 类型）
-with open('copy.png', 'wb') as dst:
-    dst.write(data)
+with open('source.png', 'rb') as src:  # 'rb'：二进制只读，不能传 encoding 参数
+    data = src.read()  # read()：读取全部内容，返回 bytes 对象（字节序列）
+with open('copy.png', 'wb') as dst:  # 'wb'：二进制只写，目标文件存在则覆盖
+    dst.write(data)  # write(b)：参数 b 为 bytes，返回写入的字节数（int）
 
 # bytes 字节流对象（内置类）
-b_data = b'hello'          # b'' 前缀转换为字节流（字节流字面量）
-file_bytes = src.read()    # 二进制读取得到 bytes 对象
+b_data = b'hello'  # b'' 前缀字面量：创建 bytes 对象，其中每个元素是 0~255 的整数
+file_bytes = data  # 二进制读取得到的就是 bytes 对象（src 在 with 结束时已关闭，不能再调用 src.read()）
 
-# seek 与 tell
+# ========== seek 与 tell ==========
 # seek(offset, whence)：offset=偏移量（字节），whence=基准位置（0=开头，1=当前，2=末尾）
-# 注意：偏移量是字节量；UTF-8下一个中文占3字节，汉字偏移要是3的倍数
-with open('data.txt', 'r+', encoding='utf-8') as f:
-    f.seek(0, 0)       # 移到文件开头（基准0=开头，偏移0）
-    f.seek(0, 2)       # 移到文件末尾（基准2=末尾）
-    pos = f.tell()     # 获取当前读写指针位置（字节数）
+# 注意：偏移量是字节量；UTF-8 下一个中文占 3 字节，汉字偏移要是 3 的倍数
+with open('data.txt', 'r+', encoding='utf-8') as f:  # 'r+'：文本读写，从文件头开始；文件不存在则报错
+    f.seek(0, 0)  # 移到文件开头（whence=0 为开头基准，offset=0 为偏移 0 字节）
+    f.seek(0, 2)  # 移到文件末尾（whence=2 为末尾基准）；文本模式下 whence=2 时 offset 只能为 0
+    pos = f.tell()  # tell()：返回当前读写指针位置（int，从文件开头算起的字节数）
 ```
 
 
@@ -3855,14 +3861,17 @@ with open('data.txt', 'r+', encoding='utf-8') as f:
 # 常用编码：utf-8（通用，支持中文）、gbk（Windows 默认中文编码）
 
 # 错误示范：用 gbk 写、用 utf-8 读 → 乱码
-with open('gbk_file.txt', 'w', encoding='gbk') as f:
-    f.write('这是GBK编码的文件')
-with open('gbk_file.txt', 'r', encoding='utf-8') as f:
-    # print(f.read())  # 报错或乱码
+with open('gbk_file.txt', 'w', encoding='gbk') as f:  # 以 gbk 编码写入文本
+    f.write('这是GBK编码的文件')  # 字符串先按 gbk 编码成字节再写入磁盘（一个汉字占 2 字节）
+try:  # 捕获解码失败的异常
+    with open('gbk_file.txt', 'r', encoding='utf-8') as f:  # 编码与写入时不一致：用 utf-8 解码 gbk 字节
+        print(f.read())  # 解码时无法识别的字节会抛出 UnicodeDecodeError；能解码的部分则是乱码
+except UnicodeDecodeError as e:  # e 为异常对象，包含出错的位置与原因
+    print('解码失败：', e)  # 输出错误信息
 
 # 正确示范：编码保持一致
-with open('gbk_file.txt', 'r', encoding='gbk') as f:
-    print(f.read())    # 正确输出：这是GBK编码的文件
+with open('gbk_file.txt', 'r', encoding='gbk') as f:  # 读取时使用与写入相同的 gbk 编码
+    print(f.read())  # 正确输出：这是GBK编码的文件
 ```
 
 ### 13.6 MD5 文件校验
@@ -3879,26 +3888,26 @@ import hashlib  # Python 内置哈希库，支持 md5、sha256 等算法
 
 # ── 计算字符串的 MD5 ─────────────────────────────────────────────
 # hashlib.md5()：创建并返回一个 MD5 哈希对象（HASH 类型），初始状态为空
-md5_obj = hashlib.md5()
+md5_obj = hashlib.md5()  # 创建空的 MD5 哈希对象，返回值赋给 md5_obj
 # update(data: bytes)：将 data 追加到哈希对象的内部状态，无返回值（None）
 # 字符串不能直接传入，需先调用 encode() 转为 bytes
-md5_obj.update("hello".encode("utf-8"))
+md5_obj.update("hello".encode("utf-8"))  # encode("utf-8")：str 转 bytes；update 把字节追加进哈希状态
 # hexdigest()：根据当前内部状态计算摘要，返回 str，固定为 32 位十六进制字符串
-print(md5_obj.hexdigest())  # 5d41402abc4b2a76b9719d911017c592
+print(md5_obj.hexdigest())  # 输出：5d41402abc4b2a76b9719d911017c592
 
 # hashlib.md5(data: bytes) 也可以在创建时直接传入初始数据（与上方等价）
-md5_obj = hashlib.md5("hello".encode("utf-8"))
-print(md5_obj.hexdigest())  # 5d41402abc4b2a76b9719d911017c592
+md5_obj = hashlib.md5("hello".encode("utf-8"))  # 创建哈希对象的同时传入初始数据（bytes）
+print(md5_obj.hexdigest())  # 输出：5d41402abc4b2a76b9719d911017c592
 
 # ── 计算文件的 MD5 ────────────────────────────────────────────────
-md5_obj = hashlib.md5()
+md5_obj = hashlib.md5()  # 重新创建空的 MD5 哈希对象
 with open("data.txt", "rb") as f:  # rb：以二进制只读模式打开，兼容任意文件类型
     # iter(callable, sentinel)：内置函数，重复调用无参 callable
     # 当其返回值 == sentinel 时停止迭代；此处 sentinel=b"" 表示文件已读完
-    for chunk in iter(lambda: f.read(8192), b""):  # 每次读 8192 字节（8 KB），避免大文件撑爆内存
+    for chunk in iter(lambda: f.read(8192), b""):  # 每次读 8192 字节（8 KB）得到 bytes，避免大文件撑爆内存
         md5_obj.update(chunk)  # 逐块追加到哈希状态，update() 可多次调用，效果等同于一次性传入全部数据
 # hexdigest() 在所有 update() 完成后调用，返回完整文件的 32 位十六进制摘要字符串
-print(md5_obj.hexdigest())
+print(md5_obj.hexdigest())  # 输出整个文件的 MD5 值（str，32 位十六进制）
 
 # ── 验证文件完整性 ────────────────────────────────────────────────
 # 将 hexdigest() 的结果与官方提供的参考 MD5 值对比，相同则文件完整未被篡改
@@ -3944,74 +3953,69 @@ $ echo -n "hello" | md5sum
 
 ```python
 # 普通版：写入过程中一旦抛出异常，close() 不会被调用，资源会一直被占用
-def m1():
-    f = open('output.txt', 'w')             # 打开文件，返回文件对象
-    f.write('python 之禅')                   # 若这里出现异常，下一行不会执行
-    f.close()                               # 关闭文件
+def m1():  # 定义函数 m1，无参数，无返回值（返回 None）
+    f = open('output.txt', 'w')  # 打开文件，返回文件对象 f（文本只写模式）
+    f.write('python 之禅')  # write(s)：写入字符串；若这里出现异常，下一行不会执行
+    f.close()  # close()：关闭文件，释放系统资源
 
 
 # 进阶版：try/finally 保证无论是否异常，finally 中的 close() 一定执行
-def m2():
-    f = open('output.txt', 'w')
-    try:
-        f.write('python 之禅')
-    except IOError:
-        print('oops error')                 # 捕获 IO 异常
-    finally:
-        f.close()                           # 无论如何都会关闭文件
+def m2():  # 定义函数 m2，无参数，无返回值（返回 None）
+    f = open('output.txt', 'w')  # 打开文件，返回文件对象 f
+    try:  # 尝试执行可能抛出异常的代码
+        f.write('python 之禅')  # 写入字符串，可能抛出 IOError
+    except IOError:  # 捕获 IO 相关异常
+        print('oops error')  # 输出提示：捕获到 IO 异常
+    finally:  # 无论是否发生异常，都会执行
+        f.close()  # 无论如何都会关闭文件
 
 
 # 高级版：with 语句，离开 with 代码块时系统自动调用 f.close()
-def m3():
-    with open('output.txt', 'w') as f:      # 原稿示例用 'r' 模式写入会报错，写入应使用 'w'
-        f.write('Python 之禅')
+def m3():  # 定义函数 m3，无参数，无返回值（返回 None）
+    with open('output.txt', 'w') as f:  # 'w'：只写模式（写入必须用 'w'，用 'r' 会报错）；返回值赋给 f
+        f.write('Python 之禅')  # 写入字符串；with 块结束后自动关闭文件
 ```
 
 > **说明**：`with` 的作用和使用 `try/finally` 语句是一样的。`open()` 的返回值赋值给变量 `f`，当离开 `with` 代码块的时候，系统会自动调用 `f.close()` 方法。其实现原理建立在 **上下文管理器（Context Manager）** 之上。
 
 > **异常处理**：`with` 代码块内发生异常时，系统同样会自动调用 `f.close()` 关闭文件，随后异常继续向外传播，可由外层的 `try/except` 捕获。这与 `try/finally` 中 `finally` 块无论是否发生异常都会执行的效果一致。
 
-#### 13.7.2 什么是上下文（context）
+#### 13.7.2 上下文
 
-> 上下文在不同的地方表示不同的含义，要感性理解。`context` 和文章的上下文是一个意思，通俗一点叫**环境**更好：
->
-> - 一篇文章摘录一段，没前没后，读不懂，因为有**语境**（语言环境）存在，一段话说了什么，要通过上下文（文章的上下文）来推断
-> - App 点击一个按钮进入一个新的界面，也要保存你是从哪个屏幕跳过来的等信息，以便点击返回的时候能正确跳回，如果不存肯定就无法正确跳回了
-
-> 上下文虽然叫“上下文”，但程序里面一般都只有“上文”而已。进程中断在操作系统中是有上有下的，这个问题不必深究，理解成**环境**即可。
+> **上下文（context）**：指代码执行时所处的运行环境，包括当前已获取的资源和保存的状态信息。`with` 语句通过上下文管理器，在进入代码块时建立该环境，离开代码块时清理该环境。
 
 #### 13.7.3 上下文管理器
 
 > **定义**：任何实现了 `__enter__()` 和 `__exit__()` 方法的对象都可称之为**上下文管理器**，上下文管理器对象可以使用 `with` 关键字。显然，文件（file）对象也实现了上下文管理器。
 
-> 我们可以模拟实现一个自己的文件类，让该类实现 `__enter__()` 和 `__exit__()` 方法：
+> 模拟实现一个自己的文件类，让该类实现 `__enter__()` 和 `__exit__()` 方法：
 
 ```python
-class File():
+class File():  # 定义自定义文件类
     """自定义文件类：实现上下文管理器协议"""
 
-    def __init__(self, filename, mode):
-        self.filename = filename            # 文件名
-        self.mode = mode                    # 打开模式
+    def __init__(self, filename, mode):  # 构造方法：filename（str）为文件名，mode（str）为打开模式
+        self.filename = filename  # 保存文件名到实例属性
+        self.mode = mode  # 保存打开模式到实例属性
 
-    def __enter__(self):
+    def __enter__(self):  # 进入 with 时自动调用，返回值赋给 as 后的变量
         """进入 with 时调用：打开资源并返回资源对象（赋给 as 后的变量）"""
-        print('entering')
-        self.f = open(self.filename, self.mode)
-        return self.f
+        print('entering')  # 输出提示：已进入 with 块
+        self.f = open(self.filename, self.mode)  # 打开文件，返回的文件对象保存到实例属性 f
+        return self.f  # 返回文件对象，作为 with ... as f 中的 f
 
-    def __exit__(self, *args):
+    def __exit__(self, *args):  # 退出 with 时自动调用；*args 收集三个位置参数为元组
         """退出 with 时调用（无论是否发生异常）：处理清理工作
         args：(异常类型, 异常值, 追踪信息)，没有异常时都是 None
         """
-        print('will exit')
-        self.f.close()
+        print('will exit')  # 输出提示：即将退出 with 块
+        self.f.close()  # 关闭文件，释放资源；未返回值（None），异常不会被抑制
 
 
 # 因为 File 类实现了上下文管理器，现在就可以使用 with 语句了
-with File('out.txt', 'w') as f:             # 先执行 __enter__，其返回值赋给 f
-    print('writing')
-    f.write('hello, python')                # with 块结束（或中途异常）后自动执行 __exit__
+with File('out.txt', 'w') as f:  # 先执行 __enter__，其返回值（文件对象）赋给 f
+    print('writing')  # 输出提示：正在写入
+    f.write('hello, python')  # 写入字符串；with 块结束（或中途异常）后自动执行 __exit__
 ```
 
 > `__enter__()` 方法**返回资源对象**，这里就是你将要打开的那个文件对象；`__exit__()` 方法**处理一些清除工作**。
@@ -4022,19 +4026,19 @@ with File('out.txt', 'w') as f:             # 先执行 __enter__，其返回值
 > Python 还提供了 `contextlib.contextmanager` 装饰器，更进一步简化了上下文管理器的实现方式：通过 `yield` 将函数分割成两部分，**`yield` 之前的语句在 `__enter__` 方法中执行，`yield` 之后的语句在 `__exit__` 方法中执行**，紧跟在 `yield` 后面的值是函数的返回值（即 `as` 后的变量）。
 
 ```python
-from contextlib import contextmanager       # 导入装饰器
+from contextlib import contextmanager  # 导入 contextmanager 装饰器：把生成器函数转换为上下文管理器
 
 
-@contextmanager
-def my_open(path, mode):
-    f = open(path, mode)                    # yield 之前：相当于 __enter__ 中的代码
-    yield f                                 # yield 的值会赋给 with ... as 后的变量
-    f.close()                               # yield 之后：相当于 __exit__ 中的代码
+@contextmanager  # 装饰器：被装饰的生成器函数可直接用于 with 语句
+def my_open(path, mode):  # 定义生成器函数：path（str）为文件路径，mode（str）为打开模式
+    f = open(path, mode)  # yield 之前：相当于 __enter__ 中的代码，打开文件返回文件对象
+    yield f  # yield 的值会赋给 with ... as 后的变量；with 块执行完后从这里继续往下执行
+    f.close()  # yield 之后：相当于 __exit__ 中的代码，关闭文件
 
 
 # 调用
-with my_open('out.txt', 'w') as f:
-    f.write('hello , the simplest context manager')
+with my_open('out.txt', 'w') as f:  # 进入 with：执行到 yield，f 为 yield 出来的文件对象
+    f.write('hello , the simplest context manager')  # 写入字符串；块结束后恢复生成器，执行 f.close()
 ```
 
 > **注意**：如果 `with` 块内抛出异常，异常会在 `yield` 处重新抛出，其后的 `f.close()` 不会执行；生产环境中建议写成 `try: yield f` + `finally: f.close()`，才能保证异常时同样关闭资源。
