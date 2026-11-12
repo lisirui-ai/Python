@@ -3949,6 +3949,8 @@ $ echo -n "hello" | md5sum
 > - 打开文件写完内容后不关闭，极端情况下会出现 `Too many open files` 的错误，因为系统允许打开的最大文件数量是有限的
 > - 数据库连接过多而没有及时关闭，就可能会出现 `Can not connect to MySQL server Too many connections`，因为数据库连接是一种非常昂贵的资源，不可能无限制地被创建
 
+> Python 提供了 `with` 语法用于简化资源操作的后续清除操作，是 `try/finally` 的替代方法，实现原理建立在**上下文管理器**之上。此外，Python 还提供了一个 `contextmanager` 装饰器，更进一步简化上下文管理器的实现方式。
+
 #### 13.7.1 正确关闭文件的三种写法
 
 ```python
@@ -4042,8 +4044,6 @@ with my_open('out.txt', 'w') as f:  # 进入 with：执行到 yield，f 为 yiel
 ```
 
 > **注意**：如果 `with` 块内抛出异常，异常会在 `yield` 处重新抛出，其后的 `f.close()` 不会执行；生产环境中建议写成 `try: yield f` + `finally: f.close()`，才能保证异常时同样关闭资源。
-
-> **总结**：Python 提供了 `with` 语法用于简化资源操作的后续清除操作，是 `try/finally` 的替代方法，实现原理建立在**上下文管理器**之上。此外，Python 还提供了一个 `contextmanager` 装饰器，更进一步简化上下文管理器的实现方式。
 
 ---
 
