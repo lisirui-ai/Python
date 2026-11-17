@@ -9259,9 +9259,10 @@ cs1 = conn.cursor()
 # ---------- 写法一：不传参数，% 直接写（仅适用于固定的、非用户输入的 SQL） ----------
 # 没有第二个参数，pymysql 不做 % 格式化，所以 like 中的 % 原样发送给 MySQL
 # 返回值 int：查到的行数
-# 示例数据中：以 ipad 开头的有 2 个（id 4、5）；以“电脑”结尾的有 4 个（id 2、4、5、6）；
+# 示例数据中：以 ipad 开头的是 id 4、5；以“电脑”结尾的是 id 2、4、5、6；
 # 两者取并集（or），共 4 行（id 2、4、5、6）
-count = cs1.execute("select * from goods where name like 'ipad%' or name like '%电脑'")
+count = cs1.execute(
+    "select * from goods where name like 'ipad%' or name like '%电脑'")
 # 输出查到的行数；示例数据下预期输出：4
 print(count)
 
@@ -9270,11 +9271,10 @@ print(count)
 #   %s  -> 被替换为参数值；
 #   %%  -> 被还原为一个字面量 %，才能正确发给 MySQL
 # 如果把 %% 写成 %，会抛出 ValueError: unsupported format character
-count = cs1.execute("select * from goods where "
-                    "(name like 'ipad%%' or name like '%%电脑') and price>%s",
-                    [3000])
-# 输出查到的行数：名称符合条件且价格大于 3000 的商品
-# 示例数据下预期输出：3（id 2 价格 4999、id 5 价格 3388、id 6 价格 9188；id 4 价格 1998 不满足）
+count = cs1.execute(
+    "select * from goods where name like 'ipad%%' or price>%s", [9000])
+# 输出查到的行数：名称以 ipad 开头，或价格大于 9000 的商品
+# 示例数据下预期输出：3（以 ipad 开头的是 id 4、5；价格大于 9000 的是 id 6 的 9188）
 print(count)
 
 # ---------- 写法三（推荐）：通配符放进参数里 ----------
