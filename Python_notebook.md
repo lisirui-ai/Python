@@ -8954,44 +8954,79 @@ connect(...)  →  Connection 对象
 > 执行 `insert`、`update`、`delete` 后，修改暂存于事务中，必须调用 `conn.commit()` 才会真正写入数据库。同一个连接上多次 `execute()` 后只需调用一次 `commit()`，即可一次性提交此前的全部修改。
 
 ```python
-from pymysql import connect          # connect：创建数据库连接的函数
+# 从 pymysql 包中导入 connect 函数（需先 pip install pymysql）
+# connect(...)：与 MySQL 服务器建立网络连接，成功返回 Connection 对象，失败抛出异常
+from pymysql import connect
 
 
 def main():
     """
     演示向 goods_cates 表新增、修改、删除数据。
-    返回值 : None
+
+    参数 : 无
+    返回值 : None，函数只执行操作并打印结果，不返回数据
+    可能的异常 : 连接失败（地址/账号/密码错误、服务未启动）时 pymysql 抛出 OperationalError
     """
-    # connect(...)：创建连接，返回 Connection 对象
-    # host:str 主机；port:int 端口；user:str 用户名；password:str 密码；
-    # database:str 数据库名；charset:str 通信编码
+    # ---------- 第一步：建立连接 ----------
+    # connect(...) 的参数都必须写成「参数名=值」的关键字参数形式：
+    #   host     : str，MySQL 服务器地址，本机用 'localhost'（或 '127.0.0.1'）
+    #   port     : int，MySQL 监听端口，默认 3306
+    #   user     : str，登录 MySQL 的用户名（这里用管理员 root）
+    #   password : str，该用户的密码（此处 'mysql' 仅为示例，请改成自己的）
+    #   database : str，连接后默认使用的数据库，相当于先执行了 use jing_dong
+    #   charset  : str，通信编码；写 'utf8mb4' 才能正确存取中文、emoji，
+    #              写错会出现乱码或报错
+    # 返回值 conn：Connection 对象，代表「Python 程序 <-> MySQL 服务器」的这条通道
     conn = connect(host='localhost', port=3306, user='root',
                    password='mysql', database='jing_dong', charset='utf8mb4')
-    cs1 = conn.cursor()              # 获取游标，返回 Cursor 对象
 
-    # 新增：execute 返回 int，即受影响的行数（这里新增 1 行，故为 1）
+    # ---------- 第二步：获取游标 ----------
+    # conn.cursor()：创建游标；游标是「执行 SQL 并读取结果」的工具，
+    # SQL 都要通过它来发送。返回值 cs1：Cursor 对象
+    cs1 = conn.cursor()
+
+    # ---------- 第三步：新增（insert） ----------
+    # execute(sql)：把 SQL 字符串发送给 MySQL 执行
+    #   参数 sql : str，一条完整的 SQL 语句
+    #   返回值   : int，受影响的行数；这里新增了 1 行，所以是 1
+    # SQL 中字符串用双引号，是为了和外层 Python 的单引号不冲突
+    # 注意：此时数据只是暂存在事务中，还没有真正写入数据库
     count = cs1.execute('insert into goods_cates(name) values("硬盘")')
-    print(count)                     # 输出：1
-    # lastrowid：刚插入记录的自增 id（int）
+    # 输出受影响的行数；预期输出：1
+    print(count)
+    # lastrowid：只读属性，类型 int，是刚刚插入那一行自动生成的 id（自增主键）
     print(cs1.lastrowid)
 
-    # 修改：把名称为“硬盘”的分类改为“机械硬盘”，返回 int：被修改的行数
+    # ---------- 第四步：修改（update） ----------
+    # 把 name 为“硬盘”的记录改成“机械硬盘”
+    # 返回值 int：被修改的行数（没有符合 where 条件的记录时为 0）
     count = cs1.execute('update goods_cates set name="机械硬盘" where name="硬盘"')
+    # 输出被修改的行数；预期输出：1
     print(count)
 
-    # 删除：删除名称为“机械硬盘”的分类，返回 int：被删除的行数
+    # ---------- 第五步：删除（delete） ----------
+    # 删除 name 为“机械硬盘”的记录；注意 delete 一定要写 where，否则会清空整张表
+    # 返回值 int：被删除的行数
     count = cs1.execute('delete from goods_cates where name="机械硬盘"')
+    # 输出被删除的行数；预期输出：1
     print(count)
 
-    # commit()：提交事务，上述全部修改一并写入数据库；不提交则连接关闭后修改被丢弃
+    # ---------- 第六步：提交事务 ----------
+    # commit()：把前面所有增删改一次性真正写入数据库，返回 None
+    # 如果忘记 commit，连接关闭时这些修改会被丢弃，表中数据不会有任何变化
     conn.commit()
 
-    cs1.close()                      # 关闭游标
-    conn.close()                     # 关闭连接
+    # ---------- 第七步：释放资源（顺序：先游标，后连接） ----------
+    # close()：关闭游标，释放它占用的资源，返回 None
+    cs1.close()
+    # close()：断开与 MySQL 的连接，返回 None；不关闭会一直占用服务器连接数
+    conn.close()
 
 
-if __name__ == '__main__':           # 仅当文件被直接运行时才执行 main()
-    main()
+# __name__ 是 Python 内置变量：文件被直接运行时值为 '__main__'，
+# 被 import 到别的文件时为模块名；这样写可避免被导入时自动执行 main()
+if __name__ == '__main__':
+    main()                           # 调用上面定义的 main 函数
 ```
 
 ---
@@ -9001,32 +9036,49 @@ if __name__ == '__main__':           # 仅当文件被直接运行时才执行 m
 #### 18.4.1 逐行获取：`fetchone()`
 
 ```python
-from pymysql import connect          # connect：创建数据库连接的函数
+# 导入 connect 函数，用于创建数据库连接
+from pymysql import connect
 
 
 def main():
     """
     演示 fetchone：逐行获取查询结果。
+
+    参数 : 无
     返回值 : None
     """
+    # 创建连接，各参数含义见 18.3（host 主机、port 端口、user 用户名、
+    # password 密码、database 数据库名、charset 编码）；返回 Connection 对象
     conn = connect(host='localhost', port=3306, user='root',
                    password='mysql', database='jing_dong', charset='utf8mb4')
-    cs1 = conn.cursor()              # 获取游标
+    # 获取游标，返回 Cursor 对象
+    cs1 = conn.cursor()
 
-    # select 语句的 execute 返回 int：结果集的行数
+    # 执行查询；select 只读数据，不修改数据，所以不需要 commit
+    # 返回值 count：int，查询结果集的行数（这里是 id>=4 的商品个数，示例数据为 3）
+    # 查询的列是 id 和 name，所以每一行数据的第 0 项是 id，第 1 项是 name
     count = cs1.execute('select id, name from goods where id >= 4')
-    print('查询到 %d 条数据:' % count)  # %d：整数占位符
+    # %d 是整数占位符，会被 % 后面的 count 替换，输出如：查询到 3 条数据:
+    print('查询到 %d 条数据:' % count)
 
-    for _ in range(count):           # 循环 count 次，每次取一行
-        # fetchone()：返回 tuple，如 (4, 'ipad mini 7.9 英寸平板电脑')
-        # 元组下标 0 对应 id，下标 1 对应 name（与 select 的列顺序一致）
+    # range(count) 生成 0 ~ count-1 的序列，循环 count 次；
+    # 变量名 _ 表示「循环变量用不到」的约定写法
+    for _ in range(count):
+        # fetchone()：从结果集中取「下一行」，并把游标位置后移一行
+        #   返回值 result：tuple（元组），一行数据，每个元素对应一列，
+        #   顺序与 select 后的列顺序一致，例如 (4, 'ipad mini 7.9 英寸平板电脑')
+        #   result[0] 是 id（int），result[1] 是 name（str）
+        #   取完所有行后再调用会返回 None
         result = cs1.fetchone()
+        # 输出这一行数据
         print(result)
 
+    # 先关游标，再关连接
     cs1.close()
     conn.close()
 
 
+# 仅在直接运行本文件时执行 main()
 if __name__ == '__main__':
     main()
 ```
@@ -9034,31 +9086,49 @@ if __name__ == '__main__':
 #### 18.4.2 一次获取全部：`fetchall()`
 
 ```python
-from pymysql import connect          # connect：创建数据库连接的函数
+# 导入 connect 函数，用于创建数据库连接
+from pymysql import connect
 
 
 def main():
     """
-    演示 fetchall 与 fetchmany。
+    演示 fetchmany 与 fetchall：批量获取查询结果。
+
+    参数 : 无
     返回值 : None
     """
+    # 创建连接（参数含义见 18.3），返回 Connection 对象
     conn = connect(host='localhost', port=3306, user='root',
                    password='mysql', database='jing_dong', charset='utf8mb4')
-    cs1 = conn.cursor()              # 获取游标
+    # 获取游标，返回 Cursor 对象
+    cs1 = conn.cursor()
 
-    cs1.execute('select id, name, price from goods')   # 执行查询
+    # 执行查询，查询 goods 表的 id、name、price 三列；
+    # 这里不需要返回值，所以没有用变量接收；此时结果集在游标中等待被读取
+    cs1.execute('select id, name, price from goods')
 
-    # fetchmany(2)：取前 2 行，返回 tuple[tuple]
+    # fetchmany(2)：取接下来的 2 行，游标位置后移 2 行
+    #   参数 size : int，要取的行数
+    #   返回值    : tuple[tuple]，外层元组装若干行，每行又是一个元组，形如
+    #               ((1, '...', Decimal('3399.00')), (2, '...', Decimal('4999.00')))
+    #   若剩余行数不足 size，则返回剩下的所有行
     print(cs1.fetchmany(2))
-    # fetchall()：取剩余的全部行（不含上面已取走的 2 行），返回 tuple[tuple]
-    # 其中 price 列对应 Python 的 decimal.Decimal 类型
-    for row in cs1.fetchall():       # row：一行数据，tuple (id, name, price)
+
+    # fetchall()：取「剩余」的全部行，因前面已取走 2 行，所以这里从第 3 行开始
+    #   返回值：tuple[tuple]，结构同上；没有剩余数据时返回空元组 ()
+    # 遍历外层元组，每次取出一行赋给 row
+    # row 是 tuple：row[0] 为 id(int)，row[1] 为 name(str)，
+    # row[2] 为 price，价格列在 Python 中对应 decimal.Decimal 类型（精确小数）
+    for row in cs1.fetchall():
+        # 输出一行数据
         print(row)
 
+    # 先关游标，再关连接
     cs1.close()
     conn.close()
 
 
+# 仅在直接运行本文件时执行 main()
 if __name__ == '__main__':
     main()
 ```
@@ -9085,41 +9155,61 @@ if __name__ == '__main__':
 > - SQL 中若需要字面量 `%`（如 `like '%abc%'`），要写成 `%%`；更推荐把通配符放进参数中。
 
 ```python
-from pymysql import connect          # connect：创建数据库连接的函数
+# 导入 connect 函数，用于创建数据库连接
+from pymysql import connect
 
 
 def main():
     """
     演示按商品名称查询：对比字符串拼接（不安全）与参数化（安全）。
+
+    参数 : 无
     返回值 : None
     """
-    # input()：从键盘读取字符串；测试注入时可输入：' or 1=1 or '
+    # input(提示语)：等待用户在键盘输入并回车，返回 str（永远是字符串）
+    # 想测试 SQL 注入，可以输入：' or 1=1 or '
     find_name = input('请输入商品名称：')
+    # 创建连接（参数含义见 18.3），返回 Connection 对象
     conn = connect(host='localhost', port=3306, user='root',
                    password='mysql', database='jing_dong', charset='utf8mb4')
-    cs1 = conn.cursor()              # 获取游标
+    # 获取游标，返回 Cursor 对象
+    cs1 = conn.cursor()
 
-    # 【不安全，禁止使用】字符串拼接：输入注入内容后会查出所有数据
+    # 【不安全，禁止使用】字符串拼接：这里的 % 是 Python 自己的字符串格式化，
+    # 会把用户输入原样塞进 SQL；输入注入内容后，SQL 变成
+    # select * from goods where name='' or 1=1 or ''  -> 条件恒成立，查出全部数据
     # sql = "select * from goods where name='%s'" % find_name
     # cs1.execute(sql)
 
-    # 【安全】参数化：params 是参数序列；SQL 中的每个 %s 依次对应其中一个元素
+    # 【安全】参数化查询
+    # params：list，按顺序存放要传给 SQL 的「值」，一个值对应 SQL 里的一个 %s
     params = [find_name]
-    # execute(sql, params)：返回 int，查到的行数
+    # execute(sql, params)：
+    #   参数 sql    : str，含 %s 占位符的 SQL（%s 两侧不要自己加引号）
+    #   参数 params : list 或 tuple，依次替换各个 %s，pymysql 会自动转义，
+    #                 用户输入只会被当作「数据」，不会被当作 SQL 代码执行
+    #   返回值      : int，查询到的行数
     count = cs1.execute('select * from goods where name=%s', params)
-    print(count)                     # 输入注入内容时，这里为 0（被当作一个普通名称）
+    # 输入普通名称且存在时为 1；输入注入内容时为 0（被当作一个叫这个怪名字的商品）
+    print(count)
 
-    print(cs1.fetchall())            # 查询结果，tuple[tuple]
-
-    # 多个参数：每个 %s 依次对应 params 中的一个值
-    cs1.execute('select * from goods where cate_name=%s and price>%s',
-                ['笔记本', 4000])
+    # 取出全部结果；返回 tuple[tuple]：外层是所有行，内层是一行（顺序为表的列顺序）
     print(cs1.fetchall())
 
+    # 多个参数：两个 %s 依次对应列表中的 '笔记本' 和 4000
+    # 注意：数字 4000 也用 %s，不能写成 %d
+    # 含义：查分类是笔记本且价格大于 4000 的商品
+    cs1.execute('select * from goods where cate_name=%s and price>%s',
+                ['笔记本', 4000])
+    # 输出该次查询的全部结果
+    print(cs1.fetchall())
+
+    # 先关游标，再关连接
     cs1.close()
     conn.close()
 
 
+# 仅在直接运行本文件时执行 main()
 if __name__ == '__main__':
     main()
 ```
@@ -9133,35 +9223,55 @@ if __name__ == '__main__':
 > **事务**：一组要么全部成功、要么全部失败的操作，由 InnoDB 引擎支持。操作成功调用 `commit()`，出现异常调用 `rollback()` 撤销未提交的修改，同时用 `try/finally` 保证资源被释放。
 
 ```python
-from pymysql import connect          # connect：创建数据库连接的函数
+# 导入 connect 函数，用于创建数据库连接
+from pymysql import connect
 
 
 def add_cates(names):
     """
     批量新增商品分类：全部成功才提交，任何一步出错则整体回滚。
-    参数 names : list[str]，要新增的分类名称列表
+
+    参数 names : list[str]，要新增的分类名称列表，例如 ['鼠标', '键盘']
     返回值     : int，成功新增的行数；失败时返回 0
     """
+    # 创建连接（参数含义见 18.3），返回 Connection 对象
     conn = connect(host='localhost', port=3306, user='root',
                    password='mysql', database='jing_dong', charset='utf8mb4')
-    cs1 = conn.cursor()              # 获取游标
+    # 获取游标，返回 Cursor 对象
+    cs1 = conn.cursor()
+    # try：把「可能出错」的代码放在这里；一旦出错，立即跳到 except
     try:
-        total = 0                    # 累计受影响的行数
-        for name in names:           # 遍历每个分类名称
-            # 参数化插入：返回 int，受影响行数（这里为 1）
-            total += cs1.execute('insert into goods_cates(name) values(%s)', [name])
-        conn.commit()                # 全部成功后统一提交
+        # 累计成功插入的行数，初始为 0
+        total = 0
+        # 逐个取出列表里的分类名
+        for name in names:
+            # 参数化插入：%s 会被列表 [name] 中的值替换（防注入）
+            # execute 返回 int，本次插入的行数，这里为 1，累加到 total
+            total += cs1.execute('insert into goods_cates(name) values(%s)',
+                                 [name])
+        # 循环全部成功后才提交：这些插入作为一个整体，要么全进，要么全不进
+        conn.commit()
+        # 返回成功插入的总行数
         return total
-    except Exception as e:           # 捕获执行过程中的任意异常
-        conn.rollback()              # 回滚：撤销本次尚未提交的所有修改
+    # except Exception as e：捕获 try 中发生的任何异常，异常对象保存到 e
+    except Exception as e:
+        # rollback()：撤销自上次 commit 以来的所有修改，返回 None
+        # 所以哪怕前面已成功插入了几条，也会全部作废，保证数据一致
+        conn.rollback()
+        # 输出失败原因，e 是异常对象，print 时显示错误信息
         print('操作失败，已回滚：', e)
+        # 失败时约定返回 0
         return 0
+    # finally：无论 try 是否出错、是否 return，最后都一定会执行，常用来释放资源
     finally:
-        cs1.close()                  # 无论成败都关闭游标
-        conn.close()                 # 无论成败都关闭连接
+        # 关闭游标
+        cs1.close()
+        # 关闭连接
+        conn.close()
 
 
-print(add_cates(['鼠标', '键盘']))   # 输出：2
+# 调用函数并输出返回值；两个分类都插入成功，预期输出：2
+print(add_cates(['鼠标', '键盘']))
 ```
 
 ---
@@ -9171,20 +9281,28 @@ print(add_cates(['鼠标', '键盘']))   # 输出：2
 #### 18.7.1 批量写入：`executemany()`
 
 ```python
-from pymysql import connect          # connect：创建数据库连接的函数
+# 导入 connect 函数，用于创建数据库连接
+from pymysql import connect
 
+# 创建连接（参数含义见 18.3），返回 Connection 对象
 conn = connect(host='localhost', port=3306, user='root',
                password='mysql', database='jing_dong', charset='utf8mb4')
-cs1 = conn.cursor()                  # 获取游标
+# 获取游标，返回 Cursor 对象
+cs1 = conn.cursor()
 
-# executemany(query, args)：对 args 的每一组参数各执行一次 query
-# query : str，带 %s 占位符的 SQL
-# args  : list[tuple]，每个元组是一组参数，元素个数应与 %s 的个数一致
-# 返回  : int，总受影响行数
+# executemany(query, args)：同一条 SQL 用多组参数各执行一次，比循环 execute 更简洁高效
+#   query : str，带 %s 占位符的 SQL
+#   args  : list[tuple]，外层列表的每个元组是「一行数据」的参数，
+#           元组内元素个数必须与 SQL 中 %s 的个数一致
+#   返回  : int，总受影响行数（3 组参数各插入 1 行，共 3）
+# 注意：只有一个元素的元组必须带逗号，('显卡',) 是元组，('显卡') 只是字符串
 count = cs1.executemany('insert into goods_cates(name) values(%s)',
-                        [('显卡',), ('内存',), ('电源',)])   # 单元素元组必须带逗号
-print(count)                         # 输出：3
-conn.commit()                        # 提交事务
+                        [('显卡',), ('内存',), ('电源',)])
+# 输出总受影响行数；预期输出：3
+print(count)
+# 提交事务，3 行数据才真正写入数据库
+conn.commit()
+# 先关游标，再关连接
 cs1.close()
 conn.close()
 ```
@@ -9192,15 +9310,24 @@ conn.close()
 #### 18.7.2 以字典形式获取结果：`DictCursor`
 
 ```python
-from pymysql import connect              # connect：创建数据库连接的函数
-from pymysql.cursors import DictCursor   # DictCursor：每一行以 dict 形式返回的游标类
+# 导入 connect 函数，用于创建数据库连接
+from pymysql import connect
+# 导入 DictCursor 类：用它创建的游标，查询结果的每一行是字典而不是元组
+from pymysql.cursors import DictCursor
 
+# 创建连接（参数含义见 18.3），返回 Connection 对象
 conn = connect(host='localhost', port=3306, user='root',
                password='mysql', database='jing_dong', charset='utf8mb4')
-# cursor(DictCursor)：指定游标类型，取到的每一行是 dict，键为列名
+# cursor(DictCursor)：参数是游标类（注意传类本身，不加括号）
+# 返回的游标取出的每一行是 dict：键是列名(str)，值是该列的数据
+# 好处：用 row['name'] 按列名取值，比元组的 row[1] 易读，不用记列的位置
 cs1 = conn.cursor(DictCursor)
+# 查询 id 小于等于 2 的商品，只取 id 和 name 两列
 cs1.execute('select id, name from goods where id <= 2')
-print(cs1.fetchall())                # 如 [{'id': 1, 'name': '...'}, {'id': 2, 'name': '...'}]
+# fetchall() 返回 list[dict]（DictCursor 下外层是列表，每行是字典），形如
+# [{'id': 1, 'name': '...'}, {'id': 2, 'name': '...'}]
+print(cs1.fetchall())
+# 先关游标，再关连接
 cs1.close()
 conn.close()
 ```
@@ -9208,16 +9335,25 @@ conn.close()
 #### 18.7.3 使用 `with` 自动关闭资源
 
 ```python
-from contextlib import closing       # closing：为拥有 close() 方法的对象提供上下文管理
-from pymysql import connect          # connect：创建数据库连接的函数
+# 导入 closing：它包装任何带 close() 方法的对象，使其能用于 with 语句
+from contextlib import closing
+# 导入 connect 函数，用于创建数据库连接
+from pymysql import connect
 
-# 离开 with 块时自动调用 close()，无需手写 finally
+# with 语句：进入代码块时准备资源，离开代码块（无论是否出错）时自动清理
+# closing(对象)：离开 with 时自动调用该对象的 close()，不用再手写 try/finally
+# as conn：把连接对象赋给变量 conn（参数含义见 18.3）
 with closing(connect(host='localhost', port=3306, user='root',
                      password='mysql', database='jing_dong',
                      charset='utf8mb4')) as conn:
-    with closing(conn.cursor()) as cs1:              # 游标同样自动关闭
-        cs1.execute('select count(*) from goods')    # 统计商品总数
-        print(cs1.fetchone())        # 输出形如 (6,)；下标 0 为统计值
+    # 嵌套的 with：游标也在离开代码块时自动关闭；as cs1 把游标赋给 cs1
+    with closing(conn.cursor()) as cs1:
+        # count(*) 是 SQL 聚合函数，统计行数；结果集只有 1 行 1 列
+        cs1.execute('select count(*) from goods')
+        # fetchone() 返回 tuple，形如 (6,)；(6,) 是只有一个元素的元组，
+        # 下标 0 的值就是商品总数（int）
+        print(cs1.fetchone())
+# 代码缩进回到这里时，游标和连接都已被自动关闭
 ```
 
 ---
@@ -9234,25 +9370,34 @@ $ pip install DBUtils
 ```
 
 ```python
-from dbutils.pooled_db import PooledDB   # PooledDB：线程安全的数据库连接池
-import pymysql                           # pymysql：作为底层驱动传给连接池
+# 导入 PooledDB 类：线程安全的连接池，多个线程可同时从中取连接
+from dbutils.pooled_db import PooledDB
+# 导入整个 pymysql 模块：它将作为「创建连接的驱动」交给连接池
+import pymysql
 
 # 创建连接池对象；程序中通常只创建一个，全局共用
 pool = PooledDB(
-    creator=pymysql,         # 创建连接所使用的数据库驱动模块
-    maxconnections=100,      # int，池允许的最大连接数
-    mincached=5,             # int，启动时预先创建的空闲连接数
-    blocking=True,           # bool，连接用尽时是否阻塞等待；False 则直接抛出异常
+    creator=pymysql,         # 模块：连接池用它来创建真正的数据库连接
+    maxconnections=100,      # int，池允许同时存在的最大连接数（不要超过 MySQL 的 max_connections）
+    mincached=5,             # int，启动时预先创建好的空闲连接数，用时可直接取，省去建连开销
+    blocking=True,           # bool，连接用尽时：True 阻塞等待归还；False 直接抛异常
+    # 下面这些是关键字参数，连接池会原样传给 pymysql.connect()，含义见 18.3
     host='localhost', port=3306, user='root', password='mysql',
-    database='jing_dong', charset='utf8mb4'   # 以下参数会传给 pymysql.connect
+    database='jing_dong', charset='utf8mb4'
 )
 
-conn = pool.connection()     # 从池中取出一个连接，返回的代理对象用法与 Connection 相同
-cs1 = conn.cursor()          # 获取游标
-cs1.execute('select count(*) from goods')    # 执行查询
-print(cs1.fetchone())        # 输出形如 (6,)
-cs1.close()                  # 关闭游标
-conn.close()                 # 注意：此处并非断开连接，而是把连接归还给连接池
+# pool.connection()：从池中取出一个连接；返回代理对象，用法与普通 Connection 相同
+conn = pool.connection()
+# 获取游标，返回 Cursor 对象
+cs1 = conn.cursor()
+# 执行查询：统计 goods 表的行数
+cs1.execute('select count(*) from goods')
+# fetchone() 返回 tuple，形如 (6,)，下标 0 是商品总数
+print(cs1.fetchone())
+# 关闭游标
+cs1.close()
+# 注意：连接池返回的连接调用 close() 并不会断开，而是把连接「归还」给连接池以便复用
+conn.close()
 ```
 
 ---
@@ -9260,23 +9405,36 @@ conn.close()                 # 注意：此处并非断开连接，而是把连�
 ### 18.9 速查
 
 ```python
-from pymysql import connect                 # connect：创建数据库连接的函数
+# 从 pymysql 导入 connect 函数，用于创建数据库连接
+from pymysql import connect
 
-# connect(...)：创建连接，参数必须为关键字参数；返回 Connection 对象
+# connect(...)：创建连接，参数必须写成关键字参数；返回 Connection 对象
 conn = connect(host='localhost', port=3306, user='root',
                password='mysql', database='jing_dong', charset='utf8mb4')
-cs1 = conn.cursor()                         # 获取游标；返回 Cursor 对象
-cs1.execute('select * from goods where id=%s', [1])   # 参数化执行；返回 int：影响/查到的行数
-cs1.executemany('insert into goods_cates(name) values(%s)', [('a',), ('b',)])  # 批量执行；返回 int
-cs1.fetchone()                              # 取下一行；返回 tuple，无数据返回 None
-cs1.fetchmany(3)                            # 取下 3 行；返回 tuple[tuple]
-cs1.fetchall()                              # 取剩余全部行；返回 tuple[tuple]
-cs1.rowcount                                # 属性：最近一次 execute 的行数，int
-cs1.lastrowid                               # 属性：最近一次插入生成的自增 id，int
-conn.commit()                               # 提交事务；返回 None
-conn.rollback()                             # 回滚事务；返回 None
-cs1.close()                                 # 关闭游标
-conn.close()                                # 关闭连接
+# 获取游标；返回 Cursor 对象，后续所有 SQL 都通过它执行
+cs1 = conn.cursor()
+# 参数化执行：%s 被列表 [1] 中的值替换；返回 int：查到的行数（id=1 存在则为 1）
+cs1.execute('select * from goods where id=%s', [1])
+# 批量执行：每个元组是一行的参数；返回 int：总受影响行数（这里为 2）
+cs1.executemany('insert into goods_cates(name) values(%s)', [('a',), ('b',)])
+# 取下一行；返回 tuple，没有数据时返回 None
+cs1.fetchone()
+# 取下 3 行；返回 tuple[tuple]，不足 3 行则返回剩余的行
+cs1.fetchmany(3)
+# 取剩余全部行；返回 tuple[tuple]，没有数据时返回空元组 ()
+cs1.fetchall()
+# 属性（没有括号）：最近一次 execute 影响或查到的行数，类型 int
+cs1.rowcount
+# 属性：最近一次 insert 生成的自增 id，类型 int
+cs1.lastrowid
+# 提交事务，使增删改真正写入数据库；返回 None
+conn.commit()
+# 回滚事务，撤销未提交的修改；返回 None（commit 与 rollback 通常二选一）
+conn.rollback()
+# 关闭游标，释放资源
+cs1.close()
+# 关闭连接，释放资源
+conn.close()
 ```
 
 | 要点 | 说明 |
