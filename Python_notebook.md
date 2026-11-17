@@ -8838,7 +8838,8 @@ GIL（Global Interpreter Lock）：CPython 解释器的内部锁
 ## 十八、数据库：MySQL 与 Python 交互
 
 > **本章核心**：使用第三方库 **`pymysql`** 在 Python 中连接 MySQL，完成增删改查、事务控制与参数化查询（防 SQL 注入），并了解连接池的基本用法。\
-> **前提**：已安装并启动 MySQL 服务（建议使用 InnoDB 存储引擎，其支持事务），并掌握基础 SQL 语法。
+> **前提**：已安装并启动 MySQL 服务（建议使用 InnoDB 存储引擎，其支持事务），并掌握基础 SQL 语法。\
+> **关联笔记**：MySQL 的安装、SQL 语法等基础知识见 [MySQL 笔记](https://github.com/lisirui-ai/Database/blob/main/MySQL_notebook.md)。
 
 ---
 
