@@ -9166,7 +9166,7 @@ if __name__ == '__main__':
 > - 占位符统一使用 `%s`，**与参数类型无关**（整数、字符串都用 `%s`），这不同于 Python 的字符串格式化；
 > - `%s` 两侧**不要加引号**，引号由 `pymysql` 自动处理；
 > - 参数必须以序列（`list` 或 `tuple`）传入，只有一个参数时也要写成 `[值]` 或 `(值,)`；
-> - SQL 中若需要字面量 `%`（如 `like '%abc%'`），要写成 `%%`；更推荐把通配符放进参数中。
+> - 传了参数时，SQL 中若需要字面量 `%`（如 `like '%abc%'`），要写成 `%%`；更推荐把通配符放进参数中（详见 18.5.1）。
 
 ```python
 # 导入 connect 函数，用于创建数据库连接
@@ -9231,6 +9231,74 @@ if __name__ == '__main__':
 ```
 
 > **注意**：占位符只能替换**值**，不能替换表名、列名等标识符；标识符不可由用户输入拼接，应使用白名单校验。
+
+#### 18.5.1 模糊查询与字面量 `%`
+
+> **为什么要写 `%%`**：当 `execute()` 传入了参数，`pymysql` 内部会用 Python 的 `%` 格式化把参数填进 SQL，此时 SQL 里的每个 `%` 都会被当作「格式化符号」（如 `%s`）。而 SQL 的模糊查询 `like` 恰好也用 `%` 作通配符（匹配任意长度的任意字符），两者冲突，所以：
+>
+> - **传了参数时**：SQL 中作为通配符的 `%` 要写成 `%%`，否则会抛出 `ValueError`（如 `unsupported format character`）；
+> - **没传参数时**（`execute(sql)`）：不做格式化，`%` 原样发送，直接写 `%` 即可；
+> - **推荐做法**：SQL 里只写 `like %s`，把含通配符的完整字符串（如 `'ipad%'`）放进参数，既不用写 `%%`，也能防注入。
+>
+> 以本章 `goods` 表为例，对应的原生 SQL 为：
+>
+> `select * from goods where name like 'ipad%' or name like '%电脑';`
+>
+> 含义：查询名称以 `ipad` 开头，或以 `电脑` 结尾的商品。`%` 匹配任意个（含 0 个）任意字符，`'ipad%'` 是「以 ipad 开头」，`'%电脑'` 是「以 电脑 结尾」，`'%电脑%'` 是「包含 电脑」。
+
+```python
+# 导入 connect 函数，用于创建数据库连接
+from pymysql import connect
+
+# 创建连接（参数含义见 18.3），返回 Connection 对象
+conn = connect(host='localhost', port=3306, user='root',
+               password='mysql', database='jing_dong', charset='utf8mb4')
+# 获取游标，返回 Cursor 对象
+cs1 = conn.cursor()
+
+# ---------- 写法一：不传参数，% 直接写（仅适用于固定的、非用户输入的 SQL） ----------
+# 没有第二个参数，pymysql 不做 % 格式化，所以 like 中的 % 原样发送给 MySQL
+# 返回值 int：查到的行数
+# 示例数据中：以 ipad 开头的有 2 个（id 4、5）；以“电脑”结尾的有 4 个（id 2、4、5、6）；
+# 两者取并集（or），共 4 行（id 2、4、5、6）
+count = cs1.execute("select * from goods where name like 'ipad%' or name like '%电脑'")
+# 输出查到的行数；示例数据下预期输出：4
+print(count)
+
+# ---------- 写法二：传了参数，通配符 % 必须写成 %% ----------
+# 这里 price>%s 是真正的占位符，所以整条 SQL 会被做 % 格式化：
+#   %s  -> 被替换为参数值；
+#   %%  -> 被还原为一个字面量 %，才能正确发给 MySQL
+# 如果把 %% 写成 %，会抛出 ValueError: unsupported format character
+count = cs1.execute("select * from goods where "
+                    "(name like 'ipad%%' or name like '%%电脑') and price>%s",
+                    [3000])
+# 输出查到的行数：名称符合条件且价格大于 3000 的商品
+# 示例数据下预期输出：3（id 2 价格 4999、id 5 价格 3388、id 6 价格 9188；id 4 价格 1998 不满足）
+print(count)
+
+# ---------- 写法三（推荐）：通配符放进参数里 ----------
+# SQL 中只有 like %s，没有任何字面量 %，无需转义；
+# 'ipad%' 和 '%电脑' 是普通字符串，作为「值」传入，pymysql 自动加引号并转义，防注入
+params = ['ipad%', '%电脑']
+count = cs1.execute("select * from goods where name like %s or name like %s",
+                    params)
+# 输出查到的行数；示例数据下预期输出：4（与写法一结果相同）
+print(count)
+# 输出查到的全部行；返回 tuple[tuple]，每个元组是一行商品数据
+print(cs1.fetchall())
+
+# 场景：用户输入关键词做「包含」查询时，在 Python 中拼接通配符，再作为参数传入
+keyword = '笔记本'
+# f-string 只用于拼出「参数值」，不是拼 SQL，所以不会引发注入
+cs1.execute("select * from goods where name like %s", [f"%{keyword}%"])
+# 输出名称中包含“笔记本”的商品
+print(cs1.fetchall())
+
+# 先关游标，再关连接
+cs1.close()
+conn.close()
+```
 
 ---
 
