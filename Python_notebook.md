@@ -9040,6 +9040,12 @@ if __name__ == '__main__':
 
 ### 18.4 查询
 
+> **游标（Cursor）类比文件指针**：`conn.cursor()` 返回的游标，作用相当于文件读取时的**文件指针**。`select` 执行后，结果集暂存在游标中，游标内部记录着「当前读到第几行」的位置；每调用一次 `fetchone()` / `fetchmany()`，位置就向后移动，已取走的行不会再次返回，`fetchall()` 取的也只是**剩余**的行。就像 `f.read()` 读过的内容，指针已后移，再读只能得到后面的内容。
+
+> **为什么要设计游标：为了「读」**：`select` 的结果是一个行数不定的**结果集**，`execute()` 只返回行数，不可能把所有行都当作返回值。于是设计游标来**承载结果集并记录读取位置**，程序可以按需**逐行（`fetchone`）或分批（`fetchmany`）**读取，读多少、何时读由自己控制，边读边处理。而增删改（`insert`、`update`、`delete`）没有结果集需要读，`execute()` 只返回受影响的行数，游标在这里只是充当执行 SQL 的工具。
+>
+> **注意（内存）**：`pymysql` 默认的 `Cursor` 在 `execute()` 时，会把**整个结果集一次性读到客户端内存**，`fetch*` 只是在这份内存数据上移动位置，所以逐行读取**并不能**减少内存占用。若结果集极大，需使用**流式游标** `SSCursor`（`from pymysql.cursors import SSCursor`，`conn.cursor(SSCursor)`），它边从服务器接收边读取，内存占用小；代价是读完全部数据前，该连接不能执行其他 SQL。
+
 #### 18.4.1 逐行获取：`fetchone()`
 
 ```python
@@ -9141,13 +9147,13 @@ if __name__ == '__main__':
     main()
 ```
 
-| 方法 | 一次获取 | 内存占用 | 适用场景 |
-|---|---|---|---|
-| `fetchone()` | 1 行 | 最小 | 数据量大，逐行处理 |
-| `fetchmany(size)` | `size` 行 | 可控 | 数据量较大，分批处理 |
-| `fetchall()` | 剩余全部行 | 最大 | 数据量小，需要整体处理 |
+| 方法 | 一次获取 | 适用场景 |
+|---|---|---|
+| `fetchone()` | 1 行 | 逐行处理 |
+| `fetchmany(size)` | `size` 行 | 分批处理 |
+| `fetchall()` | 剩余全部行 | 数据量小，需要整体处理 |
 
-> **注意**：`fetchall()` 会把结果集一次性装入内存，**数据量很大时可能导致内存溢出（OOM）**，此时应使用 `fetchone()` 或 `fetchmany()`。
+> **注意**：默认 `Cursor` 下，结果集在 `execute()` 时就已全部读入内存，三种 `fetch*` 方法**不影响**这部分内存占用；`fetchall()` 还会额外把剩余行再组装成一个大元组，**数据量很大时可能导致内存溢出（OOM）**。真正的大数据量读取应使用 `SSCursor`（流式游标）配合 `fetchone()` / `fetchmany()`。
 
 ---
 
@@ -9365,6 +9371,57 @@ with closing(connect(host='localhost', port=3306, user='root',
 # 代码缩进回到这里时，游标和连接都已被自动关闭
 ```
 
+#### 18.7.4 流式读取大结果集：`SSCursor`
+
+> 默认 `Cursor` 会在 `execute()` 时把整个结果集读入客户端内存（见 18.4）。`SSCursor`（Server Side Cursor，流式游标）则**按需读取**：调用 `fetch*` 时才从网络上读取对应的行，没读的数据不会进入客户端内存，内存占用很小，适合导出、统计等**数据量极大**的场景。
+>
+> **使用限制**：
+> - 读完全部数据（或关闭游标）之前，该连接**不能执行其他 SQL**；
+> - 只能顺序向后读取，不能回退（`scroll()` 向后滚动会抛出 `NotSupportedError`）；
+> - MySQL 协议不提供结果总行数，`execute()` 返回的行数不可靠，只能自己遍历累加；
+> - `fetchall()` 在 `SSCursor` 中仍会把剩余行全部装入列表，失去流式的意义；若想遍历全部数据，应使用 `fetchone()` / `fetchmany()` 循环，或生成器版 `fetchall_unbuffered()`；
+> - 与默认 `Cursor` 的返回类型有差异：`fetchmany()` 返回的是 `list`（元素为行元组），读完后返回空元组 `()`。
+
+```python
+# 导入 connect 函数，用于创建数据库连接
+from pymysql import connect
+# 导入 SSCursor 类：流式游标，边从服务器接收边读取，不会一次性把结果集装入内存
+from pymysql.cursors import SSCursor
+
+# 创建连接（参数含义见 18.3），返回 Connection 对象
+conn = connect(host='localhost', port=3306, user='root',
+               password='mysql', database='jing_dong', charset='utf8mb4')
+# cursor(SSCursor)：参数是游标类（传类本身，不加括号），返回流式游标对象
+cs1 = conn.cursor(SSCursor)
+# 执行查询；此时只是发出请求，结果行还没有全部读到本地内存，调用 fetch 时才按需读取
+cs1.execute("select id, name, price from goods")
+
+# 累计已读取的行数，初始为 0（因 execute 的返回值不可靠，需自己计数）
+total = 0
+# while True：无限循环，数据读完后用 break 跳出
+while True:
+    # fetchmany(size)：从服务器取接下来的 size 行
+    #   参数 size : int，每批行数，这里取 2（实际大数据量时可取 1000 等）
+    #   返回值    : list[tuple]，一批数据，每个元组是一行；
+    #               数据读完后返回空元组 ()（注意：默认 Cursor 返回的是 tuple[tuple]）
+    rows = cs1.fetchmany(2)
+    # 空容器（空元组 ()）的布尔值为 False，not rows 为 True，说明已无更多数据，退出循环
+    if not rows:
+        break
+    # 遍历这一批中的每一行，row 是 tuple：(id, name, price)
+    for row in rows:
+        # 在此处理每一行（打印、写文件等），处理完即可丢弃，不会长期占用内存
+        print(row)
+        # 已读行数加 1
+        total += 1
+
+# 输出总行数；示例数据下预期输出：6
+print(total)
+# 先关游标，再关连接；必须读完或关闭游标后，连接才能再执行其他 SQL
+cs1.close()
+conn.close()
+```
+
 ---
 
 ### 18.8 数据库连接池
@@ -9450,6 +9507,6 @@ conn.close()
 |---|---|
 | 提交 | 增删改后必须 `commit()`，出错时 `rollback()` |
 | 参数化 | 统一使用 `%s` 占位，参数传入 `execute()` 第二个参数，防止 SQL 注入 |
-| 大数据量 | 避免 `fetchall()`，使用 `fetchone()` / `fetchmany()` 防止 OOM |
+| 大数据量 | 使用 `SSCursor`（流式游标）配合 `fetchone()` / `fetchmany()`，避免 `fetchall()`，防止 OOM |
 | 资源释放 | 先关游标再关连接，推荐 `try/finally` 或 `closing` |
 | 并发场景 | 使用连接池（如 `DBUtils`）复用连接 |
