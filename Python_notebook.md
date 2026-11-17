@@ -8991,7 +8991,11 @@ def main():
     #   返回值   : int，受影响的行数；这里新增了 1 行，所以是 1
     # SQL 中字符串用双引号，是为了和外层 Python 的单引号不冲突
     # 注意：此时数据只是暂存在事务中，还没有真正写入数据库
-    count = cs1.execute('insert into goods_cates(name) values("硬盘")')
+    # 引号约定（本章统一）：Python 外层用双引号，SQL 里的字符串值用单引号，原因：
+    #   1. 单引号是标准 SQL 的字符串写法，MySQL 开启 ANSI_QUOTES 模式时，
+    #      双引号会被当成表名/列名，用单引号可避免报错，兼容性最好；
+    #   2. 外双内单，两层引号不同，Python 无需转义，不会提前结束字符串
+    count = cs1.execute("insert into goods_cates(name) values('硬盘')")
     # 输出受影响的行数；预期输出：1
     print(count)
     # lastrowid：只读属性，类型 int，是刚刚插入那一行自动生成的 id（自增主键）
@@ -9000,14 +9004,16 @@ def main():
     # ---------- 第四步：修改（update） ----------
     # 把 name 为“硬盘”的记录改成“机械硬盘”
     # 返回值 int：被修改的行数（没有符合 where 条件的记录时为 0）
-    count = cs1.execute('update goods_cates set name="机械硬盘" where name="硬盘"')
+    # 同样外层双引号、内层单引号（原因见上面新增部分的说明）
+    count = cs1.execute("update goods_cates set name='机械硬盘' where name='硬盘'")
     # 输出被修改的行数；预期输出：1
     print(count)
 
     # ---------- 第五步：删除（delete） ----------
     # 删除 name 为“机械硬盘”的记录；注意 delete 一定要写 where，否则会清空整张表
     # 返回值 int：被删除的行数
-    count = cs1.execute('delete from goods_cates where name="机械硬盘"')
+    # 同样外层双引号、内层单引号
+    count = cs1.execute("delete from goods_cates where name='机械硬盘'")
     # 输出被删除的行数；预期输出：1
     print(count)
 
@@ -9057,7 +9063,8 @@ def main():
     # 执行查询；select 只读数据，不修改数据，所以不需要 commit
     # 返回值 count：int，查询结果集的行数（这里是 id>=4 的商品个数，示例数据为 3）
     # 查询的列是 id 和 name，所以每一行数据的第 0 项是 id，第 1 项是 name
-    count = cs1.execute('select id, name from goods where id >= 4')
+    # 本章 SQL 字符串统一用双引号包裹（SQL 内部的字符串值则用单引号）
+    count = cs1.execute("select id, name from goods where id >= 4")
     # %d 是整数占位符，会被 % 后面的 count 替换，输出如：查询到 3 条数据:
     print('查询到 %d 条数据:' % count)
 
@@ -9105,7 +9112,7 @@ def main():
 
     # 执行查询，查询 goods 表的 id、name、price 三列；
     # 这里不需要返回值，所以没有用变量接收；此时结果集在游标中等待被读取
-    cs1.execute('select id, name, price from goods')
+    cs1.execute("select id, name, price from goods")
 
     # fetchmany(2)：取接下来的 2 行，游标位置后移 2 行
     #   参数 size : int，要取的行数
@@ -9189,7 +9196,8 @@ def main():
     #   参数 params : list 或 tuple，依次替换各个 %s，pymysql 会自动转义，
     #                 用户输入只会被当作「数据」，不会被当作 SQL 代码执行
     #   返回值      : int，查询到的行数
-    count = cs1.execute('select * from goods where name=%s', params)
+    # 注意：参数化时 %s 两侧不要再写引号（单引号也不要），由 pymysql 自动添加
+    count = cs1.execute("select * from goods where name=%s", params)
     # 输入普通名称且存在时为 1；输入注入内容时为 0（被当作一个叫这个怪名字的商品）
     print(count)
 
@@ -9199,7 +9207,7 @@ def main():
     # 多个参数：两个 %s 依次对应列表中的 '笔记本' 和 4000
     # 注意：数字 4000 也用 %s，不能写成 %d
     # 含义：查分类是笔记本且价格大于 4000 的商品
-    cs1.execute('select * from goods where cate_name=%s and price>%s',
+    cs1.execute("select * from goods where cate_name=%s and price>%s",
                 ['笔记本', 4000])
     # 输出该次查询的全部结果
     print(cs1.fetchall())
@@ -9247,7 +9255,7 @@ def add_cates(names):
         for name in names:
             # 参数化插入：%s 会被列表 [name] 中的值替换（防注入）
             # execute 返回 int，本次插入的行数，这里为 1，累加到 total
-            total += cs1.execute('insert into goods_cates(name) values(%s)',
+            total += cs1.execute("insert into goods_cates(name) values(%s)",
                                  [name])
         # 循环全部成功后才提交：这些插入作为一个整体，要么全进，要么全不进
         conn.commit()
@@ -9296,7 +9304,7 @@ cs1 = conn.cursor()
 #           元组内元素个数必须与 SQL 中 %s 的个数一致
 #   返回  : int，总受影响行数（3 组参数各插入 1 行，共 3）
 # 注意：只有一个元素的元组必须带逗号，('显卡',) 是元组，('显卡') 只是字符串
-count = cs1.executemany('insert into goods_cates(name) values(%s)',
+count = cs1.executemany("insert into goods_cates(name) values(%s)",
                         [('显卡',), ('内存',), ('电源',)])
 # 输出总受影响行数；预期输出：3
 print(count)
@@ -9323,7 +9331,7 @@ conn = connect(host='localhost', port=3306, user='root',
 # 好处：用 row['name'] 按列名取值，比元组的 row[1] 易读，不用记列的位置
 cs1 = conn.cursor(DictCursor)
 # 查询 id 小于等于 2 的商品，只取 id 和 name 两列
-cs1.execute('select id, name from goods where id <= 2')
+cs1.execute("select id, name from goods where id <= 2")
 # fetchall() 返回 list[dict]（DictCursor 下外层是列表，每行是字典），形如
 # [{'id': 1, 'name': '...'}, {'id': 2, 'name': '...'}]
 print(cs1.fetchall())
@@ -9349,7 +9357,7 @@ with closing(connect(host='localhost', port=3306, user='root',
     # 嵌套的 with：游标也在离开代码块时自动关闭；as cs1 把游标赋给 cs1
     with closing(conn.cursor()) as cs1:
         # count(*) 是 SQL 聚合函数，统计行数；结果集只有 1 行 1 列
-        cs1.execute('select count(*) from goods')
+        cs1.execute("select count(*) from goods")
         # fetchone() 返回 tuple，形如 (6,)；(6,) 是只有一个元素的元组，
         # 下标 0 的值就是商品总数（int）
         print(cs1.fetchone())
@@ -9391,7 +9399,7 @@ conn = pool.connection()
 # 获取游标，返回 Cursor 对象
 cs1 = conn.cursor()
 # 执行查询：统计 goods 表的行数
-cs1.execute('select count(*) from goods')
+cs1.execute("select count(*) from goods")
 # fetchone() 返回 tuple，形如 (6,)，下标 0 是商品总数
 print(cs1.fetchone())
 # 关闭游标
@@ -9414,9 +9422,9 @@ conn = connect(host='localhost', port=3306, user='root',
 # 获取游标；返回 Cursor 对象，后续所有 SQL 都通过它执行
 cs1 = conn.cursor()
 # 参数化执行：%s 被列表 [1] 中的值替换；返回 int：查到的行数（id=1 存在则为 1）
-cs1.execute('select * from goods where id=%s', [1])
+cs1.execute("select * from goods where id=%s", [1])
 # 批量执行：每个元组是一行的参数；返回 int：总受影响行数（这里为 2）
-cs1.executemany('insert into goods_cates(name) values(%s)', [('a',), ('b',)])
+cs1.executemany("insert into goods_cates(name) values(%s)", [('a',), ('b',)])
 # 取下一行；返回 tuple，没有数据时返回 None
 cs1.fetchone()
 # 取下 3 行；返回 tuple[tuple]，不足 3 行则返回剩余的行
