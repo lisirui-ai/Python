@@ -11773,6 +11773,26 @@ conn.close()
 
 #### 18.7.3 使用 `with` 自动关闭资源
 
+> **为什么要使用 `closing`**
+>
+> `with` 语句要求对象实现上下文管理协议（`__enter__` 和 `__exit__`）。pymysql 的连接、游标对象不一定能直接用于 `with`，且需要手动 `close()`：
+>
+> - 在 pymysql 1.0 之前的版本中，`Connection.__enter__` 返回的是一个**游标**而不是连接本身，`__exit__` 也只负责提交或回滚，**不会关闭连接**，容易造成连接泄漏；
+> - 旧版本的游标同样不一定支持 `with`，或退出时不保证真正关闭。
+>
+> `contextlib.closing(obj)` 是通用包装器，只要对象有 `close()` 方法就能使用：
+>
+> - `__enter__` 返回 `obj` 本身，所以 `as conn` 拿到的确实是连接；
+> - `__exit__` 一定调用 `obj.close()`，无论代码块正常结束还是抛出异常。
+>
+> 好处：
+>
+> - 不用手写 `try/finally`，代码更简洁；
+> - 即使 SQL 执行出错，游标和连接也会被释放，避免占满数据库连接数；
+> - 关闭顺序正确：内层游标先关，外层连接后关。
+>
+> **注意**：`closing` 只负责关闭，**不会提交事务**。执行 `insert`、`update`、`delete` 时仍需自己调用 `conn.commit()`。pymysql 1.0 及以后游标已原生支持 `with`，但 `closing` 在所有版本中行为一致，因此推荐这种写法。
+
 ```python
 # 导入 closing：它包装任何带 close() 方法的对象，使其能用于 with 语句
 from contextlib import closing
