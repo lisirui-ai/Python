@@ -17,7 +17,7 @@ Python 是一门简洁、优雅的高级编程语言，由吉多·范·罗苏姆
 | 五   | 数据类型：数字型（int/float/bool）、类型转换、一切皆引用 |
 | 六   | 流程控制：选择结构（if/elif/else）、循环结构（while/for）、break/continue |
 | 七   | 容器：字符串、列表、元组、字典、集合、公共操作（运算符/公共函数/sorted）、推导式 |
-| 八   | 函数：定义与调用、参数种类、变量作用域、高阶函数与 lambda、拆包、递归 |
+| 八   | 函数：定义与调用、参数种类、变量作用域、高阶函数与 lambda、拆包、递归、闭包（`nonlocal`）、装饰器（带参数/多层/类装饰器/`wraps`） |
 | 九   | 迭代器与生成器：可迭代对象、iter/next、yield、生成器函数与生成器表达式 |
 | 十   | 面向对象：类与对象、封装、继承、多态（抽象类与接口）、装饰器、单例模式、魔法方法、多继承与 MRO、类属性与三种方法、property 属性、魔法属性、面向对象设计（工厂模式） |
 | 十一  | 异常处理：try/except/else/finally、常见异常类型、主动抛出异常、自定义异常 |
@@ -25,7 +25,7 @@ Python 是一门简洁、优雅的高级编程语言，由吉多·范·罗苏姆
 | 十三  | 文件操作：文件分类与路径、打开与关闭、文件模式、读写操作、乱码问题、MD5 文件校验、with 与上下文管理器 |
 | 十四  | 正则表达式：re 模块（match/search/findall/sub）、常用语法、re.compile、flags、finditer |
 | 十五  | 常用标准库：os、sys、time、datetime、random、json、copy（深浅拷贝）、tqdm |
-| 十六  | 网络编程：网络通信基础（IP/端口）、Socket、UDP 与 TCP 编程、编码转换、TCP 连接原理（三次握手/四次挥手）、TCP/IP 协议族、高级网络编程（epoll/粘包/C-S 与 B-S）、DDoS 简介、速查 |
+| 十六  | 网络编程：网络通信基础（IP/端口）、Socket、UDP 与 TCP 编程、编码转换、TCP 连接原理（三次握手/四次挥手）、TCP/IP 协议族、高级网络编程（epoll/粘包/C-S 与 B-S）、DDoS 简介、速查、HTTP 与 Web 静态服务器、WSGI 与 mini-web 动态服务器 |
 | 十七  | 并发编程：并发基础概念、Linux 进程管理命令、多进程（multiprocessing）、多线程（threading，锁与死锁）、协程（greenlet/gevent）、选型与 GIL |
 | 十八  | 数据库：MySQL 与 Python 交互：pymysql 的 Connection 与 Cursor、增删改查、参数化防 SQL 注入、事务与异常处理、executemany/DictCursor、连接池、速查 |
 
@@ -1350,6 +1350,1352 @@ print(factorial(5))    # 120
 > - 递归深度不能超过栈空间大小，否则报 `RecursionError`（默认约 1000 层）
 > - 可用 `sys.setrecursionlimit(调用次数 + 余量)` 提高递归深度限制
 > - 有出口的递归也要注意深度限制
+
+
+
+### 8.7 闭包（Closure）
+
+> **闭包**：在一个函数内部再定义一个函数，并且这个**内部函数用到了外部函数的变量**，同时外部函数把这个内部函数 `return` 了出来。此时，**内部函数 + 它用到的外部变量**合在一起，就叫闭包。
+>
+> - 一句话理解：闭包 = **函数 + 函数运行所需要的“环境数据”**，函数被返回之后，这份数据依然跟着它，不会随着外部函数结束而消失
+> - 闭包是学习装饰器（见 8.8）的**前置知识**，务必先看懂
+
+#### 8.7.1 为什么要使用闭包
+
+> **问题场景**：初中学过的一次函数 `y = k*x + b`，现在要**反复计算一条直线上很多个点**（给 `x` 算 `y`），而且还要能方便地切换成**另一条直线**（换一组 `k`、`b`）。下面用 6 种方案依次实现，对比各自的优缺点，最终引出闭包。
+
+```python
+# ========== 第 1 种：直接写表达式 ==========
+k = 1  # 斜率 k，类型 int
+b = 2  # 截距 b，类型 int
+x = 0  # 自变量 x，类型 int
+y = k * x + b  # 计算 x=0 对应的 y 值，结果为 2
+print(y)  # 输出 2
+x = 1  # 想算下一个点，就得再写一遍同样的式子
+y = k * x + b  # 计算 x=1 对应的 y 值，结果为 3
+print(y)  # 输出 3
+# 缺点：需要多次计算时，就得把 y = k * x + b 写很多遍，代码重复
+
+print('-' * 50)  # 打印 50 个 - 作为分隔线
+
+
+# ========== 第 2 种：普通函数，每次都传 k、b、x ==========
+def line_2(k, b, x):
+    """计算直线 y = k*x + b 上 x 对应的 y 值并打印
+
+    Args:
+        k (int | float): 直线斜率
+        b (int | float): 直线截距
+        x (int | float): 自变量
+
+    Returns:
+        None
+    """
+    print(k * x + b)  # 计算并打印 y 值
+
+
+line_2(1, 2, 0)  # 输出 2
+line_2(1, 2, 1)  # 输出 3
+line_2(1, 2, 2)  # 输出 4
+# 缺点：同一条直线要算多个点时，每次调用都得重复传递 k、b，很麻烦
+
+print('-' * 50)  # 打印分隔线
+
+# ========== 第 3 种：全局变量保存 k、b ==========
+k = 1  # 全局变量 k
+b = 2  # 全局变量 b
+
+
+def line_3(x):
+    """使用全局变量 k、b 计算 y 值并打印
+
+    Args:
+        x (int | float): 自变量
+
+    Returns:
+        None
+    """
+    print(k * x + b)  # 函数内没有定义 k、b，按 LEGB 规则到全局作用域里找
+
+
+line_3(0)  # 输出 2
+line_3(1)  # 输出 3
+line_3(2)  # 输出 4
+k = 11  # 想换一条直线，就得去修改全局变量
+b = 22  # 同上
+line_3(0)  # 输出 22
+line_3(1)  # 输出 33
+line_3(2)  # 输出 44
+# 缺点：每换一条直线都要修改全局变量；全局变量能被任何函数随意修改，不安全；
+#       想同时使用多条直线更是无从下手
+
+print('-' * 50)  # 打印分隔线
+
+
+# ========== 第 4 种：缺省参数 ==========
+def line_4(x, k=1, b=2):
+    """k、b 作为缺省参数，只传 x 时使用默认直线
+
+    Args:
+        x (int | float): 自变量
+        k (int | float): 斜率，默认 1
+        b (int | float): 截距，默认 2
+
+    Returns:
+        None
+    """
+    print(k * x + b)  # 计算并打印 y 值
+
+
+line_4(0)  # 使用默认的 k=1, b=2，输出 2
+line_4(1)  # 输出 3
+line_4(2)  # 输出 4
+line_4(0, k=11, b=22)  # 换一条直线：必须通过关键字参数传入，输出 22
+line_4(1, k=11, b=22)  # 输出 33
+line_4(2, k=11, b=22)  # 输出 44
+# 优点：k、b 是函数自己的参数，不再是谁都能改的全局变量
+# 缺点：每次计算新直线上的点，仍然要在调用时重复传参，很麻烦
+
+print('-' * 50)  # 打印分隔线
+
+
+# ========== 第 5 种：实例对象（类 + __call__） ==========
+class Line5(object):
+    """一条直线对象：创建时保存 k、b，之后可以像函数一样调用"""
+
+    def __init__(self, k, b):
+        """保存直线参数
+
+        Args:
+            k (int | float): 斜率
+            b (int | float): 截距
+        """
+        self.k = k  # 把斜率保存到实例属性
+        self.b = b  # 把截距保存到实例属性
+
+    def __call__(self, x):
+        """对象后面加括号时触发，计算并打印 y 值
+
+        Args:
+            x (int | float): 自变量
+
+        Returns:
+            None
+        """
+        print(self.k * x + self.b)  # 用实例属性中保存的 k、b 计算
+
+
+line_5_1 = Line5(1, 2)  # 第 1 条直线：y = x + 2
+line_5_1(0)  # 对象() 等价于 对象.__call__(0)，输出 2
+line_5_1(1)  # 输出 3
+line_5_1(2)  # 输出 4
+line_5_2 = Line5(11, 22)  # 第 2 条直线：y = 11x + 22
+line_5_2(0)  # 输出 22
+line_5_2(1)  # 输出 33
+line_5_2(2)  # 输出 44
+# 缺点：每条直线都要创建一个实例对象，要保存多套 k、b 就要很多对象，占用资源多
+
+print('-' * 50)  # 打印分隔线
+
+
+# ========== 第 6 种：闭包 ==========
+def line_6(k, b):
+    """外部函数：接收直线参数 k、b，返回一个“计算 y 值”的内部函数
+
+    Args:
+        k (int | float): 斜率
+        b (int | float): 截距
+
+    Returns:
+        function: 内部函数 create_y，它“记住”了 k 和 b
+    """
+
+    def create_y(x):
+        """内部函数：用到了外部函数的变量 k、b"""
+        print(k * x + b)  # k、b 不是 create_y 的局部变量，而是外部函数 line_6 的变量
+
+    return create_y  # 返回的是函数本身（不加括号），不是调用结果
+
+
+line_6_1 = line_6(1, 2)  # 得到第 1 条直线的函数：k=1, b=2 被“带”进了 line_6_1
+line_6_1(0)  # 只需传 x，输出 2
+line_6_1(1)  # 输出 3
+line_6_1(2)  # 输出 4
+line_6_2 = line_6(11, 22)  # 得到第 2 条直线的函数：k=11, b=22 被“带”进了 line_6_2
+line_6_2(0)  # 输出 22
+line_6_2(1)  # 输出 33
+line_6_2(2)  # 输出 44
+```
+
+> **思考：函数、匿名函数、闭包、对象作为实参传递时有什么区别？**
+>
+> ---
+
+| 类型 | 能完成的功能 | 传递时携带的内容 |
+|---|---|---|
+| 匿名函数（`lambda`） | 只能完成基本的简单功能 | 仅功能（函数的引用） |
+| 普通函数 | 能完成较为复杂的功能 | 仅功能（函数的引用） |
+| 闭包 | 能完成较为复杂的功能 | **功能 + 数据**（内部函数 + 用到的外部变量），比对象占用空间少 |
+| 对象 | 能完成最为复杂的功能 | 很多数据 + 很多功能（功能 + 数据） |
+
+> ---
+>
+> **6 种方案小结**：闭包既避免了重复传参，又不使用全局变量，也不需要为每条直线创建一个对象，是“**保存少量数据 + 一个功能**”场景下最轻量的方案。
+
+#### 8.7.2 函数引用
+
+> **函数名本质上就是一个变量**，这个变量指向“函数对象”。把 `test1`（不加括号）赋值给别的变量，就是让两个变量指向**同一个函数对象**；加了括号 `test1()` 才是**调用**。
+
+```python
+def test1():
+    """一个最简单的函数，用来演示函数引用"""
+    print('--- in test1 func----')  # 函数体：打印一行提示
+
+
+# 调用函数：函数名后加括号，会执行函数体
+test1()  # 输出 --- in test1 func----
+
+# 引用函数：函数名后不加括号，只是让 ret 也指向这个函数对象，函数体并没有被执行
+ret = test1  # 现在 ret 和 test1 指向同一个函数对象
+print(id(ret))  # 输出函数对象的内存地址（int），例如 140212571149040
+print(id(test1))  # 输出的地址与上一行完全相同，说明是同一个对象
+
+# 通过引用调用函数：ret 指向 test1 的函数对象，所以 ret() 等价于 test1()
+ret()  # 输出 --- in test1 func----
+```
+
+> 运行结果中两个 `id` 值相同：**函数与变量一样，也有 `id`，可以被赋值、传递、返回**。这正是闭包能把内部函数“返回出去”的基础。
+
+#### 8.7.3 什么是闭包
+
+```python
+def test(number):
+    """外部函数
+
+    Args:
+        number (int): 外部函数的参数，将被内部函数使用
+
+    Returns:
+        function: 内部函数 test_in，它与变量 number 一起构成闭包
+    """
+
+    # 在外部函数内部再定义一个函数，并且这个内部函数用到了外部函数的变量 number，
+    # 那么这个内部函数以及它用到的变量，合称为闭包
+    def test_in(number_in):
+        """内部函数
+
+        Args:
+            number_in (int): 内部函数自己的参数
+
+        Returns:
+            int: number（外部函数的变量）与 number_in 之和
+        """
+        print('in test_in 函数, number_in is %d' % number_in)  # 打印内部函数收到的参数
+        return number + number_in  # number 来自外部函数，不是内部函数的局部变量
+
+    # 这里返回的就是闭包：返回函数名（不加括号），而不是调用结果
+    return test_in
+
+
+# 调用外部函数：20 传给了参数 number；返回的 test_in 函数被 ret 接收
+ret = test(20)
+# 调用闭包：100 传给了 number_in；number 仍是 20，所以返回 120
+print(ret(100))  # 先输出 in test_in 函数, number_in is 100，再输出 120
+# 再次调用：200 传给 number_in；number 依然是 20，所以返回 220
+print(ret(200))  # 先输出 in test_in 函数, number_in is 200，再输出 220
+```
+
+> **关键点**：`test(20)` 已经执行完毕、按理说局部变量 `number` 应该被销毁，但 `ret(100)` 依然能用到 `20`，这就是闭包的“记忆”能力——内部函数把用到的外部变量一起“带走”了。
+
+**再看一个实际例子：返回一次函数（直线）的闭包**
+
+```python
+def line_conf(a, b):
+    """外部函数：配置直线 y = a*x + b 的参数
+
+    Args:
+        a (int | float): 斜率
+        b (int | float): 截距
+
+    Returns:
+        function: 计算直线 y 值的内部函数 line
+    """
+
+    def line(x):
+        """内部函数：根据 x 计算 y
+
+        Args:
+            x (int | float): 自变量
+
+        Returns:
+            int | float: a*x + b 的结果
+        """
+        return a * x + b  # a、b 是外部函数 line_conf 的变量
+
+    return line  # 返回闭包
+
+
+line1 = line_conf(1, 1)  # 确定直线 y = x + 1
+line2 = line_conf(4, 5)  # 确定直线 y = 4x + 5
+print(line1(5))  # 输出 6（1*5+1）
+print(line2(5))  # 输出 25（4*5+5）
+```
+
+> 函数 `line` 与变量 `a`、`b` 构成闭包。创建闭包时，通过 `line_conf` 的参数 `a`、`b` 确定了函数的最终形态（`y = x + 1` 和 `y = 4x + 5`），只需变换参数就能得到不同的直线函数，所以**闭包可以提高代码的复用性**。
+>
+> 如果没有闭包，每次计算都要同时传入 `a`、`b`、`x`，参数传递更多，代码的可移植性也更差。
+
+**查看闭包里保存了什么**
+
+```python
+# 内部函数的 __code__.co_freevars：元组，保存“自由变量”的名字（来自外部函数、被内部函数使用的变量）
+print(line1.__code__.co_freevars)  # 输出 ('a', 'b')
+# 内部函数的 __closure__：由 cell 对象组成的元组，每个 cell 保存一个自由变量的值，顺序与 co_freevars 对应
+print(line1.__closure__)  # 输出 (<cell at 0x...: int object at 0x...>, <cell at ...>)
+# cell_contents：读取 cell 中保存的实际值
+print([c.cell_contents for c in line1.__closure__])  # 输出 [1, 1]，即 a=1, b=1
+print([c.cell_contents for c in line2.__closure__])  # 输出 [4, 5]，即 a=4, b=5
+```
+
+> **形成闭包的 3 个条件**：
+>
+> - 有**函数嵌套**（外部函数里面定义内部函数）
+> - 内部函数**使用了外部函数的变量**（这样的变量叫**自由变量**）
+> - 外部函数**返回了内部函数**（返回函数名，不加括号）
+
+> **注意点**：闭包引用了外部函数的局部变量，所以这些局部变量**不会在外部函数结束时被及时释放**，会一直占用内存，直到闭包本身被销毁。不要滥用闭包保存大对象。
+
+#### 8.7.4 在闭包中修改外部函数的变量：`nonlocal`
+
+> 内部函数可以**读取**外部函数的变量，但如果直接**赋值**，Python 会认为你在内部函数里**新定义了一个同名局部变量**，从而导致“先使用后定义”的错误。要想修改外部函数的变量，需要用 `nonlocal` 声明。
+
+```python
+x = 300  # 全局变量 x，下面的代码并不会用到它，仅用来说明“就近原则”
+
+
+def test1():
+    """外部函数"""
+    x = 200  # 外部函数的局部变量 x
+
+    def test2():
+        """内部函数：试图在使用 x 之后又给 x 赋值（错误示范）"""
+        # 因为下一行有 x = 100，Python 判定 x 是 test2 的局部变量，而此时它还没有被赋值
+        # 报错：UnboundLocalError，旧版本提示 local variable 'x' referenced before assignment，
+        # Python 3.12 起提示为 cannot access local variable 'x' where it is not associated with a value
+        print('----1----x=%d' % x)
+        x = 100  # 对 x 赋值，使 x 成为 test2 的局部变量
+        print('----2----x=%d' % x)  # 不会执行到这里
+
+    return test2  # 返回内部函数
+
+
+t1 = test1()  # 得到内部函数 test2
+t1()  # 调用时报 UnboundLocalError
+```
+
+> **解决办法**：在使用 `x` 之前，用 `nonlocal x` 声明 `x` 是外部函数的变量，这样赋值就是**修改外部函数的 `x`**，而不是新建局部变量。
+
+```python
+def test1():
+    """外部函数"""
+    x = 200  # 外部函数的局部变量 x
+
+    def test2():
+        """内部函数：用 nonlocal 修改外部函数的变量"""
+        nonlocal x  # 声明：下面使用的 x 是外部函数 test1 的 x（既不是局部变量，也不是全局变量）
+        print('----1----x=%d' % x)  # 输出 ----1----x=200
+        x = 100  # 修改的是 test1 中的 x
+        print('----2----x=%d' % x)  # 输出 ----2----x=100
+
+    test2()  # 调用内部函数
+    print('----3----x=%d' % x)  # 输出 ----3----x=100，说明外部函数的 x 确实被修改了
+
+
+test1()  # 调用外部函数，触发上面的全部输出
+```
+
+**经典案例：计数器**
+
+```python
+def counter(start=0):
+    """创建一个计数器
+
+    Args:
+        start (int): 计数的起始值，默认 0
+
+    Returns:
+        function: 每调用一次就让计数加 1 并返回当前值的函数 incr
+    """
+
+    def incr():
+        """让计数加 1
+
+        Returns:
+            int: 加 1 之后的计数值
+        """
+        nonlocal start  # 声明 start 是外部函数 counter 的变量，才能对它做 += 修改
+        start += 1  # 计数加 1
+        return start  # 返回当前计数
+
+    return incr  # 返回闭包
+
+
+c1 = counter(5)  # 第 1 个计数器，从 5 开始
+print(c1())  # 输出 6
+print(c1())  # 输出 7
+c2 = counter(50)  # 第 2 个计数器，从 50 开始，与 c1 互不影响
+print(c2())  # 输出 51
+print(c2())  # 输出 52
+print(c1())  # 输出 8（c1 继续它自己的计数）
+print(c1())  # 输出 9
+print(c2())  # 输出 53
+print(c2())  # 输出 54
+```
+
+> **要点**：每次调用 `counter(...)` 都会产生一份**独立的**外部变量，所以 `c1`、`c2` 各自保存自己的 `start`，互不干扰。
+
+> **对比 `global` 与 `nonlocal`**：
+>
+> ---
+
+| 关键字 | 作用 | 声明的变量位于 |
+|---|---|---|
+| `global` | 在函数内修改**全局变量** | 模块（全局）作用域 |
+| `nonlocal` | 在内部函数中修改**外部（嵌套）函数的变量** | 外层函数的作用域（不是全局） |
+
+> ---
+>
+> `nonlocal` 只能在嵌套函数中使用，且外层函数里必须已经存在该变量，否则报 `SyntaxError`。
+
+**易错点：在循环中创建闭包（延迟绑定）**
+
+```python
+funcs = []  # 用来保存多个闭包
+for i in range(3):  # i 依次为 0、1、2
+    def f():
+        return i  # i 是外部（这里是全局）变量，函数被调用时才去读取 i 的值
+    funcs.append(f)  # 保存函数 f
+
+print([f() for f in funcs])  # 输出 [2, 2, 2]：调用时循环早已结束，i 是最后的值 2
+
+funcs = []  # 重新准备一个列表
+for i in range(3):
+    def f(i=i):  # 用缺省参数在“定义时”就把当前的 i 固定下来
+        return i
+    funcs.append(f)  # 保存函数 f
+
+print([f() for f in funcs])  # 输出 [0, 1, 2]
+```
+
+> **结论**：闭包保存的是**变量本身**，而不是定义时变量的值；读取的是**调用时**变量的最新值。需要“定义时的值”时，用缺省参数固定下来。
+
+
+
+### 8.8 装饰器（Decorator）
+
+> **装饰器**：在**不修改原函数代码、不改变原函数调用方式**的前提下，给函数**添加额外功能**的一种写法。它的底层就是**闭包**：外层函数接收被装饰的函数，内层函数在调用原函数的前后加入新功能，最后返回内层函数。
+>
+> - 装饰器是开发中经常用到的功能（日志、计时、权限验证、缓存等），也是 Python 面试的高频考点
+> - 很多初学者觉得装饰器“绕”，关键是理解两点：① **函数名只是变量**；② **`@装饰器` 只是语法糖**，等价于一次普通的函数调用加重新赋值
+
+#### 8.8.1 先明白函数名只是变量
+
+```python
+#### 第一波：函数名与函数调用 ####
+def foo():
+    """打印 foo"""
+    print('foo')
+
+
+foo  # 只写函数名：表示这个函数对象本身，不会执行
+foo()  # 函数名加括号：执行 foo 函数，输出 foo
+
+#### 第二波：函数名可以被重新指向 ####
+def foo():
+    """原来的 foo 函数"""
+    print('foo')
+
+
+foo = lambda x: x + 1  # foo 这个名字被重新指向了另外一个匿名函数
+print(foo(1))  # 执行的是 lambda 表达式，输出 2，而不再是原来的 foo 函数
+```
+
+> **函数名仅仅是个变量**，只不过指向了定义好的函数而已，所以才能通过 `函数名()` 调用。如果执行了 `函数名 = xxx`，再 `函数名()` 时，调用的就不再是之前的那个函数了。
+>
+> **装饰器的核心就是这一招**：先把原函数保存起来，再让原来的函数名指向一个“功能更多的新函数”。
+
+#### 8.8.2 需求：为基础平台的所有功能增加验证
+
+> **场景**：创业公司有 N 个业务部门，**基础平台部门**提供底层功能（数据库操作、redis 调用、监控 API 等），各业务部门直接调用。现在需要给基础平台的**所有功能**加上“验证”机制：执行功能前，先做验证。
+
+```python
+############### 基础平台提供的功能如下 ###############
+def f1():
+    print('f1')  # 功能 1
+
+
+def f2():
+    print('f2')  # 功能 2
+
+
+def f3():
+    print('f3')  # 功能 3
+
+
+def f4():
+    print('f4')  # 功能 4
+
+
+############### 业务部门 A、B 调用基础平台提供的功能 ###############
+f1()  # 业务部门 A
+f2()
+f3()
+f4()
+f1()  # 业务部门 B
+f2()
+f3()
+f4()
+```
+
+> **三种实现方式的演进**（依次是“Low B”“Low BB”“Low BBB”的做法）：
+>
+> - **方案一**：让每个业务部门自己在调用前写验证代码 ——❌ 要改动所有业务部门的代码，工作量巨大，当天就被开除
+> - **方案二**：在 `f1`~`f4` 的内部各自复制粘贴“验证 1、验证 2、验证 3”——❌ 大量重复代码，还违反了“不能修改已有函数内部”的原则
+> - **方案三**：把验证抽成一个 `check_login()` 函数，在每个功能开头调用 ——⚠️ 业务部门不用改了，但仍然要**修改** `f1`~`f4` 的内部代码
+
+```python
+############### 方案二：每个函数内部复制验证代码（不推荐） ###############
+def f1():
+    # 验证 1
+    # 验证 2
+    # 验证 3
+    print('f1')  # 验证代码重复出现在 f1~f4 中，很难维护
+
+
+############### 方案三：抽取成函数（仍需修改每个功能） ###############
+def check_login():
+    """集中的验证函数"""
+    # 验证 1
+    # 验证 2
+    # 验证 3
+    pass  # 这里用 pass 代替真实的验证逻辑
+
+
+def f1():
+    check_login()  # 每个功能的开头都要手动调用验证
+    print('f1')
+
+
+def f2():
+    check_login()
+    print('f2')
+
+
+def f3():
+    check_login()
+    print('f3')
+
+
+def f4():
+    check_login()
+    print('f4')
+```
+
+> **开放封闭原则**（面向对象的设计原则，同样适用于函数式编程）：已经实现的功能代码**不允许被修改**，但**可以被扩展**，即：
+>
+> - **封闭**：已实现的功能代码块不要改
+> - **开放**：对扩展开放，可以增加新功能
+>
+> 如果把开放封闭原则用在上面的需求里，就**不允许在 `f1`、`f2`、`f3`、`f4` 的内部改代码**。解决办法就是**装饰器**。
+
+#### 8.8.3 装饰器的写法与执行原理
+
+```python
+def w1(func):
+    """装饰器函数
+
+    Args:
+        func (function): 被装饰的原函数（例如 f1）
+
+    Returns:
+        function: 内部函数 inner，它会取代原来的 f1
+    """
+
+    def inner():
+        """新的函数：先做验证，再调用原函数"""
+        # 验证 1
+        # 验证 2
+        # 验证 3
+        func()  # 调用原来的函数（func 是外部函数的变量，这里形成了闭包）
+
+    return inner  # 返回 inner 函数本身（不加括号）
+
+
+@w1  # 语法糖：等价于 f1 = w1(f1)
+def f1():
+    print('f1')  # 原函数的代码一行都不用改
+
+
+f1()  # 现在调用的是 inner：先验证，再输出 f1
+```
+
+> **`@w1` 到底做了什么**（以 `f1` 为例，解释器从上到下执行）：
+>
+> 1. `def w1(func):`：把 `w1` 函数加载到内存（函数在**被调用之前，内部代码不会执行**）
+> 2. 遇到 `@w1`：这是 Python 的**语法糖**，`@w1` 等价于**执行 `w1(f1)`**，即把 `@w1` 下面的函数 `f1` 作为参数传给 `w1`
+> 3. `w1` 内部定义了 `inner`，并且 `inner` 里引用了参数 `func`（此时 `func` 就是原来的 `f1`）；`w1` 把 `inner` 返回
+> 4. 把 `w1` 的返回值**重新赋值给 `f1`**，即 `f1 = w1(f1)`。此后的 `f1` 已经是 `inner` 函数了，而原来的 `f1` 被保存在闭包的 `func` 变量里
+>
+> 所以，业务部门以后执行 `f1()`，实际执行的是**新的 `f1`（即 `inner`）**：先执行验证，再执行原来的 `f1`，并把原 `f1` 的返回值返回给调用者。这样既加了验证，又没有改动原函数，业务部门也无需做任何修改。
+
+**再看一个更完整的演示：用 `@` 与不用 `@` 完全等价**
+
+```python
+def set_func(func):
+    """装饰器：给函数增加两段权限验证
+
+    Args:
+        func (function): 被装饰的函数
+
+    Returns:
+        function: 包装后的新函数
+    """
+
+    def call_func():
+        """新函数：先验证，再调用原函数"""
+        print('---这是权限验证1----')  # 新增功能 1
+        print('---这是权限验证2----')  # 新增功能 2
+        func()  # 调用原函数
+
+    return call_func  # 返回新函数
+
+
+@set_func  # 等价于 test1 = set_func(test1)
+def test1():
+    print('-----test1----')  # 原函数
+
+
+# 不使用 @ 语法糖的等价写法（注意：与上面的 @set_func 只能二选一，否则会被装饰两次）：
+# test1 = set_func(test1)  # 手动装饰：把装饰后的新函数重新赋值给 test1
+test1()  # 输出 ---这是权限验证1----、---这是权限验证2----、-----test1----
+```
+
+**装饰发生在“定义函数时”，而不是“调用函数时”**
+
+```python
+def set_func(func):
+    """装饰器：演示装饰器外层代码的执行时机"""
+    print('---开始进行装饰')  # 这一行位于外层函数中，装饰的那一刻就会执行
+
+    def call_func(a):
+        """新函数：接收一个参数 a"""
+        print('---这是权限验证1----')
+        print('---这是权限验证2----')
+        func(a)  # 把参数转交给原函数
+
+    return call_func  # 返回新函数
+
+
+@set_func  # 相当于 test1 = set_func(test1)，此时就会输出 ---开始进行装饰
+def test1(num):
+    print('-----test1----%d' % num)
+
+
+@set_func  # 相当于 test2 = set_func(test2)，此时又输出一次 ---开始进行装饰
+def test2(num):
+    print('-----test2----%d' % num)
+
+
+# 到这里，两个函数在“定义时”就已经装饰好了，上面已经输出了两次 ---开始进行装饰
+# 下面才是真正的调用：此时只会输出权限验证和 test1 的内容，不会再输出 ---开始进行装饰
+test1(100)
+```
+
+> **牢记**：装饰器在**函数被调用之前**就已经被解释器执行了（装饰的时机是定义函数的时候）。放在**外层函数中、内层函数之外**的代码，只在装饰时执行**一次**；放在**内层函数中**的代码，每次调用都会执行。
+
+#### 8.8.4 多个装饰器装饰同一个函数
+
+```python
+def add_first(func):
+    """装饰器 1：增加权限验证 1
+
+    Args:
+        func (function): 被装饰的函数
+
+    Returns:
+        function: 包装后的新函数
+    """
+    print('---开始进行装饰权限1 的功能---')  # 装饰时输出
+
+    def call_func(*args, **kwargs):
+        """新函数：支持任意参数"""
+        print('---这是权限验证1----')  # 调用时输出
+        return func(*args, **kwargs)  # 调用被装饰的函数并返回其结果
+
+    return call_func
+
+
+def add_second(func):
+    """装饰器 2：增加权限验证 2
+
+    Args:
+        func (function): 被装饰的函数
+
+    Returns:
+        function: 包装后的新函数
+    """
+    print('---开始进行装饰权限2 的功能---')  # 装饰时输出
+
+    def call_func(*args, **kwargs):
+        """新函数：支持任意参数"""
+        print('---这是权限验证2----')  # 调用时输出
+        return func(*args, **kwargs)  # 调用被装饰的函数并返回其结果
+
+    return call_func
+
+
+@add_first  # 后装饰：相当于 test1 = add_first(test1)，此时的 test1 已经是 add_second 装饰后的结果
+@add_second  # 先装饰（离函数最近）：相当于 test1 = add_second(test1)
+def test1():
+    print('------test1------')
+
+
+test1()  # 调用装饰完成后的 test1
+```
+
+```
+---开始进行装饰权限2 的功能---
+---开始进行装饰权限1 的功能---
+---这是权限验证1----
+---这是权限验证2----
+------test1------
+```
+
+> **规律**：
+>
+> - **装饰顺序由内而外**：离函数最近的装饰器先装饰（`add_second` 先、`add_first` 后）
+> - **执行顺序由外而内**：调用时先走最外层的 `add_first` 的新函数，再进入 `add_second` 的新函数，最后才是原函数（类似“剥洋葱”或栈的操作）
+> - 多个装饰器 `@A @B def f()` 等价于 `f = A(B(f))`
+
+**再用一个直观的例子验证：给文字包裹 HTML 标签**
+
+```python
+def makeBold(fn):
+    """装饰器：给返回的字符串外面包裹 <b></b>
+
+    Args:
+        fn (function): 无参数、返回 str 的函数
+
+    Returns:
+        function: 包装后的新函数
+    """
+
+    def wrapped():
+        """新函数：在原函数返回值外面加粗体标签"""
+        return '<b>' + fn() + '</b>'  # 拼接标签
+
+    return wrapped
+
+
+def makeItalic(fn):
+    """装饰器：给返回的字符串外面包裹 <i></i>
+
+    Args:
+        fn (function): 无参数、返回 str 的函数
+
+    Returns:
+        function: 包装后的新函数
+    """
+
+    def wrapped():
+        """新函数：在原函数返回值外面加斜体标签"""
+        return '<i>' + fn() + '</i>'  # 拼接标签
+
+    return wrapped
+
+
+@makeBold  # 只加粗
+def test1():
+    return 'hello world-1'
+
+
+@makeItalic  # 只斜体
+def test2():
+    return 'hello world-2'
+
+
+@makeBold  # 后装饰：对已经斜体的结果再加粗，所以粗体标签在最外层
+@makeItalic  # 先装饰：先包裹斜体标签
+def test3():
+    return 'hello world-3'
+
+
+print(test1())  # 输出 <b>hello world-1</b>
+print(test2())  # 输出 <i>hello world-2</i>
+print(test3())  # 输出 <b><i>hello world-3</i></b>
+```
+
+#### 8.8.5 让装饰器通用：参数与返回值
+
+> 装饰器内部的新函数要想**适配各种被装饰函数**，需要注意两件事：① 新函数的形参要能接收被装饰函数的参数（用 `*args, **kwargs`）；② 新函数要把原函数的返回值 `return` 出去。
+
+**例 1：被装饰的函数没有参数**
+
+```python
+from time import ctime, sleep  # ctime：返回当前时间字符串；sleep：暂停指定秒数
+
+
+def timefun(func):
+    """装饰器：调用函数前打印函数名和调用时间
+
+    Args:
+        func (function): 被装饰的无参函数
+
+    Returns:
+        function: 包装后的新函数 wrapped_func
+    """
+
+    def wrapped_func():
+        """新函数：先打印日志，再调用原函数"""
+        # func.__name__：函数对象的名字（str），这里是原函数的名字
+        print('%s called at %s' % (func.__name__, ctime()))
+        func()  # 调用原函数
+
+    return wrapped_func
+
+
+@timefun  # 相当于 foo = timefun(foo)
+def foo():
+    print('I am foo')
+
+
+foo()  # 输出 foo called at 当前时间，再输出 I am foo
+sleep(2)  # 暂停 2 秒，便于观察两次调用时间的差别
+foo()  # 再次调用
+```
+
+> **执行过程**：
+>
+> ```python
+> foo = timefun(foo)  # foo 先作为参数传给 func，再接收 timefun 返回的 wrapped_func
+> foo()               # 调用 foo()，等价于调用 wrapped_func()
+> ```
+>
+> 内部函数 `wrapped_func` 被引用（`foo` 指向它），所以外部函数的变量 `func`（**自由变量**）不会被释放，`func` 里保存的就是**原来的 `foo` 函数对象**。
+
+**例 2：被装饰的函数有固定参数**
+
+```python
+from time import ctime, sleep  # 导入时间相关函数
+
+
+def timefun(func):
+    """装饰器：被装饰函数有两个参数 a、b
+
+    Args:
+        func (function): 被装饰的函数，形参为 (a, b)
+
+    Returns:
+        function: 包装后的新函数
+    """
+
+    def wrapped_func(a, b):
+        """新函数的形参要与被装饰函数一致"""
+        print('%s called at %s' % (func.__name__, ctime()))  # 日志
+        print(a, b)  # 打印收到的参数
+        func(a, b)  # 把参数原样传给原函数
+
+    return wrapped_func
+
+
+@timefun
+def foo(a, b):
+    print(a + b)  # 输出两数之和
+
+
+foo(3, 5)  # 输出日志、3 5、8
+sleep(2)  # 暂停 2 秒
+foo(2, 4)  # 输出日志、2 4、6
+```
+
+**例 3：被装饰的函数有不定长参数**
+
+```python
+def set_func(func):
+    """装饰器：适配任意个数、任意形式的参数
+
+    Args:
+        func (function): 被装饰的函数
+
+    Returns:
+        function: 包装后的新函数
+    """
+    print('---开始进行装饰')  # 装饰时输出一次
+
+    def call_func(*args, **kwargs):
+        """*args 接收所有位置参数（打包为 tuple），**kwargs 接收所有关键字参数（打包为 dict）"""
+        print('---这是权限验证1----')
+        print('---这是权限验证2----')
+        # func(args, kwargs)  # 不行：相当于只传了 2 个参数，一个是元组、一个是字典
+        func(*args, **kwargs)  # 拆包：把元组拆成位置参数，把字典拆成关键字参数，再传给原函数
+        # 提示：拆包的细节见 8.2.1
+
+    return call_func
+
+
+@set_func  # 相当于 test1 = set_func(test1)
+def test1(num, *args, **kwargs):
+    print('-----test1----%d' % num)  # 输出第 1 个参数
+    print('-----test1----', args)  # 输出多余的位置参数（元组）
+    print('-----test1----', kwargs)  # 输出多余的关键字参数（字典）
+
+
+test1(100)  # args 为 ()，kwargs 为 {}
+test1(100, 200)  # args 为 (200,)，kwargs 为 {}
+test1(100, 200, 300, mm=100)  # args 为 (200, 300)，kwargs 为 {'mm': 100}
+```
+
+> **经验**：新函数采用 `*args, **kwargs` 的参数设计后，无论被装饰的函数有参数、无参数还是有多个参数，都能顺利传递。**写通用装饰器首选这种写法**。
+
+**例 4：装饰器中的 `return`**
+
+```python
+from time import ctime, sleep  # 导入时间相关函数
+
+
+def timefun(func):
+    """装饰器：新函数没有 return（错误示范）
+
+    Args:
+        func (function): 被装饰的函数
+
+    Returns:
+        function: 包装后的新函数
+    """
+
+    def wrapped_func():
+        print('%s called at %s' % (func.__name__, ctime()))  # 日志
+        func()  # 调用了原函数，但是没有把它的返回值 return 出去
+
+    return wrapped_func
+
+
+@timefun
+def foo():
+    print('I am foo')  # 没有返回值（返回 None）
+
+
+@timefun
+def getInfo():
+    return '----hahah---'  # 有返回值
+
+
+foo()  # 输出日志和 I am foo
+sleep(1)  # 暂停 1 秒
+foo()  # 再次调用
+ret = getInfo()  # 调用有返回值的函数
+print(ret)  # 输出 None：返回值被装饰器“吞掉”了
+```
+
+> 如果把装饰器中的 `func()` 改为 `return func()`，则 `print(ret)` 会输出 `----hahah---`。
+>
+> **总结**：一般情况下，为了让装饰器更通用，新函数里要**把原函数的返回值 `return` 出去**。
+
+> **通用装饰器的标准模板**：
+>
+> ```python
+> def decorator(func):
+>     def wrapper(*args, **kwargs):      # 接收任意参数
+>         # 调用前：新增的功能
+>         result = func(*args, **kwargs)  # 拆包传参，并保存原函数的返回值
+>         # 调用后：新增的功能
+>         return result                   # 返回原函数的返回值
+>     return wrapper
+> ```
+
+#### 8.8.6 带参数的装饰器
+
+> **带参数的装饰器**：装饰器本身也需要接收参数（如日志前缀、权限级别），此时要再**多包一层函数**：最外层接收装饰器的参数，返回真正的装饰器。
+
+**例 5：在原有装饰器的基础上，设置外部变量**
+
+```python
+from time import ctime, sleep  # 导入时间相关函数
+
+
+def timefun_arg(pre='hello'):
+    """最外层：接收装饰器自己的参数 pre，返回真正的装饰器
+
+    Args:
+        pre (str): 日志前缀，默认 hello
+
+    Returns:
+        function: 真正的装饰器 timefun
+    """
+
+    def timefun(func):
+        """真正的装饰器：接收被装饰函数
+
+        Args:
+            func (function): 被装饰的函数
+
+        Returns:
+            function: 包装后的新函数
+        """
+
+        def wrapped_func():
+            """新函数：打印带前缀的日志"""
+            print('%s called at %s %s' % (func.__name__, ctime(), pre))  # pre 来自最外层函数
+            return func()  # 调用原函数并返回结果
+
+        return wrapped_func
+
+    return timefun  # 返回装饰器
+
+
+# 带参数装饰器的装饰过程：
+# 1. 先调用 timefun_arg('wangdao')，得到返回值，即内部的 timefun 装饰器
+# 2. 再用这个返回值去装饰 foo，即 timefun(foo)
+# 3. timefun(foo) 的返回值是 wrapped_func
+# 4. 让 foo = wrapped_func，即 foo 现在指向 wrapped_func
+@timefun_arg('wangdao')
+def foo():
+    print('I am foo')
+
+
+@timefun_arg('python')
+def too():
+    print('I am too')
+
+
+foo()  # 输出 foo called at ... wangdao，再输出 I am foo
+sleep(2)  # 暂停 2 秒
+foo()  # 再次调用
+too()  # 输出 too called at ... python，再输出 I am too
+sleep(2)  # 暂停 2 秒
+too()  # 再次调用
+```
+
+> 可以这样理解：`@timefun_arg('wangdao')` 加在 `foo` 上，相当于 `foo = timefun_arg('wangdao')(foo)`；因此调用 `foo()` 就是 `timefun_arg('wangdao')(foo)()`。
+
+**实际场景：`test1` 和 `test2` 需要不同级别的权限验证**
+
+```python
+def set_func(func):
+    """不好的做法：权限级别由调用者在调用时传入
+
+    Args:
+        func (function): 被装饰的函数
+
+    Returns:
+        function: 包装后的新函数
+    """
+
+    def call_func(*args, **kwargs):
+        level = args[0]  # 从调用参数中取权限级别
+        if level == 1:  # 级别 1
+            print('----权限级别1，验证----')
+        elif level == 2:  # 级别 2
+            print('----权限级别2，验证----')
+        return func()  # 调用原函数
+
+    return call_func
+
+
+@set_func
+def test1():
+    print('-----test1---')
+    return 'ok'
+
+
+@set_func
+def test2():
+    print('-----test2---')
+    return 'ok'
+
+
+# 这种方式不好：
+# 1. 如果 test1 之前已经在很多地方被调用，那么需要修改所有调用处（多传一个级别参数）
+# 2. 验证的级别应该由函数定义者（开发者）设定，而不是由调用者设定
+test1(1)  # 调用者传入级别
+test2(2)  # 调用者传入级别
+```
+
+> 上面的手法并不合适。合理的做法是：**由函数的定义者在装饰时指定级别**，也就是使用带参数的装饰器。
+
+```python
+def set_level(level_num):
+    """最外层：接收权限级别，返回真正的装饰器
+
+    Args:
+        level_num (int): 权限级别，1 或 2
+
+    Returns:
+        function: 真正的装饰器 set_func
+    """
+
+    def set_func(func):
+        """真正的装饰器
+
+        Args:
+            func (function): 被装饰的函数
+
+        Returns:
+            function: 包装后的新函数
+        """
+
+        def call_func(*args, **kwargs):
+            """新函数：根据装饰时指定的级别做验证"""
+            if level_num == 1:  # level_num 来自最外层函数
+                print('----权限级别1，验证----')
+            elif level_num == 2:
+                print('----权限级别2，验证----')
+            return func()  # 调用原函数并返回结果
+
+        return call_func
+
+    return set_func
+
+
+# 带有参数的装饰器，装饰过程分为 3 步：
+# 1. 调用 set_level 函数，把 1 当作实参
+# 2. set_level 返回一个装饰器的引用，即 set_func
+# 3. 用返回的 set_func 对 test1 函数进行装饰（装饰过程与之前一样）
+@set_level(1)  # 等价于 test1 = set_level(1)(test1)
+def test1():
+    print('-----test1---')
+    return 'ok'
+
+
+@set_level(2)  # 等价于 test2 = set_level(2)(test2)
+def test2():
+    print('-----test2---')
+    return 'ok'
+
+
+test1()  # 输出 ----权限级别1，验证----、-----test1---
+test2()  # 输出 ----权限级别2，验证----、-----test2---
+```
+
+> **带参数装饰器的三层结构**：`外层(装饰器参数)` → `装饰器(被装饰函数)` → `新函数(原函数的参数)`。
+
+#### 8.8.7 类装饰器（了解）
+
+> **装饰器的接口约束**：装饰器必须接收一个 **callable（可调用）对象**作为参数，然后返回一个 callable 对象。在 Python 中，callable 对象一般都是函数，但也有例外：**只要某个对象重写了 `__call__()` 方法（见 10.5.4），这个对象就是 callable 的**。
+
+```python
+class Test():
+    """演示：重写了 __call__ 的对象可以像函数一样被调用"""
+
+    def __call__(self):
+        """对象后面加括号时触发"""
+        print('call me!')  # 输出 call me!
+
+
+t = Test()  # 创建实例对象
+t()  # 对象() 触发 __call__，输出 call me!
+```
+
+**类装饰器 demo**
+
+```python
+class Test(object):
+    """类装饰器：用类来装饰函数"""
+
+    def __init__(self, func):
+        """装饰时（@Test）调用，接收被装饰的函数
+
+        Args:
+            func (function): 被装饰的函数
+        """
+        print('---初始化---')  # 装饰的那一刻就会输出
+        print('func name is %s' % func.__name__)  # 输出被装饰函数的名字
+        self.__func = func  # 保存被装饰函数的引用，供 __call__ 使用
+
+    def __call__(self):
+        """调用 test() 时触发：先执行新增功能，再调用原函数"""
+        print('---装饰器中的功能---')  # 新增的功能
+        self.__func()  # 调用原来的函数体
+
+
+# 说明：
+# 1. 当用 Test 来装饰 test 函数时，首先会创建 Test 的实例对象，
+#    并把 test 这个函数当作参数传递给 __init__ 方法，
+#    即 __init__ 中的属性 __func 指向了原来的 test 函数
+# 2. 此后 test 这个名字指向的是用 Test 创建出来的实例对象
+# 3. 当使用 test() 调用时，相当于“对象()”，因此会调用这个对象的 __call__ 方法
+# 4. 为了能在 __call__ 里调用原来的函数体，__init__ 中需要用实例属性保存它，
+#    所以才有 self.__func = func 这句代码
+@Test  # 相当于 test = Test(test)
+def test():
+    print('----test---')
+
+
+test()  # 即使不调用，运行程序依然会看到 ---初始化--- 和 func name is test，因为装饰发生在定义时
+```
+
+```
+---初始化---
+func name is test
+---装饰器中的功能---
+----test---
+```
+
+> **说明**：类装饰器的缺点是上面写法只适配“无参数”的函数；如需适配任意参数，可以让 `__call__` 接收 `*args, **kwargs` 并转交给原函数。实际开发中，**函数装饰器更常用**，类装饰器了解即可。
+
+#### 8.8.8 `functools.wraps`：保留原函数的信息
+
+> 装饰之后，原函数名指向的是装饰器里的**新函数**，因此 `__name__`（函数名）、`__doc__`（文档字符串）都变成了新函数的信息，不利于调试与文档生成。使用 `functools.wraps` 可以把原函数的这些信息**复制**到新函数上。
+
+```python
+from functools import wraps  # 导入 wraps 装饰器
+
+
+def my_decorator(func):
+    """没有使用 wraps 的装饰器"""
+
+    def wper(*args, **kwargs):
+        """decorator"""  # 这是新函数 wper 自己的文档字符串
+        print('Calling decorated function...')  # 新增功能
+        return func(*args, **kwargs)  # 调用原函数并返回结果
+
+    return wper
+
+
+@my_decorator
+def example():
+    """Docstring"""  # 这是原函数 example 的文档字符串
+    print('Called example function')
+
+
+# 输出 wper decorator：函数名和文档都变成了新函数 wper 的，原函数的信息丢失
+print(example.__name__, example.__doc__)
+
+
+def my_decorator(func):
+    """使用了 wraps 的装饰器
+
+    Args:
+        func (function): 被装饰的函数
+
+    Returns:
+        function: 包装后的新函数（带有原函数的名字和文档）
+    """
+
+    @wraps(func)  # 把 func 的 __name__、__doc__ 等信息复制给下面的 wper
+    def wper(*args, **kwargs):
+        """decorator"""
+        print('Calling decorated function...')  # 新增功能
+        return func(*args, **kwargs)  # 调用原函数并返回结果
+
+    return wper
+
+
+@my_decorator
+def example():
+    """Docstring"""
+    print('Called example function')
+
+
+# 输出 example Docstring：保留了原函数的函数名和文档
+print(example.__name__, example.__doc__)
+```
+
+> **建议**：写装饰器时，**养成给内部新函数加 `@wraps(func)` 的习惯**。
+
+#### 8.8.9 装饰器的常见应用场景
+
+> - **引入日志**：在执行某个函数前或函数后记录日志
+> - **函数执行时间统计**
+> - **执行函数前的预备处理**
+> - **执行函数后的清理功能**
+> - **权限校验**等场景
+> - **缓存**
+
+**应用 1：函数执行时间统计**
+
+```python
+import time  # 导入 time 模块，使用 time.time() 获取当前时间戳（float，单位：秒）
+
+
+def set_func(func):
+    """装饰器：统计函数的执行耗时
+
+    Args:
+        func (function): 被装饰的无参函数
+
+    Returns:
+        function: 包装后的新函数
+    """
+
+    def call_func():
+        """新函数：记录开始时间、调用原函数、记录结束时间并打印耗时"""
+        start_time = time.time()  # 记录开始时间（float）
+        func()  # 调用原函数
+        stop_time = time.time()  # 记录结束时间（float）
+        print('alltime is %f' % (stop_time - start_time))  # 输出耗时（秒）
+
+    return call_func
+
+
+@set_func
+def test1():
+    print('-----test1----')
+    for i in range(100000):  # 空循环 10 万次，模拟耗时操作
+        pass
+
+
+test1()  # 输出 -----test1---- 和 alltime is 0.00xxxx
+```
+
+**应用 2：缓存（把算过的结果存起来，避免重复计算）**
+
+```python
+def cache(func):
+    """装饰器：缓存函数的计算结果
+
+    Args:
+        func (function): 被装饰的、只接收一个可哈希参数的函数
+
+    Returns:
+        function: 带缓存功能的新函数
+    """
+    memo = {}  # 字典：key 是参数，value 是计算结果；它是闭包的自由变量，会一直保存
+
+    def wrapper(n):
+        """新函数：先查缓存，没有才真正计算"""
+        if n not in memo:  # 缓存里没有这个参数
+            memo[n] = func(n)  # 调用原函数计算，并把结果存入缓存
+        return memo[n]  # 返回缓存中的结果
+
+    return wrapper
+
+
+@cache  # 相当于 fib = cache(fib)；函数内部递归调用的 fib 也是被缓存后的版本
+def fib(n):
+    """斐波那契数列第 n 项"""
+    return n if n < 2 else fib(n - 1) + fib(n - 2)
+
+
+print(fib(80))  # 输出 23416728348467685；没有缓存时这样递归会慢到几乎无法完成
+```
+
+> 标准库已经提供了现成的缓存装饰器 `functools.lru_cache`，实际开发中可直接使用：`@lru_cache(maxsize=None)`。
+
+#### 8.8.10 闭包与装饰器速查
+
+| 概念 | 要点 |
+|---|---|
+| 闭包 | 嵌套函数 + 内部函数使用外部函数的变量 + 外部函数返回内部函数 |
+| 自由变量 | 外部函数中被内部函数使用的变量，保存在内部函数的 `__closure__` 中 |
+| `nonlocal` | 在内部函数中修改外部函数的变量；不加则会被当作新的局部变量 |
+| 装饰器 | 接收函数、返回函数的闭包，在不改原函数的前提下增加功能 |
+| `@decorator` | 语法糖，等价于 `func = decorator(func)`，在**定义函数时**执行 |
+| 通用装饰器 | 新函数用 `*args, **kwargs` 接收参数，并 `return` 原函数的返回值 |
+| 多个装饰器 | 由内而外装饰（离函数近的先装饰），由外而内执行 |
+| 带参数装饰器 | 三层嵌套：`@decorator(参数)` 等价于 `func = decorator(参数)(func)` |
+| 类装饰器 | `__init__` 接收函数，`__call__` 实现新功能，了解即可 |
+| `@wraps(func)` | 保留原函数的 `__name__`、`__doc__` 等信息 |
 
 ---
 
@@ -7031,6 +8377,1015 @@ if __name__ == '__main__':
 > - 私有 IP（如 `192.168.x.x`）只在局域网内有效，不能直接上网；
 > - NAT 靠 **`IP + 端口`** 的映射表区分内网中的不同设备/进程；
 > - 因此外网无法**主动**访问内网设备（映射表里没有记录），这也是“内网穿透”需求的由来。
+
+---
+
+### 16.14 WSGI 与 mini-web 框架（Web 动态服务器）
+
+> 16.12 的静态服务器只能把磁盘上的文件原样返回。真实的网站还需要**动态页面**：页面内容由程序在请求到来时现场生成（如查询数据库、显示当前时间）。本节用 **WSGI 协议**把“Web 服务器”和“Web 框架”分开，一步步实现一个既能返回静态资源、又能返回动态页面的 **mini-web 服务器**。
+>
+> - **Web 服务器**：负责网络通信、解析 HTTP 请求、组织 HTTP 响应（即前面一直在写的套接字、多进程部分）
+> - **Web 框架（应用程序）**：负责**业务逻辑**，根据请求内容生成页面（如 Django、Flask，本节自己写的 `mini_frame`）
+> - **WSGI**：规定两者之间如何“对接”的**接口标准**
+
+#### 16.14.1 动态资源请求的流程
+
+> **静态资源**：磁盘上现成的文件（`.html`、`.css`、`.js`、图片等），请求什么就返回什么。
+>
+> **动态资源**：由程序运行后**现场生成**内容的页面，同一个网址在不同时间、对不同用户可能返回不同内容。
+>
+> 本节的约定：请求路径以 **`.py` 结尾**的，就认为是动态资源，交给 Web 框架处理；其余的认为是静态资源，直接读取文件返回。（真实的框架使用“路由”来区分，这里是为了教学简化。）
+
+> **浏览器请求动态页面的过程**（Web 服务器与 Web 应用程序框架之间通过 WSGI 交互）：
+>
+> ```
+> 浏览器                    Web 服务器                      应用程序框架
+>   │  1. http 请求动态资源      │                               │
+>   │ ─────────────────────────→ │                               │
+>   │                            │  2. 通过 WSGI 调用框架的       │
+>   │                            │     application 函数          │
+>   │                            │ ────────────────────────────→ │
+>   │                            │  3. 框架通过引用调用服务器的   │
+>   │                            │     start_response 方法，      │
+>   │                            │     设置状态码和响应头         │
+>   │                            │ ←──────────────────────────── │
+>   │                            │  4. 调用返回，此时服务器已      │
+>   │                            │     保存了刚才设置的信息        │
+>   │                            │ ────────────────────────────→ │
+>   │                            │                               │ 5. 查询数据库等，
+>   │                            │                               │    生成动态页面的 body
+>   │                            │  6. 把生成的 body 作为返回值    │
+>   │                            │     返回给服务器的调用处        │
+>   │                            │ ←──────────────────────────── │
+>   │  7. 服务器把响应数据         │                               │
+>   │     （头 + body）返回浏览器  │                               │
+>   │ ←───────────────────────── │                               │
+> ```
+
+#### 16.14.2 WSGI 协议简介
+
+> **问题**：怎样在刚建好的 Web 服务器上运行一个 Django 应用或 Flask 应用，并且**不对代码做任何改变**就能适应不同的 Web 框架？
+>
+> - 以前，选择 Python Web 框架会**受制于**可用的 Web 服务器，反之亦然。
+> - 如果服务器和框架不是被设计成协同工作的，就无法直接结合起来。
+>
+> 答案就是 **WSGI**（Python Web Server Gateway Interface，读作 “wizgy”）：一套**服务器与框架之间的接口标准**。
+
+> **WSGI 的作用**：
+>
+> - 允许开发者把“选择 Web 框架”和“选择 Web 服务器”**分开**，可以**混合搭配**：例如可以在 `Gunicorn`、`Nginx + uWSGI`、`Waitress` 上运行 `Django`、`Flask`、`Pyramid`
+> - **Web 服务器必须具备 WSGI 接口**，所有现代 Python Web 框架也都已具备 WSGI 接口，因此不用修改代码就能让服务器和某个框架协同工作
+> - 对服务器和框架的开发者都方便：双方可以专注于各自擅长的领域，**互不牵制**
+> - 其他语言也有类似的接口：Java 有 `Servlet API`，Ruby 有 `Rack`
+
+```
+Web 服务器                  WSGI 接口                  Web 框架
+┌──────────────┐                                  ┌─────────┐
+│ Waitress     │ ─┐                            ┌─ │ Pyramid │
+│ Nginx/uWSGI  │ ─┼──────── WSGI ─────────────┼─ │ Flask   │
+│ Gunicorn     │ ─┘                            └─ │ Django  │
+└──────────────┘                                  └─────────┘
+```
+
+#### 16.14.3 定义 WSGI 接口
+
+> WSGI 接口的定义**非常简单**，它只要求 Web 开发者实现**一个函数**，就可以响应 HTTP 请求。下面是最简单的 Web 版本的 “Hello World!”：
+
+```python
+def application(environ, start_response):
+    """符合 WSGI 标准的 HTTP 处理函数（教学简化版）
+
+    Args:
+        environ (dict): 包含所有 HTTP 请求信息的字典，由 Web 服务器负责生成并传入
+        start_response (function): 发送 HTTP 响应状态和响应头的函数，由 Web 服务器提供
+
+    Returns:
+        str: 响应体（教学版直接返回 str，真正的 WSGI 要求返回字节串的可迭代对象，见下面的说明）
+    """
+    # 调用 start_response：参数 1 是状态（str，格式“状态码 说明”），
+    # 参数 2 是响应头（list，里面是多个 (头名称, 头的值) 元组）
+    start_response('200 OK', [('Content-Type', 'text/html')])
+    # 返回响应体，也就是浏览器看到的页面内容
+    return 'Hello World!'
+```
+
+> 上面的 `application()` 函数就是符合 WSGI 标准的一个 HTTP 处理函数，它接收两个参数：
+>
+> - `environ`：一个**包含所有 HTTP 请求信息的 `dict` 对象**
+> - `start_response`：一个**发送 HTTP 响应（状态码和响应头）的函数**
+>
+> 整个 `application()` 函数本身**没有涉及任何解析 HTTP 的部分**，也就是把**底层 Web 服务器的解析部分**和**应用程序的逻辑部分**进行了分离，开发者就可以专心做好一个领域。
+>
+> **那 `application()` 由谁调用？** 如果自己调用，`environ` 和 `start_response` 两个参数我们没法提供，返回的内容也没法发给浏览器。所以 `application()` 必须**由 WSGI 服务器来调用**。有很多符合 WSGI 规范的服务器，而我们本节的目标就是自己做一个**既能解析静态网页，又能解析动态网页的服务器**。
+
+> **教学版与标准 WSGI 的区别**（务必了解）：
+>
+> - `start_response(status, response_headers)`：`status` 是形如 `'200 OK'` 的字符串；`response_headers` 是由 `(名称, 值)` 元组组成的**列表**（不能是字典），每个元组就是响应头中的一行 `名称: 值`
+> - **标准 WSGI** 要求 `application` 返回**由 `bytes` 组成的可迭代对象**（如 `[b'Hello World!']`），而本节为了便于初学者理解，直接返回 `str`，由我们自己的服务器负责 `encode`
+> - 调用顺序：框架先调用 `start_response` 设置状态和响应头，然后 `return` 响应体
+
+**用标准库的 `wsgiref` 运行一个真正符合标准的 WSGI 应用（验证用）**
+
+```python
+# 从标准库 wsgiref 导入 make_server：创建一个简单的 WSGI 服务器
+from wsgiref.simple_server import make_server
+
+
+def application(environ, start_response):
+    """标准 WSGI 应用：返回 bytes 列表
+
+    Args:
+        environ (dict): 请求信息字典
+        start_response (function): 设置状态码和响应头的函数
+
+    Returns:
+        list[bytes]: 响应体（字节串的列表）
+    """
+    # 设置状态码和响应头，charset=utf-8 告诉浏览器按 utf-8 解码中文
+    start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
+    # 取出请求路径：environ['PATH_INFO']，类型 str
+    path = environ['PATH_INFO']
+    # 返回列表，元素必须是 bytes，所以要 encode
+    return [('<h1>你好，WSGI！你访问的是 %s</h1>' % path).encode('utf-8')]
+
+
+# make_server(host, port, app)：host 为空字符串表示本机所有网卡；返回服务器对象
+httpd = make_server('', 8000, application)
+# serve_forever()：开始永久运行，用浏览器访问 http://127.0.0.1:8000/abc 查看效果
+httpd.serve_forever()
+```
+
+#### 16.14.4 `environ` 字典：Web 服务器传给框架的请求信息
+
+> `environ` 是 **Web 服务器通过 WSGI 协议传给 Web 框架的字典**，里面保存了请求的全部信息。下面是 uWSGI 服务器传入的 `environ` 示例（用户访问 `/index.html`）：
+
+```python
+{
+    'HTTP_ACCEPT_LANGUAGE': 'zh-cn',  # 请求头 Accept-Language：浏览器可接受的语言
+    'wsgi.file_wrapper': '<built-in function uwsgi_sendfile>',  # 服务器提供的文件发送优化函数（可选）
+    'HTTP_UPGRADE_INSECURE_REQUESTS': '1',  # 请求头 Upgrade-Insecure-Requests
+    'uwsgi.version': b'2.0.15',  # uWSGI 特有信息：服务器版本
+    'REMOTE_ADDR': '172.16.7.1',  # 客户端（浏览器）的 IP
+    'wsgi.errors': '<_io.TextIOWrapper name=2 mode=\'w\' encoding=\'UTF-8\'>',  # 错误输出流
+    'wsgi.version': (1, 0),  # WSGI 协议的版本
+    'REMOTE_PORT': '40432',  # 客户端使用的端口
+    'REQUEST_URI': '/',  # uWSGI 扩展：原始请求 URI
+    'SERVER_PORT': '8000',  # 服务器监听的端口
+    'wsgi.multithread': False,  # 服务器是否为多线程
+    'HTTP_ACCEPT': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',  # 浏览器可接受的内容类型
+    'HTTP_HOST': '172.16.7.152:8000',  # 请求头 Host：访问的主机和端口
+    'wsgi.run_once': False,  # 应用是否在进程生命周期内只运行一次
+    'wsgi.input': '<uwsgi._Input object at 0x7f7faecdc9c0>',  # 请求体（如 POST 数据）的类文件对象
+    'SERVER_PROTOCOL': 'HTTP/1.1',  # 请求使用的协议版本
+    'REQUEST_METHOD': 'GET',  # 请求方法
+    'HTTP_ACCEPT_ENCODING': 'gzip,deflate',  # 浏览器可接受的压缩方式
+    'HTTP_CONNECTION': 'keep-alive',  # 请求头 Connection：长连接
+    'uwsgi.node': b'ubuntu',  # uWSGI 特有信息：节点名
+    'HTTP_DNT': '1',  # 请求头 DNT（Do Not Track）
+    'UWSGI_ROUTER': 'http',  # uWSGI 特有信息：路由器类型
+    'SCRIPT_NAME': '',  # 应用所在的路径前缀，通常为空
+    'wsgi.multiprocess': False,  # 服务器是否为多进程
+    'QUERY_STRING': '',  # 网址中 ? 之后的查询字符串
+    'PATH_INFO': '/index.html',  # 请求的路径（框架路由最常用的键）
+    'wsgi.url_scheme': 'http',  # 使用的协议：http 或 https
+    'HTTP_USER_AGENT': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/603.2.4 '
+                       '(KHTML, like Gecko) Version/10.1.1 Safari/603.2.4',  # 浏览器标识
+    'SERVER_NAME': 'ubuntu'  # 服务器名
+}
+```
+
+| 键 | 含义 | 说明 |
+|---|---|---|
+| `REQUEST_METHOD` | 请求方法 | `GET`、`POST` 等 |
+| `PATH_INFO` | 请求路径 | 如 `/index.html`，**框架根据它决定返回什么页面** |
+| `QUERY_STRING` | 查询字符串 | 网址 `?` 后面的内容，如 `a=1&b=2` |
+| `SERVER_PROTOCOL` | 协议版本 | 如 `HTTP/1.1` |
+| `SERVER_NAME` / `SERVER_PORT` | 服务器名与端口 | 服务器自身的信息 |
+| `REMOTE_ADDR` / `REMOTE_PORT` | 客户端 IP 与端口 | 浏览器一端的信息 |
+| `HTTP_` 开头的键 | 请求头 | 如 `HTTP_HOST`、`HTTP_USER_AGENT`、`HTTP_ACCEPT_LANGUAGE`，即把请求头名称转大写、`-` 换成 `_` 后加 `HTTP_` 前缀 |
+| `wsgi.version` | WSGI 版本 | 元组，如 `(1, 0)` |
+| `wsgi.url_scheme` | 协议 | `http` 或 `https` |
+| `wsgi.input` | 请求体输入流 | 类文件对象，POST 数据从这里读取 |
+| `wsgi.errors` | 错误输出流 | 框架写错误日志用 |
+| `wsgi.multithread` / `wsgi.multiprocess` / `wsgi.run_once` | 服务器运行模式 | 布尔值，说明服务器是否多线程 / 多进程 / 只运行一次 |
+| `uwsgi.*`、`UWSGI_ROUTER`、`REQUEST_URI` | uWSGI 服务器自己的扩展 | 不是 WSGI 标准，换成别的服务器不一定有 |
+
+> 以上字典是**服务器**根据收到的 HTTP 请求整理出来的。本节自己实现的服务器暂时只传递最关键的一个键 `PATH_INFO`，后面会看到它的用法。
+
+#### 16.14.5 静态服务器回顾与改造
+
+##### 16.14.5.1 静态服务器（多进程面向对象版）
+
+> 先回顾一个用类封装的静态服务器：每来一个客户端就创建一个子进程（见 16.12.3）。后面的所有改造，都是在它的基础上增加“动态页面”的功能。**文件名：`web_server.py`**
+
+```python
+# 导入 socket 模块：网络编程接口
+import socket
+# 导入 re 模块：用正则表达式解析请求行
+import re
+# 导入 multiprocessing 模块：为每个客户端创建一个进程
+import multiprocessing
+
+
+class WSGIServer(object):
+    """Web 服务器类：封装套接字的创建与客户端的处理"""
+
+    def __init__(self):
+        """创建监听套接字，完成 bind 和 listen"""
+        # 1. 创建 TCP 套接字：AF_INET 为 IPv4，SOCK_STREAM 为 TCP
+        self.tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # 设置端口复用，服务器重启时可以立即绑定同一端口
+        self.tcp_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # 2. 绑定：ip 为空表示本机所有网卡，端口 7890
+        self.tcp_server_socket.bind(('', 7890))
+        # 3. 变为监听套接字，全连接队列最大长度 128
+        self.tcp_server_socket.listen(128)
+
+    def service_client(self, new_socket):
+        """为这个客户端返回数据
+
+        Args:
+            new_socket (socket.socket): 与该客户端通信的套接字
+        """
+        # 1. 接收浏览器发送过来的请求，即 http 请求，例如：
+        # GET / HTTP/1.1
+        # .....
+        # recv(1024) 返回 bytes，decode 解码为 str
+        request = new_socket.recv(1024).decode('utf-8')
+        # splitlines() 按行切割为 list[str]，第 0 行是请求行
+        request_lines = request.splitlines()
+        print('')  # 打印空行，分隔每次请求的输出
+        print('>' * 20)  # 打印分隔线
+        print(request_lines)  # 打印请求的每一行
+
+        # 请求行形如：GET /index.html HTTP/1.1（请求方法有 get、post、put、delete 等）
+        file_name = ''  # 请求的文件名，先给空字符串，保证后面一定有这个变量
+        # 正则含义：[^/]+ 匹配请求方法和空格，(/[^ ]*) 捕获以 / 开头、到空格之前的路径
+        ret = re.match(r'[^/]+(/[^ ]*)', request_lines[0])
+        if ret:  # 匹配成功
+            file_name = ret.group(1)  # 取出捕获的路径，类型 str
+            if file_name == '/':  # 访问网站根路径
+                file_name = '/index.html'  # 默认返回首页
+
+        # 2. 返回 http 格式的数据给浏览器
+        try:
+            # 以二进制只读方式打开 html 目录下的文件
+            f = open('./html' + file_name, 'rb')
+        except IOError:  # 文件不存在，返回 404
+            response = 'HTTP/1.1 404 NOT FOUND\r\n'  # 状态行
+            response += '\r\n'  # 空行：响应头结束
+            response += '------file not found-----'  # 响应体
+            new_socket.send(response.encode('utf-8'))  # 发送：str 先 encode 成 bytes
+        else:  # 文件存在
+            html_content = f.read()  # 读取文件内容，bytes
+            f.close()  # 关闭文件
+            # 2.1 准备发送给浏览器的数据 --- header
+            response = 'HTTP/1.1 200 OK\r\n'  # 状态行
+            response += '\r\n'  # 空行：响应头结束
+            # 2.2 准备发送给浏览器的数据 --- body 就是文件内容 html_content
+            # 将 response header 发送给浏览器
+            new_socket.send(response.encode('utf-8'))
+            # 将 response body 发送给浏览器（已经是 bytes，直接发送）
+            new_socket.send(html_content)
+
+        # 关闭套接字：HTTP 短连接，响应完就断开
+        new_socket.close()
+
+    def run_forever(self):
+        """用来完成整体的控制"""
+        while True:  # 服务器要一直运行
+            # 4. 等待新客户端的连接，返回 (新套接字, 客户端地址)
+            new_socket, client_addr = self.tcp_server_socket.accept()
+            # 5. 为这个客户端服务：创建一个子进程
+            p = multiprocessing.Process(target=self.service_client, args=(new_socket,))
+            p.start()  # 启动子进程
+            # 父进程中的 new_socket 不再使用，关闭只是让引用计数减 1（原理见 16.12.3）
+            new_socket.close()
+
+        # 关闭监听套接字（死循环下实际不会执行到，写在这里表示规范）
+        self.tcp_server_socket.close()
+
+
+def main():
+    """控制整体：创建一个 web 服务器对象，然后调用它的 run_forever 方法运行"""
+    wsgi_server = WSGIServer()  # 创建服务器对象
+    wsgi_server.run_forever()  # 开始运行
+
+
+if __name__ == '__main__':  # 只有直接运行本文件才启动服务器（Windows 下多进程必须有这一句）
+    main()
+```
+
+##### 16.14.5.2 解析动态请求
+
+> 如果请求的不是 `.html`，而是后缀为 **`.py`** 的**动态请求**，该如何处理？只需要在读取文件之前，先判断请求的文件名是否以 `.py` 结尾：
+
+```python
+# endswith('.py')：字符串方法，判断是否以 .py 结尾，返回 bool
+if not file_name.endswith('.py'):
+    pass  # 静态请求：沿用上面“打开文件并返回”的处理
+else:
+    # 2.2 如果是以 .py 结尾，那么就认为是动态资源的请求
+    header = 'HTTP/1.1 200 OK\r\n'  # 状态行
+    header += '\r\n'  # 空行
+    # 动态生成 body：这里先用当前时间模拟（需要在文件开头 import time）
+    body = 'hahahah %s ' % time.ctime()  # time.ctime() 返回当前时间字符串，每次访问都不同
+    response = header + body  # 拼接成完整的响应
+    # 发送 response 给浏览器
+    new_socket.send(response.encode('utf-8'))
+```
+
+##### 16.14.5.3 Web 服务器和逻辑处理代码分离
+
+> **问题**：如果请求的是**不同名字的 `.py`**（如 `login.py`、`register.py`），要显示不同的内容，怎么办？
+>
+> 如果把 `if file_name == '/login.py': ... elif ...` 全写在服务器里，服务器和业务逻辑就混在了一起。更好的做法是：**把业务逻辑单独放进一个模块（`mini_frame.py`），服务器只负责调用它**。
+
+```python
+# 服务器 web_server.py 中，动态资源的处理分支：
+header = 'HTTP/1.1 200 OK\r\n'  # 状态行
+header += '\r\n'  # 空行
+# 旧写法：服务器里直接判断，业务逻辑和服务器混在一起（不推荐）
+# body = 'hahahah %s ' % time.ctime()
+# if file_name == '/login.py':
+#     body = mini_frame.login()
+# elif file_name == '/register.py':
+#     body = mini_frame.register()
+# 新写法：把文件名交给框架模块的 application 函数，由它决定返回什么（需要 import mini_frame）
+body = mini_frame.application(file_name)  # 返回 str 类型的响应体
+
+response = header + body  # 拼接成完整响应
+# 发送 response 给浏览器
+new_socket.send(response.encode('utf-8'))
+```
+
+```python
+# mini_frame.py：Web 框架（业务逻辑）模块
+import time  # 导入 time 模块，用于获取当前时间
+
+
+def login():
+    """登录页面"""
+    # 返回 str；%s 被 time.ctime() 的结果替换
+    return 'i----login--welcome wangdao website.......time:%s' % time.ctime()
+
+
+def register():
+    """注册页面"""
+    return '-----register---welcome wangdao website.......time:%s' % time.ctime()
+
+
+def profile():
+    """个人信息页面（本例中暂时没有被 application 调用）"""
+    return '-----profile----welcome wangdao website.......time:%s' % time.ctime()
+
+
+def application(file_name):
+    """根据请求的文件名，调用对应的函数生成页面
+
+    Args:
+        file_name (str): 请求的路径，如 /login.py
+
+    Returns:
+        str: 页面内容（响应体）
+    """
+    if file_name == '/login.py':  # 请求登录页
+        return login()
+    elif file_name == '/register.py':  # 请求注册页
+        return register()
+    else:  # 其他都认为不存在
+        return 'not found you page....'
+```
+
+> 这样改造之后，服务器代码不需要再关心“有哪些页面”，新增页面只改 `mini_frame.py`。但还有两个问题：**① 只能改 body，响应头无法修改；② 服务器不能把请求信息传给框架**。下一节用 WSGI 的做法解决。
+
+#### 16.14.6 让 Web 服务器支持 WSGI
+
+##### 16.14.6.1 通过 `start_response` 设置响应头
+
+> 针对上一节的改造：如果 Web 服务器要给 `mini_frame` 框架**传参**，并且不仅要修改 body，还要能修改 **header**，该怎么办？
+>
+> 做法就是 WSGI 规定的：框架的入口函数改为 `application(environ, start_response)`；服务器调用它时，**传入一个字典 `env` 和一个“设置响应头的函数”**。
+
+```python
+# 服务器 web_server.py 中，动态资源的处理分支：
+else:
+    # 2.2 如果是以 .py 结尾，那么就认为是动态资源的请求
+    env = dict()  # 要传给框架的字典，暂时是空的，后面会放入请求信息
+    # 调用框架的 application：把 env 和“设置响应头的方法”传给它；返回值是响应体 body（str）
+    body = mini_frame.application(env, self.set_response_header)
+
+    # 状态行：self.status 是框架调用 set_response_header 时存下来的，如 '200 OK'
+    header = 'HTTP/1.1 %s\r\n' % self.status
+
+    # self.headers 是 [(名称, 值), ...] 的列表，逐行拼接成响应头
+    for temp in self.headers:
+        header += '%s:%s\r\n' % (temp[0], temp[1])
+
+    header += '\r\n'  # 空行：响应头结束
+
+    response = header + body  # 拼接完整响应
+    # 发送 response 给浏览器
+    new_socket.send(response.encode('utf-8'))
+```
+
+```python
+# set_response_header 是 WSGIServer 类的方法，我们把它传给 mini_frame.application，
+# 框架调用它就等于“告诉服务器：状态码和响应头是这些”。env 暂时还没有用到
+def set_response_header(self, status, headers):
+    """保存框架设置的状态码和响应头
+
+    Args:
+        status (str): 状态，如 '200 OK'
+        headers (list[tuple]): 框架设置的响应头，如 [('Content-Type', 'text/html')]
+    """
+    self.status = status  # 保存状态码，稍后拼接响应时使用
+    self.headers = [('server', 'mini_web v8.8')]  # 服务器自己默认带的响应头
+    self.headers += headers  # 再把框架设置的响应头追加进去
+```
+
+```python
+# mini_frame.py：符合 WSGI 的最小框架
+def application(environ, start_response):
+    """框架入口
+
+    Args:
+        environ (dict): 服务器传来的请求信息字典
+        start_response (function): 服务器提供的设置状态码和响应头的函数
+
+    Returns:
+        str: 响应体
+    """
+    # start_response 的第二个参数必须是列表，列表里可以有多个元组，
+    # 每个元组有两个部分：第一部分是冒号前面的内容（头名称），第二部分是冒号后面的内容（头的值）
+    start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
+    return 'Hello World! 我爱你中国....'  # 返回响应体
+```
+
+##### 16.14.6.2 通过传递字典实现请求不同的资源
+
+> 用了 `application` 函数后，怎样让用户请求**不同名字的 `.py`** 时显示不同的内容？办法是：服务器把请求的路径放进字典 `env` 的 **`PATH_INFO`** 键（这正是 WSGI 标准中请求路径使用的键名），框架从 `environ['PATH_INFO']` 中取出路径做判断。
+
+```python
+# 服务器 web_server.py 中，动态资源的处理分支：
+else:
+    # 2.2 如果是以 .py 结尾，那么就认为是动态资源的请求
+    env = dict()  # 这个字典中存放的是 web 服务器要传递给 web 框架的数据信息
+    env['PATH_INFO'] = file_name  # 例如 {'PATH_INFO': '/index.py'}
+    # 调用框架：传入 env 和设置响应头的方法
+    body = mini_frame.application(env, self.set_response_header)
+
+    header = 'HTTP/1.1 %s\r\n' % self.status  # 状态行
+    for temp in self.headers:  # 遍历响应头
+        header += '%s:%s\r\n' % (temp[0], temp[1])
+    header += '\r\n'  # 空行
+
+    response = header + body  # 拼接响应
+    # 发送 response 给浏览器
+    new_socket.send(response.encode('utf-8'))
+```
+
+```python
+# mini_frame.py
+def index():
+    """主页"""
+    return '这是主页'
+
+
+def login():
+    """登录页面"""
+    return '这是登录页面'
+
+
+def application(env, start_response):
+    """框架入口：根据 PATH_INFO 分发请求
+
+    Args:
+        env (dict): 服务器传来的字典，PATH_INFO 是请求路径
+        start_response (function): 设置状态码和响应头的函数
+
+    Returns:
+        str: 响应体
+    """
+    # 设置状态码和响应头（Content-Type 里的 charset=utf-8 让浏览器正确显示中文）
+    start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
+
+    file_name = env['PATH_INFO']  # 取出请求路径，如 '/index.py'
+
+    if file_name == '/index.py':  # 请求主页
+        return index()
+    elif file_name == '/login.py':  # 请求登录页
+        return login()
+    else:  # 其他路径
+        return 'Hello World! 我爱你中国....'
+```
+
+> **这就是“路由”的雏形**：根据 URL 路径，决定调用哪个函数来生成页面。Flask、Django 的路由本质上也是这样“路径 → 函数”的对应关系，只是更加完善。
+
+#### 16.14.7 让服务器指定端口和框架
+
+> **目标**：不要把端口号和框架模块名写死在服务器代码里，而是在**运行命令时**通过命令行参数传入，格式为：
+>
+> ```
+> python3 web_server.py 端口号 框架模块名:应用函数名
+> ```
+>
+> 例如 `python3 web_server.py 7890 mini_frame:application`，这样服务器可以搭配**任意**符合 WSGI 的框架，实现“服务器与框架解耦”。
+
+**文件结构**
+
+```
+├── web_server.py        # Web 服务器
+├── web                  # 动态资源（存放框架 py 模块）
+│   └── mini_frame.py
+└── html                 # 静态资源
+    └── index.html
+    .....
+```
+
+**`web/mini_frame.py`**
+
+```python
+# 导入 time 模块：获取当前时间
+import time
+
+
+def application(environ, start_response):
+    """符合 WSGI 的应用程序示例
+
+    Args:
+        environ (dict): 服务器传来的请求信息字典
+        start_response (function): 设置状态码和响应头的函数
+
+    Returns:
+        str: 响应体
+    """
+    status = '200 OK'  # 状态：str
+    # 响应头：list[tuple]，只有 Content-Type 一项，声明内容是 html 文本、utf-8 编码
+    response_headers = [('Content-Type', 'text/html; charset=utf-8')]
+    start_response(status, response_headers)  # 把状态和响应头告诉服务器
+    # 返回响应体：把 environ 转成字符串显示出来，方便观察服务器传入了什么；后面拼接当前时间
+    return str(environ) + '==Hello world from a simple WSGI application!--->%s\n' % time.ctime()
+```
+
+**`web_server.py`（完整版）**
+
+```python
+# 导入 time 模块：生成 Date 响应头
+import time
+# 导入 socket 模块：网络编程接口
+import socket
+# 导入 sys 模块：读取命令行参数 sys.argv，修改模块搜索路径 sys.path
+import sys
+# 导入 re 模块：解析请求行、解析命令行参数
+import re
+# 导入 multiprocessing 模块：每个客户端一个子进程
+import multiprocessing
+# 导入 mimetypes 模块：根据文件扩展名推断 Content-Type（让浏览器正确识别 css、js、图片）
+import mimetypes
+
+
+class WSGIServer(object):
+    """定义一个 WSGI 服务器的类"""
+
+    def __init__(self, port, documents_root, app):
+        """初始化服务器
+
+        Args:
+            port (int): 服务器监听的端口号
+            documents_root (str): 静态资源所在的目录，如 './html'
+            app (function): Web 框架的入口函数 application，符合 WSGI 接口
+        """
+        # 1. 创建套接字：IPv4 + TCP
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # 2. 设置端口复用，并绑定本地信息
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.bind(('', port))
+        # 3. 变为监听套接字
+        self.server_socket.listen(128)
+
+        # 设定静态资源文件的路径
+        self.documents_root = documents_root
+
+        # 设定 web 框架可以调用的函数（对象），后面处理动态请求时直接调用 self.app(...)
+        self.app = app
+
+    def run_forever(self):
+        """运行服务器：不断接收新连接，每个连接交给一个新进程处理"""
+        # 等待对方连接
+        while True:
+            # accept 返回 (为该客户端服务的新套接字, 客户端地址)
+            new_socket, new_addr = self.server_socket.accept()
+            # 创建一个新的进程来完成这个客户端的请求任务
+            new_process = multiprocessing.Process(
+                target=self.deal_with_request, args=(new_socket,))
+            new_process.start()  # 启动子进程
+            new_socket.close()  # 父进程不再使用该套接字，关闭（引用计数减 1）
+
+    def deal_with_request(self, client_socket):
+        """以长连接的方式，为这个浏览器服务
+
+        Args:
+            client_socket (socket.socket): 与该浏览器通信的套接字
+        """
+        # 设置接收数据的超时时间 3 秒：超过 3 秒浏览器没有发新请求，就认为不再使用，关闭连接
+        # 注意：写在子进程里（而不是父进程 accept 之后），Windows 下套接字被序列化传给子进程后超时设置才不会丢失
+        client_socket.settimeout(3)
+        while True:  # 长连接：一个连接上可以处理多个请求
+            try:
+                # 接收浏览器发来的请求，bytes 解码为 str
+                request = client_socket.recv(1024).decode('utf-8')
+            except Exception as ret:  # 超时（或其他网络错误）都会进入这里
+                print('========>', ret)  # 打印原因
+                client_socket.close()  # 关闭连接
+                return  # 结束这个子进程的处理函数
+
+            # 判断浏览器是否关闭：对方关闭连接后，recv 会返回空数据
+            if not request:
+                client_socket.close()  # 关闭连接
+                return
+
+            request_lines = request.splitlines()  # 按行切割请求
+            for i, line in enumerate(request_lines):  # 打印每一行，便于观察
+                print(i, line)
+
+            # 提取请求的文件（index.html），请求行形如：
+            # GET /a/b/c/d/e/index.html HTTP/1.1
+            file_name = '/'  # 先给默认值，防止匹配失败时变量不存在
+            # 正则：([^/]*) 匹配到第一个 / 之前的内容（GET 和空格），([^ ]+) 匹配以 / 开头到空格之前的路径
+            ret = re.match(r'([^/]*)([^ ]+)', request_lines[0])
+            if ret:  # 匹配成功
+                print('正则提取数据:', ret.group(1))  # 如 'GET '
+                print('正则提取数据:', ret.group(2))  # 如 '/index.html'
+                file_name = ret.group(2)  # 请求的路径
+                if file_name == '/':  # 访问根路径
+                    file_name = '/index.html'  # 返回首页
+
+            # 如果不是以 py 结尾的文件，认为是普通的静态文件
+            if not file_name.endswith('.py'):
+                # 读取文件数据
+                try:
+                    f = open(self.documents_root + file_name, 'rb')  # 二进制读取
+                except IOError:  # 文件不存在：返回 404
+                    # 响应体先 encode 成 bytes，这样 Content-Length 才是真正的字节数
+                    response_body = 'file not found, 请输入正确的 url'.encode('utf-8')
+                    response_header = 'HTTP/1.1 404 not found\r\n'  # 状态行
+                    response_header += 'Content-Type: text/html; charset=utf-8\r\n'  # 内容类型
+                    # Content-Length：响应体的字节数，长连接下浏览器靠它判断响应何时结束
+                    response_header += 'Content-Length: %d\r\n' % len(response_body)
+                    response_header += '\r\n'  # 空行
+                    # 头是 str，体是 bytes，头先 encode 再拼接，一次发给浏览器
+                    client_socket.send(response_header.encode('utf-8') + response_body)
+                else:  # 文件存在：返回 200
+                    with f:  # with 保证读完后自动关闭文件
+                        response_body = f.read()  # 读取全部内容，bytes
+                    # guess_type 返回 (类型, 编码)，取类型；无法识别时用通用的二进制类型
+                    content_type = mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
+                    response_header = 'HTTP/1.1 200 OK\r\n'  # 状态行
+                    response_header += 'Content-Type: %s\r\n' % content_type  # 内容类型
+                    response_header += 'Content-Length: %d\r\n' % len(response_body)  # 响应体字节数
+                    response_header += '\r\n'  # 空行
+                    # 将 header 和 body 一起返回给浏览器
+                    client_socket.send(response_header.encode('utf-8') + response_body)
+            # 以 .py 结尾的文件，就认为是浏览器需要动态的页面
+            else:
+                # 准备一个字典，里面存放需要传递给 web 框架的数据
+                env = dict()
+                env['PATH_INFO'] = file_name  # 请求路径，框架据此决定返回什么页面
+                # 调用框架：传入 env 和设置响应头的方法；返回值 str 是响应体，encode 为 bytes 以便计算长度和发送
+                response_body = self.app(env, self.set_response_headers).encode('utf-8')
+
+                # 合并 header 和 body
+                # 状态行：self.status 由框架调用 set_response_headers 时保存，如 '200 OK'
+                header = 'HTTP/1.1 %s\r\n' % self.status
+                for temp in self.headers:  # self.headers 是 [(名称, 值), ...]
+                    header += '%s:%s\r\n' % (temp[0], temp[1])
+                # 响应体字节数（长连接必须有）
+                header += 'Content-Length: %d\r\n' % len(response_body)
+                header += '\r\n'  # 空行
+
+                # 发送：头 encode 为 bytes，再拼上 bytes 类型的响应体
+                client_socket.send(header.encode('utf-8') + response_body)
+
+    def set_response_headers(self, status, headers):
+        """这个方法，会在 web 框架中被默认调用（它就是 start_response）
+
+        Args:
+            status (str): 状态，如 '200 OK'
+            headers (list[tuple]): 框架设置的响应头
+        """
+        self.status = status  # 保存状态码
+        # 服务器默认的响应头：Date 是响应的时间，Server 是服务器的名字
+        self.headers = [
+            ('Date', time.ctime()),
+            ('Server', 'wangdao-python mini web server')
+        ]
+        # 再追加框架设置的响应头
+        self.headers += headers
+
+
+# 设置静态资源访问的路径
+g_static_document_root = './html'
+# 设置动态资源访问的路径
+g_dynamic_document_root = './web'
+
+
+def main():
+    """控制 web 服务器整体"""
+    # 运行方式：python3 xxxx.py 7890 mini_frame:application
+    # sys.argv 是命令行参数列表：[脚本名, 端口号, 框架名:应用名]，所以长度应为 3
+    if len(sys.argv) == 3:
+        # 获取 web 服务器的 port
+        port = sys.argv[1]  # str 类型
+        if port.isdigit():  # 判断是否全由数字组成
+            port = int(port)  # 转为 int
+        # 获取 web 服务器需要动态资源时，访问的 web 框架名字，形如 'mini_frame:application'
+        web_frame_module_app_name = sys.argv[2]
+    else:
+        print('运行方式如: python3 xxx.py 7890 my_web_frame_name:application')
+        return  # 参数不对，直接结束
+
+    print('http 服务器使用的 port:%s' % port)
+
+    # 将动态路径（存放 py 文件的路径）添加到 sys.path 中，这样 Python 就能找到这个路径下的框架模块了
+    sys.path.append(g_dynamic_document_root)
+
+    # 正则：([^:]*) 取冒号前面的部分（模块名），(.*) 取冒号后面的部分（应用名）
+    ret = re.match(r'([^:]*):(.*)', web_frame_module_app_name)
+    if ret:
+        # 获取模块名，如 'mini_frame'
+        web_frame_module_name = ret.group(1)
+        # 获取可以调用 web 框架的应用名称，如 'application'
+        app_name = ret.group(2)
+
+        # 导入 web 框架的主模块：__import__(模块名字符串) 返回模块对象
+        web_frame_module = __import__(web_frame_module_name)
+        # 获取那个可以直接调用的函数（对象）：getattr(模块, 名字字符串) 取模块中的同名成员
+        app = getattr(web_frame_module, app_name)
+        # print(app)  # for test：测试时可打印，确认拿到的是函数
+
+        # 启动 http 服务器：传入端口、静态资源目录、框架入口函数
+        http_server = WSGIServer(port, g_static_document_root, app)
+        # 运行 http 服务器
+        http_server.run_forever()
+
+
+if __name__ == '__main__':  # 直接运行本文件时才执行（Windows 下多进程必须要有）
+    main()
+```
+
+> **本版代码相对于教材的两处改进**（避免初学者踩坑）：
+>
+> - **响应头的 `Date` 拼写**：原资料中写成了 `Data`，正确的 HTTP 响应头是 **`Date`**，其值使用 `time.ctime()`（时间字符串），而不是 `time.time()`（浮点时间戳）
+> - **`Content-Length` 必须是 `bytes` 的长度**：含有中文时，`str` 的长度不等于字节数（一个汉字 utf-8 占 3 字节），所以响应体先 `encode`，再计算 `len`，否则长连接下页面会显示不全或浏览器一直转圈
+
+> **几个关键点**：
+>
+> - **`__import__` 与 `getattr`**：根据**字符串**导入模块、取出模块里的函数，这样服务器不需要提前知道框架叫什么。更推荐的写法是 `importlib.import_module(模块名)`，效果相同
+> - **`sys.path.append(...)`**：框架模块放在 `./web` 目录下，不在 Python 默认的搜索路径里，所以必须把目录加入搜索路径，`__import__` 才能找到它（见 12.1.2 import 搜索路径）
+> - **长连接 + 超时**：`settimeout(3)` 让服务器最多等 3 秒，浏览器没有新请求就关闭连接，避免一直占用进程
+> - **`self.status` / `self.headers`**：`set_response_headers` 就是 WSGI 中的 `start_response`，框架调用它时，数据被保存在服务器对象里，之后服务器拼接响应时再取出来
+
+**运行**
+
+```
+# 1. 打开终端，进入 web_server.py 所在目录，输入以下命令启动服务器
+$ python3 web_server.py 7890 mini_frame:application  # 参数 1：端口号 7890；参数 2：框架模块名:应用函数名
+
+# 2. 如果使用 PyCharm 运行，设置传参的方法：
+#    Run/Debug Configurations -> Configurations -> Script Parameters（脚本参数）
+#    和 VS 类似，都不用输入程序名字，直接输入参数 7890 mini_frame:application 即可
+
+# 3. 打开浏览器访问
+#    http://127.0.0.1:7890/xxx.py   以 .py 结尾的 url：动态页面，多次刷新可以看到时间在变化
+#    http://127.0.0.1:7890/index.html  普通文件：静态页面
+```
+
+> 浏览器访问 `http://127.0.0.1:7890/xxx.py`，页面显示 `{'PATH_INFO': '/xxx.py'}==Hello world from a simple WSGI application!--->当前时间`，**多次刷新可以看到时间是变化的**，说明页面是动态生成的。
+
+#### 16.14.8 mini web 框架（一）：目录结构与模板页面
+
+> **项目的标准目录结构**：把“动态资源（Python 模块）”“模板文件”“静态资源（css/js/图片）”分开存放，各司其职。
+
+```
+├── dynamic                      # 存放 py 模块（Web 框架）
+│   └── mini_frame.py
+├── templates                    # 存放模板文件（由框架读取并返回的 html）
+│   ├── center.html
+│   ├── index.html
+│   ├── location.html
+│   └── update.html
+├── static                       # 存放静态的资源文件（由服务器直接返回）
+│   ├── css
+│   │   ├── bootstrap.min.css
+│   │   ├── main.css
+│   │   └── swiper.min.css
+│   └── js
+│       ├── a.js
+│       ├── bootstrap.min.js
+│       ├── jquery-1.12.4.js
+│       ├── jquery-1.12.4.min.js
+│       ├── jquery.animate-colors.js
+│       ├── jquery.animate-colors-min.js
+│       ├── jquery.cookie.js
+│       ├── jquery-ui.min.js
+│       ├── server.js
+│       ├── swiper.jquery.min.js
+│       ├── swiper.min.js
+│       └── zepto.min.js
+└── web_server.py                # mini web 服务器
+```
+
+> **三类文件的区别**：
+>
+> ---
+
+| 目录 | 作用 | 谁来读取 |
+|---|---|---|
+| `dynamic` | 存放框架的 Python 模块，如 `mini_frame.py` | 服务器通过 `__import__` 导入 |
+| `templates` | 存放**模板**：页面的骨架，里面有待替换的内容 | **框架**读取后加工，再返回 |
+| `static` | 存放 css、js、图片等**不需要加工**的资源 | **服务器**原样返回 |
+
+> ---
+>
+> 与 16.14.7 相比，服务器代码只需要修改两个常量，其余不变：
+
+```python
+# 设置静态资源访问的路径（原来是 './html'）
+g_static_document_root = './static'
+# 设置动态资源访问的路径（原来是 './web'）
+g_dynamic_document_root = './dynamic'
+```
+
+**`dynamic/mini_frame.py`**
+
+```python
+def index():
+    """主页：读取模板文件并返回
+
+    Returns:
+        str: index.html 的内容
+    """
+    # 路径是相对于“运行服务器时所在目录”的；encoding='utf-8' 避免中文乱码
+    with open('./templates/index.html', encoding='utf-8') as f:
+        content = f.read()  # 读取整个模板文件，返回 str
+    return content  # 返回给服务器作为响应体
+
+
+def center():
+    """个人中心页面：读取模板文件并返回
+
+    Returns:
+        str: center.html 的内容
+    """
+    with open('./templates/center.html', encoding='utf-8') as f:
+        return f.read()  # 读完直接返回，with 结束时自动关闭文件
+
+
+def application(env, start_response):
+    """框架入口：根据 PATH_INFO 分发请求
+
+    Args:
+        env (dict): 服务器传来的字典，PATH_INFO 是请求路径
+        start_response (function): 设置状态码和响应头的函数
+
+    Returns:
+        str: 响应体
+    """
+    # 设置状态码和响应头
+    start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
+
+    file_name = env['PATH_INFO']  # 取出请求路径
+    # file_name = '/index.py'
+
+    if file_name == '/index.py':  # 请求主页
+        return index()
+    elif file_name == '/center.py':  # 请求个人中心
+        return center()
+    else:  # 其他路径
+        return 'Hello World! 我爱你中国....'
+```
+
+> **运行与访问**：在**项目根目录**（`web_server.py` 所在目录）执行 `python3 web_server.py 7890 mini_frame:application`，浏览器访问 `http://127.0.0.1:7890/index.py` 或 `/center.py`。模板文件里引用的 css、js 路径（如 `/css/main.css`）会被当作静态资源，由服务器从 `static` 目录返回。
+
+#### 16.14.9 mini web 框架（二）：动态显示页面内容
+
+> **问题**：怎样在 `index.html` 和 `center.html` 中显示**动态的数据**？比如针对不同用户，从数据库中查询，显示不同的内容？
+>
+> **做法**：在模板文件里**预留一个占位符**，如 `{%content%}`；框架读取模板后，用**动态生成的内容替换占位符**，再返回。
+
+```html
+<!-- templates/index.html 中预留占位符的位置示例 -->
+<div class="content">
+    {%content%}
+</div>
+```
+
+**`dynamic/mini_frame.py`（更新：只修改 `index` 和 `center` 两个函数）**
+
+```python
+# 导入 re 模块：使用正则表达式的 sub 方法做替换
+import re
+
+
+def index():
+    """主页：读取模板，用动态数据替换占位符
+
+    Returns:
+        str: 替换之后的页面内容
+    """
+    with open('./templates/index.html', encoding='utf-8') as f:
+        content = f.read()  # 读取模板内容，str
+    my_stock_info = '哈哈哈哈这是你的本月名称.....'  # 动态数据（这里先用固定文字模拟）
+    # re.sub(正则, 替换内容, 原字符串)：返回替换后的新字符串
+    # 占位符 {%content%} 中的 { 和 % 在正则里有特殊含义，所以前面要加反斜杠转义
+    content = re.sub(r'\{%content%\}', my_stock_info, content)
+    return content  # 返回替换之后的页面
+
+
+def center():
+    """个人中心页面：读取模板，用从数据库查询到的数据替换占位符
+
+    Returns:
+        str: 替换之后的页面内容
+    """
+    with open('./templates/center.html', encoding='utf-8') as f:
+        content = f.read()  # 读取模板内容
+    my_stock_info = '这里是从 mysql 查询出来的数据。。。'  # 以后换成 pymysql 查询（见第十八章）的结果
+    content = re.sub(r'\{%content%\}', my_stock_info, content)  # 替换占位符
+    return content  # 返回替换之后的页面
+```
+
+> 浏览器打开 `http://127.0.0.1:7890/index.py` 即可看到占位符位置已显示动态内容。
+>
+> **提示**：
+>
+> - 如果替换内容里含有反斜杠 `\`，`re.sub` 会把它当作转义，可能出错；此时可改用字符串方法 `content.replace('{%content%}', my_stock_info)`，它不涉及正则，更安全
+> - 动态内容通常来自数据库，查询数据库的方法见**第十八章 pymysql**，这样就形成了“浏览器 → 服务器 → 框架 → 数据库”的完整链路
+> - 这种“模板 + 占位符替换”的思路就是 Web 开发中**模板引擎**（如 Jinja2、Django 模板）的雏形
+
+#### 16.14.10 增加配置文件
+
+> **问题**：如果静态资源、动态资源的目录名字不是 `static` 和 `dynamic`，就要到 `web_server.py` 里去改代码，也就是修改 Web 服务器的源码，这显然不合适。
+>
+> **做法**：增加一个**配置文件**，把可能变化的内容（目录路径等）写进去，服务器启动时读取配置，**改配置不改代码**。
+
+**`web_server.conf`（配置文件，内容是一个字典格式的文本）**
+
+```json
+{
+    "static_path": "./static",
+    "dynamic_path": "./dynamic"
+}
+```
+
+**`web_server.py` 中的修改：读取配置文件**
+
+```python
+# 原资料的写法：用 eval 把文件里的文本当作 Python 代码执行，得到字典
+# 缺点：配置文件里如果被写入恶意代码，eval 也会执行，存在安全隐患，不推荐
+with open('./web_server.conf') as f:
+    conf_info = eval(f.read())
+# 此时 conf_info 是一个字典，里面的数据为：
+# {
+#     "static_path": "./static",
+#     "dynamic_path": "./dynamic"
+# }
+
+# 推荐写法：配置文件本身就是合法的 JSON，使用 json.load 读取，安全且更规范
+import json  # 导入 json 模块（见 15.6）
+
+with open('./web_server.conf', encoding='utf-8') as f:  # 打开配置文件
+    conf_info = json.load(f)  # json.load：从文件对象读取 JSON，返回 dict
+
+# 使用配置里的动态路径：加入搜索路径，让 Python 能找到框架模块
+sys.path.append(conf_info['dynamic_path'])
+print(conf_info['static_path'])  # 输出 ./static，静态资源路径同样来自配置文件
+```
+
+```python
+# 创建服务器时，静态资源路径也改为从配置中读取（替换原来的全局常量 g_static_document_root）
+http_server = WSGIServer(port, conf_info['static_path'], app)
+```
+
+> **完整修改思路**：删除 `g_static_document_root`、`g_dynamic_document_root` 两个全局常量；在 `main()` 中先读取配置文件得到 `conf_info`，用 `conf_info['dynamic_path']` 代替 `g_dynamic_document_root`，用 `conf_info['static_path']` 代替 `g_static_document_root`。以后更换目录，只需修改 `web_server.conf`，无需改服务器代码。
+>
+> **注意**：JSON 格式要求键必须用**双引号**，且最后一项后面**不能有逗号**。
+
+#### 16.14.11 WSGI 与 mini-web 小结
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| 静态服务器 | 按请求路径读文件返回 | 文件不存在返回 404 |
+| 动态请求 | 路径以 `.py` 结尾视为动态资源 | 交给框架生成 body |
+| 分离逻辑 | 业务代码放进 `mini_frame.py` | 服务器只负责通信，框架负责业务 |
+| WSGI 接口 | `application(environ, start_response)` | `environ` 传请求信息，`start_response` 设置状态码和响应头，返回值是响应体 |
+| 路由 | 根据 `environ['PATH_INFO']` 分发 | 路径 → 函数 |
+| 命令行传参 | `web_server.py 端口 模块名:应用名` | `__import__` + `getattr` 动态加载框架，`sys.path.append` 加入搜索路径 |
+| 模板 | `templates` 放模板，`{%content%}` 占位符替换 | 模板引擎的雏形 |
+| 配置文件 | `web_server.conf` 记录目录路径 | 改配置不改代码，推荐用 `json.load` 读取 |
+
+> **整体调用链**：浏览器请求 `xxx.py` → 服务器 `accept` 并解析请求 → 构造 `env` → 调用 `app(env, start_response)` → 框架调用 `start_response` 设置状态码和响应头 → 框架返回 body → 服务器拼接响应头和 body → `send` 给浏览器。
 
 ---
 
