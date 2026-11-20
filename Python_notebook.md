@@ -8521,36 +8521,46 @@ Web 服务器                  WSGI 接口                  Web 框架
 
 ```python
 def application(environ, start_response):
-    """符合 WSGI 标准的 HTTP 处理函数（教学简化版）
+    """符合 WSGI 标准的 HTTP 处理函数（示意简化版）
 
     Args:
         environ (dict): 包含所有 HTTP 请求信息的字典，由 Web 服务器负责生成并传入
-        start_response (function): 发送 HTTP 响应状态和响应头的函数，由 Web 服务器提供
+        start_response (function): 登记 HTTP 响应状态和响应头的函数，由 Web 服务器提供；
+            它只是把状态和头交给服务器保存，并不会立即发送
 
     Returns:
         str: 响应体（教学版直接返回 str，真正的 WSGI 要求返回字节串的可迭代对象，见下面的说明）
     """
-    # 调用 start_response：参数 1 是状态（str，格式“状态码 说明”），
+    # 【流程图步骤 3】调用 start_response：把状态和响应头交给服务器暂存（此时并没有发给浏览器）
+    # 参数 1 是状态（str，格式“状态码 说明”），
     # 参数 2 是响应头（list，里面是多个 (头名称, 头的值) 元组）
+    # 【步骤 4】这行执行完，start_response 调用返回，服务器已保存了状态和响应头
     start_response('200 OK', [('Content-Type', 'text/html')])
-    # 返回响应体，也就是浏览器看到的页面内容
+    # 【步骤 5】真实框架会在这里查询数据库、生成页面；本例简化为一个固定字符串
+    # 【步骤 6】return 把响应体返回给调用 application 的服务器，application 函数到此结束；
+    # 【步骤 7】由服务器（不在本函数内）把暂存的状态、头和这里的响应体拼成完整响应并发送
     return 'Hello World!'
 ```
 
 > 上面的 `application()` 函数就是符合 WSGI 标准的一个 HTTP 处理函数，它接收两个参数：
 >
 > - `environ`：一个**包含所有 HTTP 请求信息的 `dict` 对象**
-> - `start_response`：一个**发送 HTTP 响应（状态码和响应头）的函数**
+> - `start_response`：一个**由服务器提供、用来登记 HTTP 响应状态码和响应头的函数**。它只是让服务器先记下这些信息，**并不会立即发送**；服务器会等 `application()` 返回响应体后，再把状态行、响应头、空行和响应体拼成完整的响应一次发出
 >
 > 整个 `application()` 函数本身**没有涉及任何解析 HTTP 的部分**，也就是把**底层 Web 服务器的解析部分**和**应用程序的逻辑部分**进行了分离，开发者就可以专心做好一个领域。
 >
-> **那 `application()` 由谁调用？** 如果自己调用，`environ` 和 `start_response` 两个参数我们没法提供，返回的内容也没法发给浏览器。所以 `application()` 必须**由 WSGI 服务器来调用**。有很多符合 WSGI 规范的服务器，而我们本节的目标就是自己做一个**既能解析静态网页，又能解析动态网页的服务器**。
+> **`application()` 由谁调用？** `application()` 由 **Web 服务器**（即支持 WSGI 的服务器，对应 16.15.1 流程图中间的“Web 服务器”）调用，而不是由开发者手动调用。原因如下：
+>
+> - 参数 `environ` 由服务器根据收到的 HTTP 请求生成，`start_response` 由服务器提供，开发者在应用代码中无法自行构造这两个参数；
+> - `application()` 的返回值只是响应体，需要服务器将其与状态、响应头组合成完整的 HTTP 响应，再通过网络发送给浏览器。
+>
+> 在 WSGI 中，`application()` 定义在**应用程序框架**（流程图右侧）中：Web 服务器是调用方，应用程序框架是被调用方。符合 WSGI 规范的服务器有很多，本节的目标是自行实现一个**既能处理静态资源请求，又能处理动态资源请求的 Web 服务器**。
 
 > **教学版与标准 WSGI 的区别**（务必了解）：
 >
 > - `start_response(status, response_headers)`：`status` 是形如 `'200 OK'` 的字符串；`response_headers` 是由 `(名称, 值)` 元组组成的**列表**（不能是字典），每个元组就是响应头中的一行 `名称: 值`
 > - **标准 WSGI** 要求 `application` 返回**由 `bytes` 组成的可迭代对象**（如 `[b'Hello World!']`），而本节为了便于初学者理解，直接返回 `str`，由我们自己的服务器负责 `encode`
-> - 调用顺序：框架先调用 `start_response` 设置状态和响应头，然后 `return` 响应体
+> - 调用顺序：框架先调用 `start_response` 登记状态和响应头，然后 `return` 响应体；两者缺一不可，响应头靠 `start_response` 传递，响应体靠 `return` 传递
 
 **用标准库的 `wsgiref` 运行一个真正符合标准的 WSGI 应用（验证用）**
 
