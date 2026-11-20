@@ -8497,7 +8497,7 @@ if __name__ == '__main__':
 >
 > **目标**：对同一个 Web 应用（如 `Django`、`Flask` 应用），在**不修改应用代码**的前提下，可以部署到任意符合规范的 Web 服务器上运行；同样，同一个 Web 服务器也可以运行不同框架编写的应用。
 >
-> 解决方案是 **WSGI**（Python Web Server Gateway Interface，Python Web 服务器网关接口，读作 “wizgy”）：由 `PEP 3333` 定义的、**Web 服务器与 Web 应用（框架）之间的接口标准**。只要服务器和框架都遵循这一标准，二者即可互相配合使用。
+> 解决方案是 **WSGI**（Python Web Server Gateway Interface，Python Web 服务器网关接口）：由 `PEP 3333` 定义的、**Web 服务器与 Web 应用（框架）之间的接口标准**。只要服务器和框架都遵循这一标准，二者即可互相配合使用。
 
 > **WSGI 的作用**：
 >
