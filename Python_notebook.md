@@ -8756,21 +8756,58 @@ if __name__ == '__main__':  # 只有直接运行本文件才启动服务器（Wi
 
 ##### 16.15.5.2 解析动态请求
 
-> 如果请求的不是 `.html`，而是后缀为 **`.py`** 的**动态请求**，该如何处理？只需要在读取文件之前，先判断请求的文件名是否以 `.py` 结尾：
+> 如果请求的不是 `.html`，而是后缀为 **`.py`** 的**动态请求**，该如何处理？
+>
+> - **修改位置**：`WSGIServer` 类的 **`service_client()` 方法**（16.15.5.1 中“2. 返回 http 格式的数据给浏览器”这一部分）。
+> - **修改思路**：在原来 `try: open(...)` 读取文件之前，先根据 `file_name` 是否以 `.py` 结尾分成两个分支：不是 `.py` 就是静态请求，沿用原来的处理；是 `.py` 就是动态请求，不再读文件，而是由程序生成响应体。
+> - 其余部分（`__init__()`、`run_forever()`、`main()` 以及 `service_client()` 中接收请求、解析 `file_name` 的部分）**保持不变**。
+> - 需要在文件开头增加 `import time`。
 
 ```python
-# endswith('.py')：字符串方法，判断是否以 .py 结尾，返回 bool
-if not file_name.endswith('.py'):
-    pass  # 静态请求：沿用上面“打开文件并返回”的处理
-else:
-    # 2.2 如果是以 .py 结尾，那么就认为是动态资源的请求
-    header = 'HTTP/1.1 200 OK\r\n'  # 状态行
-    header += '\r\n'  # 空行
-    # 动态生成 body：这里先用当前时间模拟（需要在文件开头 import time）
-    body = 'hahahah %s ' % time.ctime()  # time.ctime() 返回当前时间字符串，每次访问都不同
-    response = header + body  # 拼接成完整的响应
-    # 发送 response 给浏览器
-    new_socket.send(response.encode('utf-8'))
+# 文件开头新增：导入 time 模块，用 time.ctime() 模拟动态内容
+import time
+
+# 以下是 WSGIServer 类中修改后的 service_client() 方法，
+# “1. 接收请求并解析出 file_name”的部分与 16.15.5.1 相同，这里省略
+    def service_client(self, new_socket):
+        """为这个客户端返回数据（增加了动态请求的处理）
+
+        Args:
+            new_socket (socket.socket): 与该客户端通信的套接字
+        """
+        # ...（省略：接收请求、解析请求行，得到 file_name，与 16.15.5.1 相同）
+
+        # 2. 返回 http 格式的数据给浏览器
+        # endswith('.py')：字符串方法，判断是否以 .py 结尾，返回 bool
+        if not file_name.endswith('.py'):
+            # 2.1 静态请求：与 16.15.5.1 的处理完全相同，打开文件并返回
+            try:
+                f = open('./html' + file_name, 'rb')  # 以二进制只读方式打开文件
+            except IOError:  # 文件不存在，返回 404
+                response = 'HTTP/1.1 404 NOT FOUND\r\n'  # 状态行
+                response += '\r\n'  # 空行：响应头结束
+                response += '------file not found-----'  # 响应体
+                # 发送：str 先 encode 成 bytes
+                new_socket.send(response.encode('utf-8'))
+            else:  # 文件存在
+                html_content = f.read()  # 读取文件内容，bytes
+                f.close()  # 关闭文件
+                response = 'HTTP/1.1 200 OK\r\n'  # 状态行
+                response += '\r\n'  # 空行：响应头结束
+                new_socket.send(response.encode('utf-8'))  # 发送响应头
+                new_socket.send(html_content)  # 发送响应体（已经是 bytes）
+        else:
+            # 2.2 以 .py 结尾，认为是动态资源的请求：不读文件，由程序生成 body
+            header = 'HTTP/1.1 200 OK\r\n'  # 状态行
+            header += '\r\n'  # 空行：响应头结束
+            # 动态生成 body：这里先用当前时间模拟，time.ctime() 返回当前时间字符串，每次访问都不同
+            body = 'hahahah %s ' % time.ctime()
+            response = header + body  # 拼接成完整的响应（str）
+            # 发送给浏览器：str 先 encode 成 bytes
+            new_socket.send(response.encode('utf-8'))
+
+        # 关闭套接字：HTTP 短连接，响应完就断开
+        new_socket.close()
 ```
 
 ##### 16.15.5.3 Web 服务器和逻辑处理代码分离
@@ -8778,23 +8815,33 @@ else:
 > **问题**：如果请求的是**不同名字的 `.py`**（如 `login.py`、`register.py`），要显示不同的内容，怎么办？
 >
 > 如果把 `if file_name == '/login.py': ... elif ...` 全写在服务器里，服务器和业务逻辑就混在了一起。更好的做法是：**把业务逻辑单独放进一个模块（`mini_frame.py`），服务器只负责调用它**。
+>
+> - **修改位置**：`web_server.py` 中 `WSGIServer` 类的 **`service_client()` 方法**，即 16.15.5.2 中 `else`（动态资源）分支里生成 `body` 的那一行；静态分支和其余方法都不变。
+> - **需要增加**：在 `web_server.py` 文件开头增加 `import mini_frame`，并新建 `mini_frame.py`（见下面第二段代码）。
 
 ```python
-# 服务器 web_server.py 中，动态资源的处理分支：
-header = 'HTTP/1.1 200 OK\r\n'  # 状态行
-header += '\r\n'  # 空行
-# 旧写法：服务器里直接判断，业务逻辑和服务器混在一起（不推荐）
-# body = 'hahahah %s ' % time.ctime()
-# if file_name == '/login.py':
-#     body = mini_frame.login()
-# elif file_name == '/register.py':
-#     body = mini_frame.register()
-# 新写法：把文件名交给框架模块的 application 函数，由它决定返回什么（需要 import mini_frame）
-body = mini_frame.application(file_name)  # 返回 str 类型的响应体
+# web_server.py 文件开头新增：导入框架模块，服务器通过它获取动态页面内容
+import mini_frame
 
-response = header + body  # 拼接成完整响应
-# 发送 response 给浏览器
-new_socket.send(response.encode('utf-8'))
+# 以下是 WSGIServer 类中 service_client() 方法的动态资源分支（else 部分），
+# 其余部分与 16.15.5.2 相同，这里省略
+        else:
+            # 2.2 以 .py 结尾，认为是动态资源的请求
+            header = 'HTTP/1.1 200 OK\r\n'  # 状态行
+            header += '\r\n'  # 空行：响应头结束
+            # 旧写法：服务器里直接判断，业务逻辑和服务器混在一起（不推荐）
+            # body = 'hahahah %s ' % time.ctime()
+            # if file_name == '/login.py':
+            #     body = mini_frame.login()
+            # elif file_name == '/register.py':
+            #     body = mini_frame.register()
+            # 新写法：把文件名交给框架模块的 application 函数，
+            # 由它决定返回什么；返回 str 类型的响应体
+            body = mini_frame.application(file_name)
+
+            response = header + body  # 拼接成完整响应（str）
+            # 发送给浏览器：str 先 encode 成 bytes
+            new_socket.send(response.encode('utf-8'))
 ```
 
 ```python
