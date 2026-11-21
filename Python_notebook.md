@@ -1376,7 +1376,7 @@ print(factorial(5))    # 120
 
 > ---
 >
-> 闭包可以弥补以上不足：把 `k`、`b` 保存在外部函数的变量中，返回的内部函数只需要接收 `x`。
+> 闭包可以弥补以上不足：把 `k`、`b` 保存在外部函数的变量中，返回的内部函数只需要接收 `x`。创建闭包时通过参数 `k`、`b` 确定函数的最终形态，只需变换参数就能得到不同的直线函数，所以**闭包可以提高代码的复用性**。
 
 ```python
 def line(k, b):
@@ -1420,7 +1420,7 @@ line_2(2)  # 输出 44
 
 > ---
 >
-> **小结**：闭包既避免了重复传参，又不使用全局变量，也不需要为每条直线创建一个对象，是“**保存少量数据 + 一个功能**”场景下最轻量的方案。
+> **小结**：闭包在提高代码复用性的同时，既避免了重复传参，又不使用全局变量，也不需要为每条直线创建一个对象，是“**保存少量数据 + 一个功能**”场景下最轻量的方案。
 
 #### 8.7.2 函数引用
 
@@ -1487,54 +1487,15 @@ print(ret(200))  # 先输出 in test_in 函数, number_in is 200，再输出 220
 
 > **关键点**：`test(20)` 已经执行完毕、按理说局部变量 `number` 应该被销毁，但 `ret(100)` 依然能用到 `20`，这就是闭包的“记忆”能力——内部函数把用到的外部变量一起“带走”了。
 
-**再看一个实际例子：返回一次函数（直线）的闭包**
-
-```python
-def line_conf(a, b):
-    """外部函数：配置直线 y = a*x + b 的参数
-
-    Args:
-        a (int | float): 斜率
-        b (int | float): 截距
-
-    Returns:
-        function: 计算直线 y 值的内部函数 line
-    """
-
-    def line(x):
-        """内部函数：根据 x 计算 y
-
-        Args:
-            x (int | float): 自变量
-
-        Returns:
-            int | float: a*x + b 的结果
-        """
-        return a * x + b  # a、b 是外部函数 line_conf 的变量
-
-    return line  # 返回闭包
-
-
-line1 = line_conf(1, 1)  # 确定直线 y = x + 1
-line2 = line_conf(4, 5)  # 确定直线 y = 4x + 5
-print(line1(5))  # 输出 6（1*5+1）
-print(line2(5))  # 输出 25（4*5+5）
-```
-
-> 函数 `line` 与变量 `a`、`b` 构成闭包。创建闭包时，通过 `line_conf` 的参数 `a`、`b` 确定了函数的最终形态（`y = x + 1` 和 `y = 4x + 5`），只需变换参数就能得到不同的直线函数，所以**闭包可以提高代码的复用性**。
->
-> 如果没有闭包，每次计算都要同时传入 `a`、`b`、`x`，参数传递更多，代码的可移植性也更差。
-
-**查看闭包里保存了什么**
+**查看闭包里保存了什么**（以上面的 `ret = test(20)` 为例）
 
 ```python
 # 内部函数的 __code__.co_freevars：元组，保存“自由变量”的名字（来自外部函数、被内部函数使用的变量）
-print(line1.__code__.co_freevars)  # 输出 ('a', 'b')
+print(ret.__code__.co_freevars)  # 输出 ('number',)
 # 内部函数的 __closure__：由 cell 对象组成的元组，每个 cell 保存一个自由变量的值，顺序与 co_freevars 对应
-print(line1.__closure__)  # 输出 (<cell at 0x...: int object at 0x...>, <cell at ...>)
+print(ret.__closure__)  # 输出 (<cell at 0x...: int object at 0x...>,)
 # cell_contents：读取 cell 中保存的实际值
-print([c.cell_contents for c in line1.__closure__])  # 输出 [1, 1]，即 a=1, b=1
-print([c.cell_contents for c in line2.__closure__])  # 输出 [4, 5]，即 a=4, b=5
+print([c.cell_contents for c in ret.__closure__])  # 输出 [20]，即 number=20
 ```
 
 > **形成闭包的 3 个条件**：
