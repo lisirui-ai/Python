@@ -8857,12 +8857,14 @@ def login():
 
 def register():
     """注册页面"""
-    return '-----register---welcome wangdao website.......time:%s' % time.ctime()
+    return ('-----register---welcome wangdao website.......time:%s'
+            % time.ctime())
 
 
 def profile():
     """个人信息页面（本例中暂时没有被 application 调用）"""
-    return '-----profile----welcome wangdao website.......time:%s' % time.ctime()
+    return ('-----profile----welcome wangdao website.......time:%s'
+            % time.ctime())
 
 
 def application(file_name):
@@ -8891,42 +8893,53 @@ def application(file_name):
 > 针对上一节的改造：如果 Web 服务器要给 `mini_frame` 框架**传参**，并且不仅要修改 body，还要能修改 **header**，该怎么办？
 >
 > 做法就是 WSGI 规定的：框架的入口函数改为 `application(environ, start_response)`；服务器调用它时，**传入一个字典 `env` 和一个“设置响应头的函数”**。
+>
+> **服务器端涉及 `WSGIServer` 类的两处修改**（`__init__()`、`run_forever()` 等其他方法不变）：
+>
+> - 修改 `service_client()` 方法中动态资源（`else`）分支：调用框架时传入 `env` 和 `self.set_response_header`，并用框架保存下来的状态和响应头拼接响应；
+> - **新增** `set_response_header()` 方法：把它传给框架，框架调用它时，状态和响应头就保存到服务器对象的 `self.status`、`self.headers` 中。
 
 ```python
-# 服务器 web_server.py 中，动态资源的处理分支：
-else:
-    # 2.2 如果是以 .py 结尾，那么就认为是动态资源的请求
-    env = dict()  # 要传给框架的字典，暂时是空的，后面会放入请求信息
-    # 调用框架的 application：把 env 和“设置响应头的方法”传给它；返回值是响应体 body（str）
-    body = mini_frame.application(env, self.set_response_header)
+# 以下是 WSGIServer 类中 service_client() 方法的动态资源分支（else 部分），
+# 其余部分与 16.15.5.2 相同，这里省略
+        else:
+            # 2.2 以 .py 结尾，认为是动态资源的请求
+            env = dict()  # 要传给框架的字典，暂时是空的，后面会放入请求信息
+            # 调用框架的 application：把 env 和“设置响应头的方法”传给它；
+            # 返回值是响应体 body（str）
+            body = mini_frame.application(env, self.set_response_header)
 
-    # 状态行：self.status 是框架调用 set_response_header 时存下来的，如 '200 OK'
-    header = 'HTTP/1.1 %s\r\n' % self.status
+            # 状态行：self.status 是框架调用 set_response_header 时存下来的，
+            # 如 '200 OK'
+            header = 'HTTP/1.1 %s\r\n' % self.status
 
-    # self.headers 是 [(名称, 值), ...] 的列表，逐行拼接成响应头
-    for temp in self.headers:
-        header += '%s:%s\r\n' % (temp[0], temp[1])
+            # self.headers 是 [(名称, 值), ...] 的列表，逐行拼接成响应头
+            for temp in self.headers:
+                header += '%s:%s\r\n' % (temp[0], temp[1])
 
-    header += '\r\n'  # 空行：响应头结束
+            header += '\r\n'  # 空行：响应头结束
 
-    response = header + body  # 拼接完整响应
-    # 发送 response 给浏览器
-    new_socket.send(response.encode('utf-8'))
+            response = header + body  # 拼接完整响应（str）
+            # 发送给浏览器：str 先 encode 成 bytes
+            new_socket.send(response.encode('utf-8'))
 ```
 
 ```python
-# set_response_header 是 WSGIServer 类的方法，我们把它传给 mini_frame.application，
-# 框架调用它就等于“告诉服务器：状态码和响应头是这些”。env 暂时还没有用到
-def set_response_header(self, status, headers):
-    """保存框架设置的状态码和响应头
+# 以下是 WSGIServer 类中新增的方法 set_response_header()，
+# 与 __init__()、service_client()、run_forever() 并列，缩进 4 个空格；
+# 我们把它传给 mini_frame.application，
+# 框架调用它就等于“告诉服务器：状态码和响应头是这些”
+    def set_response_header(self, status, headers):
+        """保存框架设置的状态码和响应头
 
-    Args:
-        status (str): 状态，如 '200 OK'
-        headers (list[tuple]): 框架设置的响应头，如 [('Content-Type', 'text/html')]
-    """
-    self.status = status  # 保存状态码，稍后拼接响应时使用
-    self.headers = [('server', 'mini_web v8.8')]  # 服务器自己默认带的响应头
-    self.headers += headers  # 再把框架设置的响应头追加进去
+        Args:
+            status (str): 状态，如 '200 OK'
+            headers (list[tuple]): 框架设置的响应头，
+                如 [('Content-Type', 'text/html')]
+        """
+        self.status = status  # 保存状态码，稍后拼接响应时使用
+        self.headers = [('server', 'mini_web v8.8')]  # 服务器默认带的响应头
+        self.headers += headers  # 再把框架设置的响应头追加进去
 ```
 
 ```python
@@ -8950,24 +8963,28 @@ def application(environ, start_response):
 ##### 16.15.6.2 通过传递字典实现请求不同的资源
 
 > 用了 `application` 函数后，怎样让用户请求**不同名字的 `.py`** 时显示不同的内容？办法是：服务器把请求的路径放进字典 `env` 的 **`PATH_INFO`** 键（这正是 WSGI 标准中请求路径使用的键名），框架从 `environ['PATH_INFO']` 中取出路径做判断。
+>
+> **服务器端只修改 `WSGIServer` 类 `service_client()` 方法中动态资源（`else`）分支的一处**：在调用框架之前，把请求路径 `file_name` 放进 `env`。`set_response_header()` 等其他方法与 16.15.6.1 相同，不变。
 
 ```python
-# 服务器 web_server.py 中，动态资源的处理分支：
-else:
-    # 2.2 如果是以 .py 结尾，那么就认为是动态资源的请求
-    env = dict()  # 这个字典中存放的是 web 服务器要传递给 web 框架的数据信息
-    env['PATH_INFO'] = file_name  # 例如 {'PATH_INFO': '/index.py'}
-    # 调用框架：传入 env 和设置响应头的方法
-    body = mini_frame.application(env, self.set_response_header)
+# 以下是 WSGIServer 类中 service_client() 方法的动态资源分支（else 部分），
+# 与 16.15.6.1 相比，只多了 env['PATH_INFO'] = file_name 这一行，其余部分省略
+        else:
+            # 2.2 以 .py 结尾，认为是动态资源的请求
+            # 这个字典中存放的是 web 服务器要传递给 web 框架的数据信息
+            env = dict()
+            env['PATH_INFO'] = file_name  # 例如 {'PATH_INFO': '/index.py'}
+            # 调用框架：传入 env 和设置响应头的方法
+            body = mini_frame.application(env, self.set_response_header)
 
-    header = 'HTTP/1.1 %s\r\n' % self.status  # 状态行
-    for temp in self.headers:  # 遍历响应头
-        header += '%s:%s\r\n' % (temp[0], temp[1])
-    header += '\r\n'  # 空行
+            header = 'HTTP/1.1 %s\r\n' % self.status  # 状态行
+            for temp in self.headers:  # 遍历响应头
+                header += '%s:%s\r\n' % (temp[0], temp[1])
+            header += '\r\n'  # 空行：响应头结束
 
-    response = header + body  # 拼接响应
-    # 发送 response 给浏览器
-    new_socket.send(response.encode('utf-8'))
+            response = header + body  # 拼接响应（str）
+            # 发送给浏览器：str 先 encode 成 bytes
+            new_socket.send(response.encode('utf-8'))
 ```
 
 ```python
@@ -9016,6 +9033,15 @@ def application(env, start_response):
 > ```
 >
 > 例如 `python3 web_server.py 7890 mini_frame:application`，这样服务器可以搭配**任意**符合 WSGI 的框架，实现“服务器与框架解耦”。
+>
+> **`web_server.py` 相对于 16.15.6 的主要变化**：
+>
+> - `WSGIServer.__init__()` 增加三个参数：`port`（端口）、`documents_root`（静态资源目录）、`app`（框架的入口函数），不再把端口等写死在类里；
+> - `service_client()` 方法改名为 `deal_with_request()`，并改为**长连接**（`while True` 循环 + `settimeout`），响应中增加 `Content-Length`；
+> - `set_response_header()` 方法改名为 `set_response_headers()`，默认响应头改为 `Date` 和 `Server`；
+> - 新增 `main()` 函数，负责读取命令行参数，并动态导入框架模块、取出入口函数 `app`，再创建服务器。
+>
+> 下面给出的是修改后的**完整文件**，不再是片段。
 
 **文件结构**
 
@@ -9333,7 +9359,7 @@ $ python3 web_server.py 7890 mini_frame:application  # 参数 1：端口号 7890
 
 > ---
 >
-> 与 16.15.7 相比，服务器代码只需要修改两个常量，其余不变：
+> 与 16.15.7 相比，`web_server.py` 只需要修改文件中两个**模块级常量**（定义在 `WSGIServer` 类外面、`main()` 函数前面），类和函数都不用改：
 
 ```python
 # 设置静态资源访问的路径（原来是 './html'）
@@ -9466,11 +9492,17 @@ def center():
 
 **`web_server.py` 中的修改：读取配置文件**
 
+> **修改位置**：只改 `web_server.py` 的 **`main()` 函数**（它是模块级函数，不属于 `WSGIServer` 类），`WSGIServer` 类本身不变。下面两段分别对应 `main()` 中的两处：**读取配置**放在原来 `sys.path.append(g_dynamic_document_root)` 的位置，**创建服务器**对应原来 `WSGIServer(port, g_static_document_root, app)` 那一行。
+
 ```python
+# 以下是 main() 函数中的修改（缩进 4 个空格）；
+# 文件开头需要新增 import json，导入 json 模块（见 15.6）
+import json
+
 # 原资料的写法：用 eval 把文件里的文本当作 Python 代码执行，得到字典
 # 缺点：配置文件里如果被写入恶意代码，eval 也会执行，存在安全隐患，不推荐
-with open('./web_server.conf') as f:
-    conf_info = eval(f.read())
+#     with open('./web_server.conf') as f:
+#         conf_info = eval(f.read())
 # 此时 conf_info 是一个字典，里面的数据为：
 # {
 #     "static_path": "./static",
@@ -9478,19 +9510,18 @@ with open('./web_server.conf') as f:
 # }
 
 # 推荐写法：配置文件本身就是合法的 JSON，使用 json.load 读取，安全且更规范
-import json  # 导入 json 模块（见 15.6）
+    with open('./web_server.conf', encoding='utf-8') as f:  # 打开配置文件
+        conf_info = json.load(f)  # json.load：从文件对象读取 JSON，返回 dict
 
-with open('./web_server.conf', encoding='utf-8') as f:  # 打开配置文件
-    conf_info = json.load(f)  # json.load：从文件对象读取 JSON，返回 dict
-
-# 使用配置里的动态路径：加入搜索路径，让 Python 能找到框架模块
-sys.path.append(conf_info['dynamic_path'])
-print(conf_info['static_path'])  # 输出 ./static，静态资源路径同样来自配置文件
+    # 使用配置里的动态路径：加入搜索路径，让 Python 能找到框架模块
+    sys.path.append(conf_info['dynamic_path'])
+    print(conf_info['static_path'])  # 输出 ./static，静态资源路径同样来自配置文件
 ```
 
 ```python
-# 创建服务器时，静态资源路径也改为从配置中读取（替换原来的全局常量 g_static_document_root）
-http_server = WSGIServer(port, conf_info['static_path'], app)
+# 同样在 main() 函数中：创建服务器时，静态资源路径也改为从配置中读取
+# （替换原来的全局常量 g_static_document_root）
+        http_server = WSGIServer(port, conf_info['static_path'], app)
 ```
 
 > **完整修改思路**：删除 `g_static_document_root`、`g_dynamic_document_root` 两个全局常量；在 `main()` 中先读取配置文件得到 `conf_info`，用 `conf_info['dynamic_path']` 代替 `g_dynamic_document_root`，用 `conf_info['static_path']` 代替 `g_static_document_root`。以后更换目录，只需修改 `web_server.conf`，无需改服务器代码。
