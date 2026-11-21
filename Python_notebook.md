@@ -2354,11 +2354,11 @@ def timefun_arg(pre='hello'):
 
 
 # 带参数装饰器的装饰过程：
-# 1. 先调用 timefun_arg('wangdao')，得到返回值，即内部的 timefun 装饰器
+# 1. 先调用 timefun_arg('python')，得到返回值，即内部的 timefun 装饰器
 # 2. 再用这个返回值去装饰 foo，即 timefun(foo)
 # 3. timefun(foo) 的返回值是 wrapped_func
 # 4. 让 foo = wrapped_func，即 foo 现在指向 wrapped_func
-@timefun_arg('wangdao')
+@timefun_arg('python')
 def foo():
     print('I am foo')
 
@@ -2368,7 +2368,7 @@ def too():
     print('I am too')
 
 
-foo()  # 输出 foo called at ... wangdao，再输出 I am foo
+foo()  # 输出 foo called at ... python，再输出 I am foo
 sleep(2)  # 暂停 2 秒
 foo()  # 再次调用
 too()  # 输出 too called at ... python，再输出 I am too
@@ -2376,7 +2376,7 @@ sleep(2)  # 暂停 2 秒
 too()  # 再次调用
 ```
 
-> 可以这样理解：`@timefun_arg('wangdao')` 加在 `foo` 上，相当于 `foo = timefun_arg('wangdao')(foo)`；因此调用 `foo()` 就是 `timefun_arg('wangdao')(foo)()`。
+> 可以这样理解：`@timefun_arg('python')` 加在 `foo` 上，相当于 `foo = timefun_arg('python')(foo)`；因此调用 `foo()` 就是 `timefun_arg('python')(foo)()`。
 
 **实际场景：`test1` 和 `test2` 需要不同级别的权限验证**
 
@@ -8790,31 +8790,45 @@ def application(environ, start_response):
 **用标准库的 `wsgiref` 运行一个真正符合标准的 WSGI 应用（验证用）**
 
 ```python
-# 从标准库 wsgiref 导入 make_server：创建一个简单的 WSGI 服务器
+# 从标准库 wsgiref.simple_server 导入 make_server 函数：
+# 用来创建一个简单的 WSGI 服务器（仅供学习和测试，不用于生产环境）
 from wsgiref.simple_server import make_server
 
 
 def application(environ, start_response):
-    """标准 WSGI 应用：返回 bytes 列表
+    """标准 WSGI 应用：由 wsgiref 服务器调用
 
     Args:
-        environ (dict): 请求信息字典
-        start_response (function): 设置状态码和响应头的函数
+        environ (dict): 服务器传入的请求信息字典，
+            键是 str，如 'PATH_INFO'、'REQUEST_METHOD'
+        start_response (function): 服务器提供的函数，用来登记状态码和响应头
 
     Returns:
-        list[bytes]: 响应体（字节串的列表）
+        list[bytes]: 响应体。标准 WSGI 要求返回字节串的可迭代对象，
+            这里是只含一个 bytes 元素的列表
     """
-    # 设置状态码和响应头，charset=utf-8 告诉浏览器按 utf-8 解码中文
+    # 登记状态码和响应头（此时不会发送，等函数返回后服务器统一发送）
+    # 参数 1：状态，str，格式为“状态码 说明”
+    # 参数 2：响应头，list[tuple[str, str]]，每个元组是 (头名称, 头的值)
+    # charset=utf-8 告诉浏览器用 utf-8 解码响应体，中文才不会乱码
     start_response('200 OK', [('Content-Type', 'text/html; charset=utf-8')])
-    # 取出请求路径：environ['PATH_INFO']，类型 str
+    # 从 environ 中取出请求路径，类型 str；浏览器访问 /abc 时，值为 '/abc'
     path = environ['PATH_INFO']
-    # 返回列表，元素必须是 bytes，所以要 encode
+    # 用 % 格式化把路径填进 html 字符串，得到 str
+    # encode('utf-8')：把 str 编码为 bytes，返回 bytes（标准 WSGI 要求 bytes）
+    # 外面套一层 []：变成列表，满足“元素为 bytes 的可迭代对象”的要求
     return [('<h1>你好，WSGI！你访问的是 %s</h1>' % path).encode('utf-8')]
 
 
-# make_server(host, port, app)：host 为空字符串表示本机所有网卡；返回服务器对象
+# make_server(host, port, app)：创建 WSGI 服务器
+#   host (str)：监听的地址，空字符串表示本机所有网卡
+#   port (int)：监听的端口号
+#   app：符合 WSGI 的应用，即上面定义的 application 函数
+# 返回 WSGIServer 对象 httpd（此时只是创建并绑定了端口，还没有开始处理请求）
 httpd = make_server('', 8000, application)
-# serve_forever()：开始永久运行，用浏览器访问 http://127.0.0.1:8000/abc 查看效果
+# serve_forever()：开始永久运行，不断接收请求并调用 application 处理
+# 运行后，用浏览器访问 http://127.0.0.1:8000/abc，页面显示：
+# 你好，WSGI！你访问的是 /abc；按 Ctrl+C 可以停止服务器
 httpd.serve_forever()
 ```
 
@@ -8823,37 +8837,69 @@ httpd.serve_forever()
 > `environ` 是 **Web 服务器通过 WSGI 协议传给 Web 框架的字典**，里面保存了请求的全部信息。下面是 uWSGI 服务器传入的 `environ` 示例（用户访问 `/index.html`）：
 
 ```python
+# 下面是一个字典（dict）：键是 str，值的类型各不相同，见每行注释
 {
-    'HTTP_ACCEPT_LANGUAGE': 'zh-cn',  # 请求头 Accept-Language：浏览器可接受的语言
-    'wsgi.file_wrapper': '<built-in function uwsgi_sendfile>',  # 服务器提供的文件发送优化函数（可选）
-    'HTTP_UPGRADE_INSECURE_REQUESTS': '1',  # 请求头 Upgrade-Insecure-Requests
-    'uwsgi.version': b'2.0.15',  # uWSGI 特有信息：服务器版本
-    'REMOTE_ADDR': '172.16.7.1',  # 客户端（浏览器）的 IP
-    'wsgi.errors': '<_io.TextIOWrapper name=2 mode=\'w\' encoding=\'UTF-8\'>',  # 错误输出流
-    'wsgi.version': (1, 0),  # WSGI 协议的版本
-    'REMOTE_PORT': '40432',  # 客户端使用的端口
-    'REQUEST_URI': '/',  # uWSGI 扩展：原始请求 URI
-    'SERVER_PORT': '8000',  # 服务器监听的端口
-    'wsgi.multithread': False,  # 服务器是否为多线程
-    'HTTP_ACCEPT': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',  # 浏览器可接受的内容类型
-    'HTTP_HOST': '172.16.7.152:8000',  # 请求头 Host：访问的主机和端口
-    'wsgi.run_once': False,  # 应用是否在进程生命周期内只运行一次
-    'wsgi.input': '<uwsgi._Input object at 0x7f7faecdc9c0>',  # 请求体（如 POST 数据）的类文件对象
-    'SERVER_PROTOCOL': 'HTTP/1.1',  # 请求使用的协议版本
-    'REQUEST_METHOD': 'GET',  # 请求方法
-    'HTTP_ACCEPT_ENCODING': 'gzip,deflate',  # 浏览器可接受的压缩方式
-    'HTTP_CONNECTION': 'keep-alive',  # 请求头 Connection：长连接
-    'uwsgi.node': b'ubuntu',  # uWSGI 特有信息：节点名
-    'HTTP_DNT': '1',  # 请求头 DNT（Do Not Track）
-    'UWSGI_ROUTER': 'http',  # uWSGI 特有信息：路由器类型
-    'SCRIPT_NAME': '',  # 应用所在的路径前缀，通常为空
-    'wsgi.multiprocess': False,  # 服务器是否为多进程
-    'QUERY_STRING': '',  # 网址中 ? 之后的查询字符串
-    'PATH_INFO': '/index.html',  # 请求的路径（框架路由最常用的键）
-    'wsgi.url_scheme': 'http',  # 使用的协议：http 或 https
-    'HTTP_USER_AGENT': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_5) AppleWebKit/603.2.4 '
-                       '(KHTML, like Gecko) Version/10.1.1 Safari/603.2.4',  # 浏览器标识
-    'SERVER_NAME': 'ubuntu'  # 服务器名
+    # 请求头 Accept-Language：浏览器可接受的语言（str）
+    'HTTP_ACCEPT_LANGUAGE': 'zh-cn',
+    # 服务器提供的文件发送优化函数（可选；这里显示的是函数的字符串形式）
+    'wsgi.file_wrapper': '<built-in function uwsgi_sendfile>',
+    # 请求头 Upgrade-Insecure-Requests：浏览器希望升级到 https（str）
+    'HTTP_UPGRADE_INSECURE_REQUESTS': '1',
+    # uWSGI 特有信息：服务器版本（bytes，不是 WSGI 标准）
+    'uwsgi.version': b'2.0.15',
+    # 客户端（浏览器）的 IP 地址（str）
+    'REMOTE_ADDR': '172.16.7.1',
+    # 错误输出流：框架写错误日志用的文件对象（这里显示的是字符串形式）
+    'wsgi.errors': "<_io.TextIOWrapper name=2 mode='w' encoding='UTF-8'>",
+    # WSGI 协议的版本（tuple[int, int]）
+    'wsgi.version': (1, 0),
+    # 客户端使用的端口（str，注意不是 int）
+    'REMOTE_PORT': '40432',
+    # uWSGI 扩展：原始请求 URI（str，不是 WSGI 标准）
+    'REQUEST_URI': '/',
+    # 服务器监听的端口（str，注意不是 int）
+    'SERVER_PORT': '8000',
+    # 服务器是否为多线程（bool）
+    'wsgi.multithread': False,
+    # 请求头 Accept：浏览器可接受的内容类型（str），q 是优先级权重
+    'HTTP_ACCEPT': ('text/html,application/xhtml+xml,application/xml;q=0.9,'
+                    '*/*;q=0.8'),
+    # 请求头 Host：访问的主机和端口（str）
+    'HTTP_HOST': '172.16.7.152:8000',
+    # 应用是否在进程生命周期内只运行一次（bool）
+    'wsgi.run_once': False,
+    # 请求体的输入流：类文件对象，POST 提交的数据从这里读取
+    'wsgi.input': '<uwsgi._Input object at 0x7f7faecdc9c0>',
+    # 请求使用的协议版本（str）
+    'SERVER_PROTOCOL': 'HTTP/1.1',
+    # 请求方法（str）：GET、POST 等
+    'REQUEST_METHOD': 'GET',
+    # 请求头 Accept-Encoding：浏览器可接受的压缩方式（str）
+    'HTTP_ACCEPT_ENCODING': 'gzip,deflate',
+    # 请求头 Connection：keep-alive 表示希望使用长连接（str）
+    'HTTP_CONNECTION': 'keep-alive',
+    # uWSGI 特有信息：节点名（bytes，不是 WSGI 标准）
+    'uwsgi.node': b'ubuntu',
+    # 请求头 DNT（Do Not Track）：1 表示不希望被跟踪（str）
+    'HTTP_DNT': '1',
+    # uWSGI 特有信息：路由器类型（str，不是 WSGI 标准）
+    'UWSGI_ROUTER': 'http',
+    # 应用所在的路径前缀（str），应用部署在根路径时为空字符串
+    'SCRIPT_NAME': '',
+    # 服务器是否为多进程（bool）
+    'wsgi.multiprocess': False,
+    # 网址中 ? 之后的查询字符串（str），没有时为空字符串
+    'QUERY_STRING': '',
+    # 请求的路径（str）：框架路由最常用的键，据此决定返回什么页面
+    'PATH_INFO': '/index.html',
+    # 使用的协议（str）：'http' 或 'https'
+    'wsgi.url_scheme': 'http',
+    # 请求头 User-Agent：浏览器标识（str）；这里用括号把长字符串拆成两行
+    'HTTP_USER_AGENT': ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_5) '
+                        'AppleWebKit/603.2.4 (KHTML, like Gecko) '
+                        'Version/10.1.1 Safari/603.2.4'),
+    # 服务器名（str）
+    'SERVER_NAME': 'ubuntu'
 }
 ```
 
@@ -8882,11 +8928,11 @@ httpd.serve_forever()
 > 先回顾一个用类封装的静态服务器：每来一个客户端就创建一个子进程（见 16.13.3）。后面的所有改造，都是在它的基础上增加“动态页面”的功能。**文件名：`web_server.py`**
 
 ```python
-# 导入 socket 模块：网络编程接口
+# 导入 socket 模块：提供网络编程接口（创建套接字、收发数据等）
 import socket
-# 导入 re 模块：用正则表达式解析请求行
+# 导入 re 模块：用正则表达式从请求行中解析出请求的文件名
 import re
-# 导入 multiprocessing 模块：为每个客户端创建一个进程
+# 导入 multiprocessing 模块：为每个客户端创建一个子进程，实现并发
 import multiprocessing
 
 
@@ -8895,13 +8941,22 @@ class WSGIServer(object):
 
     def __init__(self):
         """创建监听套接字，完成 bind 和 listen"""
-        # 1. 创建 TCP 套接字：AF_INET 为 IPv4，SOCK_STREAM 为 TCP
-        self.tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # 设置端口复用，服务器重启时可以立即绑定同一端口
-        self.tcp_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # 2. 绑定：ip 为空表示本机所有网卡，端口 7890
+        # 1. 创建 TCP 套接字
+        # socket.socket(family, type)：返回套接字对象
+        #   AF_INET：使用 IPv4 地址；SOCK_STREAM：使用 TCP（字节流）
+        self.tcp_server_socket = socket.socket(
+            socket.AF_INET, socket.SOCK_STREAM)
+        # 设置端口复用：服务器重启时可以立即绑定同一个端口
+        # setsockopt(level, option, value)
+        #   SOL_SOCKET：在套接字层面设置；SO_REUSEADDR：允许重用本地地址；
+        #   1：开启（见 16.6 TCP 连接原理中的 TIME_WAIT 状态）
+        self.tcp_server_socket.setsockopt(
+            socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # 2. 绑定本机地址：参数是元组 (ip, port)
+        #   ip 为空字符串表示本机所有网卡；port 是 int 类型的端口号 7890
         self.tcp_server_socket.bind(('', 7890))
-        # 3. 变为监听套接字，全连接队列最大长度 128
+        # 3. 变为监听套接字（被动等待客户端连接）
+        #   128：全连接队列（已完成三次握手、等待 accept 取走）的最大长度
         self.tcp_server_socket.listen(128)
 
     def service_client(self, new_socket):
@@ -8913,40 +8968,65 @@ class WSGIServer(object):
         # 1. 接收浏览器发送过来的请求，即 http 请求，例如：
         # GET / HTTP/1.1
         # .....
-        # recv(1024) 返回 bytes，decode 解码为 str
+        # recv(1024)：最多接收 1024 字节，返回 bytes；
+        # decode('utf-8')：按 utf-8 把 bytes 解码为 str
         request = new_socket.recv(1024).decode('utf-8')
-        # splitlines() 按行切割为 list[str]，第 0 行是请求行
+        # splitlines()：按行切割，返回 list[str]，每个元素是一行（不含换行符）
+        # 第 0 个元素是请求行，如 'GET /index.html HTTP/1.1'
         request_lines = request.splitlines()
-        print('')  # 打印空行，分隔每次请求的输出
-        print('>' * 20)  # 打印分隔线
-        print(request_lines)  # 打印请求的每一行
+        # 打印空行，分隔每次请求的输出
+        print('')
+        # 打印 20 个 > 作为分隔线
+        print('>' * 20)
+        # 打印请求的每一行（list[str]），方便观察浏览器发送了什么
+        print(request_lines)
 
-        # 请求行形如：GET /index.html HTTP/1.1（请求方法有 get、post、put、delete 等）
-        file_name = ''  # 请求的文件名，先给空字符串，保证后面一定有这个变量
-        # 正则含义：[^/]+ 匹配请求方法和空格，(/[^ ]*) 捕获以 / 开头、到空格之前的路径
+        # 请求行形如：GET /index.html HTTP/1.1
+        # 请求方法有 get、post、put、delete 等
+        # 请求的文件名（str），先给空字符串，保证后面一定有这个变量
+        file_name = ''
+        # re.match(正则, 字符串)：从字符串开头匹配，成功返回 Match 对象，失败返回 None
+        # 正则含义：[^/]+ 匹配 / 之前的请求方法和空格，
+        # (/[^ ]*) 捕获以 / 开头、到空格之前的路径，即请求的文件名
         ret = re.match(r'[^/]+(/[^ ]*)', request_lines[0])
-        if ret:  # 匹配成功
-            file_name = ret.group(1)  # 取出捕获的路径，类型 str
-            if file_name == '/':  # 访问网站根路径
-                file_name = '/index.html'  # 默认返回首页
+        # 匹配成功时 ret 是 Match 对象，布尔值为 True
+        if ret:
+            # group(1)：取出第 1 个括号捕获的内容，类型 str，如 '/index.html'
+            file_name = ret.group(1)
+            # 访问网站根路径时
+            if file_name == '/':
+                # 默认返回首页
+                file_name = '/index.html'
 
         # 2. 返回 http 格式的数据给浏览器
         try:
-            # 以二进制只读方式打开 html 目录下的文件
+            # 以二进制只读方式（'rb'）打开 html 目录下的文件，返回文件对象
+            # 用二进制是因为图片等文件不能按文本读取；文件不存在时抛出 IOError
             f = open('./html' + file_name, 'rb')
-        except IOError:  # 文件不存在，返回 404
-            response = 'HTTP/1.1 404 NOT FOUND\r\n'  # 状态行
-            response += '\r\n'  # 空行：响应头结束
-            response += '------file not found-----'  # 响应体
-            new_socket.send(response.encode('utf-8'))  # 发送：str 先 encode 成 bytes
-        else:  # 文件存在
-            html_content = f.read()  # 读取文件内容，bytes
-            f.close()  # 关闭文件
+        # 文件不存在，返回 404
+        except IOError:
+            # 状态行：协议版本 状态码 说明，\r\n 是 http 规定的换行
+            response = 'HTTP/1.1 404 NOT FOUND\r\n'
+            # 空行：表示响应头结束，后面是响应体
+            response += '\r\n'
+            # 响应体：提示文件没找到（str）
+            response += '------file not found-----'
+            # send(bytes)：发送数据给浏览器，返回实际发送的字节数；
+            # str 必须先 encode 成 bytes 才能发送
+            new_socket.send(response.encode('utf-8'))
+        # 文件存在
+        else:
+            # read()：读取文件的全部内容，返回 bytes
+            html_content = f.read()
+            # 关闭文件，释放资源
+            f.close()
             # 2.1 准备发送给浏览器的数据 --- header
-            response = 'HTTP/1.1 200 OK\r\n'  # 状态行
-            response += '\r\n'  # 空行：响应头结束
+            # 状态行
+            response = 'HTTP/1.1 200 OK\r\n'
+            # 空行：响应头结束（这里没有设置其他响应头）
+            response += '\r\n'
             # 2.2 准备发送给浏览器的数据 --- body 就是文件内容 html_content
-            # 将 response header 发送给浏览器
+            # 将 response header 发送给浏览器（str 先 encode 成 bytes）
             new_socket.send(response.encode('utf-8'))
             # 将 response body 发送给浏览器（已经是 bytes，直接发送）
             new_socket.send(html_content)
@@ -8956,13 +9036,22 @@ class WSGIServer(object):
 
     def run_forever(self):
         """用来完成整体的控制"""
-        while True:  # 服务器要一直运行
-            # 4. 等待新客户端的连接，返回 (新套接字, 客户端地址)
+        # 服务器要一直运行，所以是死循环
+        while True:
+            # 4. 等待新客户端的连接（没有客户端连接时，程序在这里阻塞）
+            # accept() 返回元组 (new_socket, client_addr)：
+            #   new_socket：专门为这个客户端服务的新套接字
+            #   client_addr：客户端地址，tuple (ip str, port int)
             new_socket, client_addr = self.tcp_server_socket.accept()
             # 5. 为这个客户端服务：创建一个子进程
-            p = multiprocessing.Process(target=self.service_client, args=(new_socket,))
-            p.start()  # 启动子进程
-            # 父进程中的 new_socket 不再使用，关闭只是让引用计数减 1（原理见 16.13.3）
+            # Process(target, args)：target 是子进程要执行的函数，
+            # args 是传给该函数的位置参数元组（只有一个参数时要加逗号）
+            p = multiprocessing.Process(
+                target=self.service_client, args=(new_socket,))
+            # 启动子进程，子进程开始执行 service_client(new_socket)
+            p.start()
+            # 子进程已经复制了 new_socket，父进程中的不再使用，
+            # 关闭只是让引用计数减 1，不会断开连接（原理见 16.13.3）
             new_socket.close()
 
         # 关闭监听套接字（死循环下实际不会执行到，写在这里表示规范）
@@ -8971,11 +9060,15 @@ class WSGIServer(object):
 
 def main():
     """控制整体：创建一个 web 服务器对象，然后调用它的 run_forever 方法运行"""
-    wsgi_server = WSGIServer()  # 创建服务器对象
-    wsgi_server.run_forever()  # 开始运行
+    # 创建服务器对象：会执行 __init__，完成 bind 和 listen
+    wsgi_server = WSGIServer()
+    # 开始运行：进入 accept 死循环
+    wsgi_server.run_forever()
 
 
-if __name__ == '__main__':  # 只有直接运行本文件才启动服务器（Windows 下多进程必须有这一句）
+# 只有直接运行本文件时才启动服务器；被 import 时不启动
+# （Windows 下多进程必须有这一句，否则子进程会重复执行启动代码）
+if __name__ == '__main__':
     main()
 ```
 
@@ -9007,27 +9100,44 @@ import time
         if not file_name.endswith('.py'):
             # 2.1 静态请求：与 16.15.5.1 的处理完全相同，打开文件并返回
             try:
-                f = open('./html' + file_name, 'rb')  # 以二进制只读方式打开文件
-            except IOError:  # 文件不存在，返回 404
-                response = 'HTTP/1.1 404 NOT FOUND\r\n'  # 状态行
-                response += '\r\n'  # 空行：响应头结束
-                response += '------file not found-----'  # 响应体
+                # 以二进制只读方式打开文件，返回文件对象；文件不存在抛 IOError
+                f = open('./html' + file_name, 'rb')
+            # 文件不存在，返回 404
+            except IOError:
+                # 状态行
+                response = 'HTTP/1.1 404 NOT FOUND\r\n'
+                # 空行：响应头结束
+                response += '\r\n'
+                # 响应体
+                response += '------file not found-----'
                 # 发送：str 先 encode 成 bytes
                 new_socket.send(response.encode('utf-8'))
-            else:  # 文件存在
-                html_content = f.read()  # 读取文件内容，bytes
-                f.close()  # 关闭文件
-                response = 'HTTP/1.1 200 OK\r\n'  # 状态行
-                response += '\r\n'  # 空行：响应头结束
-                new_socket.send(response.encode('utf-8'))  # 发送响应头
-                new_socket.send(html_content)  # 发送响应体（已经是 bytes）
+            # 文件存在
+            else:
+                # 读取文件内容，返回 bytes
+                html_content = f.read()
+                # 关闭文件
+                f.close()
+                # 状态行
+                response = 'HTTP/1.1 200 OK\r\n'
+                # 空行：响应头结束
+                response += '\r\n'
+                # 发送响应头（str 先 encode）
+                new_socket.send(response.encode('utf-8'))
+                # 发送响应体（已经是 bytes）
+                new_socket.send(html_content)
         else:
             # 2.2 以 .py 结尾，认为是动态资源的请求：不读文件，由程序生成 body
-            header = 'HTTP/1.1 200 OK\r\n'  # 状态行
-            header += '\r\n'  # 空行：响应头结束
-            # 动态生成 body：这里先用当前时间模拟，time.ctime() 返回当前时间字符串，每次访问都不同
+            # 状态行
+            header = 'HTTP/1.1 200 OK\r\n'
+            # 空行：响应头结束
+            header += '\r\n'
+            # 动态生成 body（str）：这里先用当前时间模拟
+            # time.ctime() 返回当前时间的字符串，如 'Sat Nov 21 15:00:00 2026'
+            # 每次访问时间都不同，说明内容是实时生成的
             body = 'hahahah %s ' % time.ctime()
-            response = header + body  # 拼接成完整的响应（str）
+            # 拼接成完整的响应（str）
+            response = header + body
             # 发送给浏览器：str 先 encode 成 bytes
             new_socket.send(response.encode('utf-8'))
 
@@ -9052,8 +9162,10 @@ import mini_frame
 # 其余部分与 16.15.5.2 相同，这里省略
         else:
             # 2.2 以 .py 结尾，认为是动态资源的请求
-            header = 'HTTP/1.1 200 OK\r\n'  # 状态行
-            header += '\r\n'  # 空行：响应头结束
+            # 状态行
+            header = 'HTTP/1.1 200 OK\r\n'
+            # 空行：响应头结束
+            header += '\r\n'
             # 旧写法：服务器里直接判断，业务逻辑和服务器混在一起（不推荐）
             # body = 'hahahah %s ' % time.ctime()
             # if file_name == '/login.py':
@@ -9061,34 +9173,51 @@ import mini_frame
             # elif file_name == '/register.py':
             #     body = mini_frame.register()
             # 新写法：把文件名交给框架模块的 application 函数，
-            # 由它决定返回什么；返回 str 类型的响应体
+            # 由它决定返回什么；参数 file_name 是 str，如 '/login.py'
+            # 返回值 body 是 str 类型的响应体
             body = mini_frame.application(file_name)
 
-            response = header + body  # 拼接成完整响应（str）
+            # 拼接成完整响应（str）
+            response = header + body
             # 发送给浏览器：str 先 encode 成 bytes
             new_socket.send(response.encode('utf-8'))
 ```
 
 ```python
 # mini_frame.py：Web 框架（业务逻辑）模块
-import time  # 导入 time 模块，用于获取当前时间
+# 导入 time 模块，用于获取当前时间
+import time
 
 
 def login():
-    """登录页面"""
-    # 返回 str；%s 被 time.ctime() 的结果替换
-    return 'i----login--welcome wangdao website.......time:%s' % time.ctime()
+    """登录页面
+
+    Returns:
+        str: 登录页面的内容，包含当前时间
+    """
+    # time.ctime() 返回当前时间的字符串；% 把它填入 %s 的位置
+    return 'i----login--welcome python website.......time:%s' % time.ctime()
 
 
 def register():
-    """注册页面"""
-    return ('-----register---welcome wangdao website.......time:%s'
+    """注册页面
+
+    Returns:
+        str: 注册页面的内容，包含当前时间
+    """
+    # 把当前时间填入字符串，括号用于把过长的一行拆成两行
+    return ('-----register---welcome python website.......time:%s'
             % time.ctime())
 
 
 def profile():
-    """个人信息页面（本例中暂时没有被 application 调用）"""
-    return ('-----profile----welcome wangdao website.......time:%s'
+    """个人信息页面（本例中暂时没有被 application 调用）
+
+    Returns:
+        str: 个人信息页面的内容，包含当前时间
+    """
+    # 把当前时间填入字符串
+    return ('-----profile----welcome python website.......time:%s'
             % time.ctime())
 
 
@@ -9101,11 +9230,17 @@ def application(file_name):
     Returns:
         str: 页面内容（响应体）
     """
-    if file_name == '/login.py':  # 请求登录页
+    # 请求登录页
+    if file_name == '/login.py':
+        # 调用 login()，把它返回的页面内容返回给服务器
         return login()
-    elif file_name == '/register.py':  # 请求注册页
+    # 请求注册页
+    elif file_name == '/register.py':
+        # 调用 register()，返回注册页面内容
         return register()
-    else:  # 其他都认为不存在
+    # 其他都认为不存在
+    else:
+        # 返回提示字符串
         return 'not found you page....'
 ```
 
@@ -9129,22 +9264,29 @@ def application(file_name):
 # 其余部分与 16.15.5.2 相同，这里省略
         else:
             # 2.2 以 .py 结尾，认为是动态资源的请求
-            env = dict()  # 要传给框架的字典，暂时是空的，后面会放入请求信息
-            # 调用框架的 application：把 env 和“设置响应头的方法”传给它；
-            # 返回值是响应体 body（str）
+            # 要传给框架的字典（dict），暂时是空的，后面会放入请求信息
+            env = dict()
+            # 调用框架的 application，两个参数都由服务器传入：
+            #   env：请求信息字典（dict）
+            #   self.set_response_header：设置响应头的方法（相当于 start_response）
+            # 返回值 body 是框架生成的响应体（str）
             body = mini_frame.application(env, self.set_response_header)
 
-            # 状态行：self.status 是框架调用 set_response_header 时存下来的，
-            # 如 '200 OK'
+            # 状态行：self.status 是框架调用 set_response_header 时保存的，
+            # 如 '200 OK'；% 把它填入 %s 的位置，得到 str
             header = 'HTTP/1.1 %s\r\n' % self.status
 
-            # self.headers 是 [(名称, 值), ...] 的列表，逐行拼接成响应头
+            # self.headers 是 [(名称, 值), ...] 的列表（list[tuple]）
+            # 遍历每个元组 temp：temp[0] 是头名称，temp[1] 是头的值
             for temp in self.headers:
+                # 每个响应头占一行，格式为 名称:值，以 \r\n 结尾
                 header += '%s:%s\r\n' % (temp[0], temp[1])
 
-            header += '\r\n'  # 空行：响应头结束
+            # 空行：响应头结束，后面是响应体
+            header += '\r\n'
 
-            response = header + body  # 拼接完整响应（str）
+            # 拼接完整响应（str）：响应头 + 响应体
+            response = header + body
             # 发送给浏览器：str 先 encode 成 bytes
             new_socket.send(response.encode('utf-8'))
 ```
@@ -9162,9 +9304,12 @@ def application(file_name):
             headers (list[tuple]): 框架设置的响应头，
                 如 [('Content-Type', 'text/html')]
         """
-        self.status = status  # 保存状态码，稍后拼接响应时使用
-        self.headers = [('server', 'mini_web v8.8')]  # 服务器默认带的响应头
-        self.headers += headers  # 再把框架设置的响应头追加进去
+        # 把状态码保存为对象属性，service_client 稍后拼接响应时使用
+        self.status = status
+        # 服务器自己默认带的响应头：list[tuple]，只有 server 一项
+        self.headers = [('server', 'mini_web v8.8')]
+        # 把框架设置的响应头追加到列表末尾（列表相加得到新列表）
+        self.headers += headers
 ```
 
 ```python
@@ -9179,10 +9324,15 @@ def application(environ, start_response):
     Returns:
         str: 响应体
     """
-    # start_response 的第二个参数必须是列表，列表里可以有多个元组，
-    # 每个元组有两个部分：第一部分是冒号前面的内容（头名称），第二部分是冒号后面的内容（头的值）
+    # start_response 的两个参数：
+    #   参数 1：状态，str，如 '200 OK'
+    #   参数 2：响应头，必须是列表，列表里可以有多个元组，
+    #   每个元组有两个部分：第一部分是冒号前面的内容（头名称），
+    #   第二部分是冒号后面的内容（头的值）
+    # charset=utf-8 让浏览器按 utf-8 解码，中文才能正常显示
     start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
-    return 'Hello World! 我爱你中国....'  # 返回响应体
+    # 返回响应体（str），服务器会把它拼在响应头后面发给浏览器
+    return 'Hello World! 我爱你中国....'
 ```
 
 ##### 16.15.6.2 通过传递字典实现请求不同的资源
@@ -9196,18 +9346,25 @@ def application(environ, start_response):
 # 与 16.15.6.1 相比，只多了 env['PATH_INFO'] = file_name 这一行，其余部分省略
         else:
             # 2.2 以 .py 结尾，认为是动态资源的请求
-            # 这个字典中存放的是 web 服务器要传递给 web 框架的数据信息
+            # 这个字典（dict）中存放的是 web 服务器要传递给 web 框架的数据信息
             env = dict()
-            env['PATH_INFO'] = file_name  # 例如 {'PATH_INFO': '/index.py'}
-            # 调用框架：传入 env 和设置响应头的方法
+            # 把请求的路径放进字典，键 'PATH_INFO' 是 WSGI 标准规定的键名
+            # file_name 是 str，如 '/index.py'，所以 env 为 {'PATH_INFO': '/index.py'}
+            env['PATH_INFO'] = file_name
+            # 调用框架：传入 env 和设置响应头的方法，返回值 body 是响应体（str）
             body = mini_frame.application(env, self.set_response_header)
 
-            header = 'HTTP/1.1 %s\r\n' % self.status  # 状态行
-            for temp in self.headers:  # 遍历响应头
+            # 状态行：self.status 是框架调用 set_response_header 时保存的
+            header = 'HTTP/1.1 %s\r\n' % self.status
+            # 遍历响应头列表 list[tuple]，每个元组是 (头名称, 头的值)
+            for temp in self.headers:
+                # 每个响应头占一行
                 header += '%s:%s\r\n' % (temp[0], temp[1])
-            header += '\r\n'  # 空行：响应头结束
+            # 空行：响应头结束
+            header += '\r\n'
 
-            response = header + body  # 拼接响应（str）
+            # 拼接响应（str）
+            response = header + body
             # 发送给浏览器：str 先 encode 成 bytes
             new_socket.send(response.encode('utf-8'))
 ```
@@ -9215,12 +9372,22 @@ def application(environ, start_response):
 ```python
 # mini_frame.py
 def index():
-    """主页"""
+    """主页
+
+    Returns:
+        str: 主页的内容
+    """
+    # 返回主页的内容（str）
     return '这是主页'
 
 
 def login():
-    """登录页面"""
+    """登录页面
+
+    Returns:
+        str: 登录页面的内容
+    """
+    # 返回登录页面的内容（str）
     return '这是登录页面'
 
 
@@ -9234,16 +9401,24 @@ def application(env, start_response):
     Returns:
         str: 响应体
     """
-    # 设置状态码和响应头（Content-Type 里的 charset=utf-8 让浏览器正确显示中文）
+    # 设置状态码和响应头（只是登记给服务器，此时不发送）
+    # Content-Type 里的 charset=utf-8 让浏览器正确显示中文
     start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
 
-    file_name = env['PATH_INFO']  # 取出请求路径，如 '/index.py'
+    # 取出请求路径（str），如 '/index.py'
+    file_name = env['PATH_INFO']
 
-    if file_name == '/index.py':  # 请求主页
+    # 请求主页
+    if file_name == '/index.py':
+        # 调用 index()，返回主页内容
         return index()
-    elif file_name == '/login.py':  # 请求登录页
+    # 请求登录页
+    elif file_name == '/login.py':
+        # 调用 login()，返回登录页内容
         return login()
-    else:  # 其他路径
+    # 其他路径
+    else:
+        # 返回默认的内容
         return 'Hello World! 我爱你中国....'
 ```
 
@@ -9296,12 +9471,19 @@ def application(environ, start_response):
     Returns:
         str: 响应体
     """
-    status = '200 OK'  # 状态：str
-    # 响应头：list[tuple]，只有 Content-Type 一项，声明内容是 html 文本、utf-8 编码
+    # 状态（str）：状态码 + 说明
+    status = '200 OK'
+    # 响应头：list[tuple]，只有 Content-Type 一项，
+    # 声明内容是 html 文本、utf-8 编码
     response_headers = [('Content-Type', 'text/html; charset=utf-8')]
-    start_response(status, response_headers)  # 把状态和响应头告诉服务器
-    # 返回响应体：把 environ 转成字符串显示出来，方便观察服务器传入了什么；后面拼接当前时间
-    return str(environ) + '==Hello world from a simple WSGI application!--->%s\n' % time.ctime()
+    # 把状态和响应头登记给服务器（此时并不发送）
+    start_response(status, response_headers)
+    # 返回响应体（str）：
+    # str(environ) 把整个 environ 字典转成字符串显示出来，
+    # 方便观察服务器传入了什么；后面用 % 拼接当前时间 time.ctime()
+    return (str(environ) +
+            '==Hello world from a simple WSGI application!--->%s\n'
+            % time.ctime())
 ```
 
 **`web_server.py`（完整版）**
@@ -9317,7 +9499,8 @@ import sys
 import re
 # 导入 multiprocessing 模块：每个客户端一个子进程
 import multiprocessing
-# 导入 mimetypes 模块：根据文件扩展名推断 Content-Type（让浏览器正确识别 css、js、图片）
+# 导入 mimetypes 模块：根据文件扩展名推断 Content-Type
+# （让浏览器正确识别 css、js、图片）
 import mimetypes
 
 
@@ -9332,31 +9515,40 @@ class WSGIServer(object):
             documents_root (str): 静态资源所在的目录，如 './html'
             app (function): Web 框架的入口函数 application，符合 WSGI 接口
         """
-        # 1. 创建套接字：IPv4 + TCP
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # 2. 设置端口复用，并绑定本地信息
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # 1. 创建套接字：IPv4 + TCP，返回套接字对象
+        self.server_socket = socket.socket(
+            socket.AF_INET, socket.SOCK_STREAM)
+        # 2. 设置端口复用（服务器重启可立即绑定同一端口），并绑定本地信息
+        self.server_socket.setsockopt(
+            socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # bind 的参数是元组 (ip, port)：ip 为空字符串表示本机所有网卡
         self.server_socket.bind(('', port))
-        # 3. 变为监听套接字
+        # 3. 变为监听套接字，128 是全连接队列的最大长度
         self.server_socket.listen(128)
 
-        # 设定静态资源文件的路径
+        # 设定静态资源文件的路径（str），保存为对象属性，供后面方法使用
         self.documents_root = documents_root
 
-        # 设定 web 框架可以调用的函数（对象），后面处理动态请求时直接调用 self.app(...)
+        # 设定 web 框架可以调用的函数（对象），
+        # 后面处理动态请求时直接调用 self.app(...)
         self.app = app
 
     def run_forever(self):
         """运行服务器：不断接收新连接，每个连接交给一个新进程处理"""
-        # 等待对方连接
+        # 等待对方连接，服务器要一直运行，所以是死循环
         while True:
-            # accept 返回 (为该客户端服务的新套接字, 客户端地址)
+            # accept() 返回元组 (new_socket, new_addr)：
+            #   new_socket：为该客户端服务的新套接字
+            #   new_addr：客户端地址 tuple (ip str, port int)
             new_socket, new_addr = self.server_socket.accept()
             # 创建一个新的进程来完成这个客户端的请求任务
+            # target：子进程要执行的函数；args：传给它的参数元组
             new_process = multiprocessing.Process(
                 target=self.deal_with_request, args=(new_socket,))
-            new_process.start()  # 启动子进程
-            new_socket.close()  # 父进程不再使用该套接字，关闭（引用计数减 1）
+            # 启动子进程，开始执行 deal_with_request(new_socket)
+            new_process.start()
+            # 父进程不再使用该套接字，关闭它（引用计数减 1，不会断开连接）
+            new_socket.close()
 
     def deal_with_request(self, client_socket):
         """以长连接的方式，为这个浏览器服务
@@ -9364,81 +9556,132 @@ class WSGIServer(object):
         Args:
             client_socket (socket.socket): 与该浏览器通信的套接字
         """
-        # 设置接收数据的超时时间 3 秒：超过 3 秒浏览器没有发新请求，就认为不再使用，关闭连接
-        # 注意：写在子进程里（而不是父进程 accept 之后），Windows 下套接字被序列化传给子进程后超时设置才不会丢失
+        # 设置接收数据的超时时间 3 秒（float，单位秒）：
+        # 超过 3 秒浏览器没有发新请求，recv 就会抛出异常，认为不再使用并关闭连接
+        # 写在子进程里而不是父进程 accept 之后：Windows 下套接字被序列化传给
+        # 子进程后，超时设置才不会丢失
         client_socket.settimeout(3)
-        while True:  # 长连接：一个连接上可以处理多个请求
+        # 长连接：一个连接上可以处理多个请求，所以用循环
+        while True:
             try:
-                # 接收浏览器发来的请求，bytes 解码为 str
+                # 接收浏览器发来的请求：recv 返回 bytes，decode 解码为 str
                 request = client_socket.recv(1024).decode('utf-8')
-            except Exception as ret:  # 超时（或其他网络错误）都会进入这里
-                print('========>', ret)  # 打印原因
-                client_socket.close()  # 关闭连接
-                return  # 结束这个子进程的处理函数
-
-            # 判断浏览器是否关闭：对方关闭连接后，recv 会返回空数据
-            if not request:
-                client_socket.close()  # 关闭连接
+            # 超时（或其他网络错误）都会进入这里，ret 是异常对象
+            except Exception as ret:
+                # 打印原因，方便观察
+                print('========>', ret)
+                # 关闭连接
+                client_socket.close()
+                # 结束这个子进程的处理函数
                 return
 
-            request_lines = request.splitlines()  # 按行切割请求
-            for i, line in enumerate(request_lines):  # 打印每一行，便于观察
+            # 判断浏览器是否关闭：对方关闭连接后，recv 返回空数据，
+            # 空字符串的布尔值为 False，not request 为 True
+            if not request:
+                # 关闭连接
+                client_socket.close()
+                # 结束处理函数
+                return
+
+            # 按行切割请求，返回 list[str]，第 0 行是请求行
+            request_lines = request.splitlines()
+            # enumerate：同时取出序号 i（int）和该行内容 line（str）
+            for i, line in enumerate(request_lines):
+                # 打印每一行，便于观察
                 print(i, line)
 
             # 提取请求的文件（index.html），请求行形如：
             # GET /a/b/c/d/e/index.html HTTP/1.1
-            file_name = '/'  # 先给默认值，防止匹配失败时变量不存在
-            # 正则：([^/]*) 匹配到第一个 / 之前的内容（GET 和空格），([^ ]+) 匹配以 / 开头到空格之前的路径
+            # 先给默认值，防止匹配失败时变量不存在
+            file_name = '/'
+            # 正则：([^/]*) 匹配到第一个 / 之前的内容（GET 和空格），
+            # ([^ ]+) 匹配以 / 开头到空格之前的路径
+            # re.match 成功返回 Match 对象，失败返回 None
             ret = re.match(r'([^/]*)([^ ]+)', request_lines[0])
-            if ret:  # 匹配成功
-                print('正则提取数据:', ret.group(1))  # 如 'GET '
-                print('正则提取数据:', ret.group(2))  # 如 '/index.html'
-                file_name = ret.group(2)  # 请求的路径
-                if file_name == '/':  # 访问根路径
-                    file_name = '/index.html'  # 返回首页
+            # 匹配成功
+            if ret:
+                # group(1) 是第 1 个括号的内容，如 'GET '
+                print('正则提取数据:', ret.group(1))
+                # group(2) 是第 2 个括号的内容，如 '/index.html'
+                print('正则提取数据:', ret.group(2))
+                # 请求的路径（str）
+                file_name = ret.group(2)
+                # 访问根路径时
+                if file_name == '/':
+                    # 返回首页
+                    file_name = '/index.html'
 
             # 如果不是以 py 结尾的文件，认为是普通的静态文件
             if not file_name.endswith('.py'):
                 # 读取文件数据
                 try:
-                    f = open(self.documents_root + file_name, 'rb')  # 二进制读取
-                except IOError:  # 文件不存在：返回 404
-                    # 响应体先 encode 成 bytes，这样 Content-Length 才是真正的字节数
-                    response_body = 'file not found, 请输入正确的 url'.encode('utf-8')
-                    response_header = 'HTTP/1.1 404 not found\r\n'  # 状态行
-                    response_header += 'Content-Type: text/html; charset=utf-8\r\n'  # 内容类型
-                    # Content-Length：响应体的字节数，长连接下浏览器靠它判断响应何时结束
-                    response_header += 'Content-Length: %d\r\n' % len(response_body)
-                    response_header += '\r\n'  # 空行
+                    # 二进制只读打开：静态资源目录 + 请求的文件名
+                    f = open(self.documents_root + file_name, 'rb')
+                # 文件不存在：返回 404
+                except IOError:
+                    # 响应体先 encode 成 bytes，
+                    # 这样 Content-Length 才是真正的字节数
+                    response_body = (
+                        'file not found, 请输入正确的 url'.encode('utf-8'))
+                    # 状态行
+                    response_header = 'HTTP/1.1 404 not found\r\n'
+                    # 内容类型：html 文本，utf-8 编码
+                    response_header += (
+                        'Content-Type: text/html; charset=utf-8\r\n')
+                    # Content-Length：响应体的字节数，
+                    # 长连接下浏览器靠它判断响应何时结束
+                    response_header += (
+                        'Content-Length: %d\r\n' % len(response_body))
+                    # 空行：响应头结束
+                    response_header += '\r\n'
                     # 头是 str，体是 bytes，头先 encode 再拼接，一次发给浏览器
-                    client_socket.send(response_header.encode('utf-8') + response_body)
-                else:  # 文件存在：返回 200
-                    with f:  # with 保证读完后自动关闭文件
-                        response_body = f.read()  # 读取全部内容，bytes
-                    # guess_type 返回 (类型, 编码)，取类型；无法识别时用通用的二进制类型
-                    content_type = mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
-                    response_header = 'HTTP/1.1 200 OK\r\n'  # 状态行
-                    response_header += 'Content-Type: %s\r\n' % content_type  # 内容类型
-                    response_header += 'Content-Length: %d\r\n' % len(response_body)  # 响应体字节数
-                    response_header += '\r\n'  # 空行
+                    client_socket.send(
+                        response_header.encode('utf-8') + response_body)
+                # 文件存在：返回 200
+                else:
+                    # with 保证读完后自动关闭文件
+                    with f:
+                        # 读取全部内容，返回 bytes
+                        response_body = f.read()
+                    # guess_type 返回元组 (类型, 编码)，取下标 0 的类型；
+                    # 无法识别时类型为 None，用 or 换成通用的二进制类型
+                    content_type = (mimetypes.guess_type(file_name)[0]
+                                    or 'application/octet-stream')
+                    # 状态行
+                    response_header = 'HTTP/1.1 200 OK\r\n'
+                    # 内容类型，如 text/html、text/css、image/png
+                    response_header += 'Content-Type: %s\r\n' % content_type
+                    # 响应体字节数（bytes 的长度，int）
+                    response_header += (
+                        'Content-Length: %d\r\n' % len(response_body))
+                    # 空行：响应头结束
+                    response_header += '\r\n'
                     # 将 header 和 body 一起返回给浏览器
-                    client_socket.send(response_header.encode('utf-8') + response_body)
+                    client_socket.send(
+                        response_header.encode('utf-8') + response_body)
             # 以 .py 结尾的文件，就认为是浏览器需要动态的页面
             else:
                 # 准备一个字典，里面存放需要传递给 web 框架的数据
                 env = dict()
-                env['PATH_INFO'] = file_name  # 请求路径，框架据此决定返回什么页面
-                # 调用框架：传入 env 和设置响应头的方法；返回值 str 是响应体，encode 为 bytes 以便计算长度和发送
-                response_body = self.app(env, self.set_response_headers).encode('utf-8')
+                # 请求路径，框架据此决定返回什么页面
+                env['PATH_INFO'] = file_name
+                # 调用框架：传入 env 和设置响应头的方法；
+                # 返回值 str 是响应体，encode 为 bytes 以便计算长度和发送
+                response_body = self.app(
+                    env, self.set_response_headers).encode('utf-8')
 
                 # 合并 header 和 body
-                # 状态行：self.status 由框架调用 set_response_headers 时保存，如 '200 OK'
+                # 状态行：self.status 由框架调用 set_response_headers 时保存，
+                # 如 '200 OK'
                 header = 'HTTP/1.1 %s\r\n' % self.status
-                for temp in self.headers:  # self.headers 是 [(名称, 值), ...]
+                # self.headers 是 [(名称, 值), ...]，遍历每一项
+                for temp in self.headers:
+                    # 每个响应头占一行
                     header += '%s:%s\r\n' % (temp[0], temp[1])
                 # 响应体字节数（长连接必须有）
                 header += 'Content-Length: %d\r\n' % len(response_body)
-                header += '\r\n'  # 空行
+                # 空行：响应头结束
+                header += '\r\n'
 
                 # 发送：头 encode 为 bytes，再拼上 bytes 类型的响应体
                 client_socket.send(header.encode('utf-8') + response_body)
@@ -9450,66 +9693,79 @@ class WSGIServer(object):
             status (str): 状态，如 '200 OK'
             headers (list[tuple]): 框架设置的响应头
         """
-        self.status = status  # 保存状态码
+        # 保存状态码
+        self.status = status
         # 服务器默认的响应头：Date 是响应的时间，Server 是服务器的名字
+        # time.ctime() 返回当前时间字符串
         self.headers = [
             ('Date', time.ctime()),
-            ('Server', 'wangdao-python mini web server')
+            ('Server', 'python mini web server')
         ]
         # 再追加框架设置的响应头
         self.headers += headers
 
 
-# 设置静态资源访问的路径
+# 设置静态资源访问的路径（str）
 g_static_document_root = './html'
-# 设置动态资源访问的路径
+# 设置动态资源访问的路径（str）：框架模块放在这个目录下
 g_dynamic_document_root = './web'
 
 
 def main():
     """控制 web 服务器整体"""
     # 运行方式：python3 xxxx.py 7890 mini_frame:application
-    # sys.argv 是命令行参数列表：[脚本名, 端口号, 框架名:应用名]，所以长度应为 3
+    # sys.argv 是命令行参数列表（list[str]）：
+    # [脚本名, 端口号, 框架名:应用名]，所以长度应为 3
     if len(sys.argv) == 3:
-        # 获取 web 服务器的 port
-        port = sys.argv[1]  # str 类型
-        if port.isdigit():  # 判断是否全由数字组成
-            port = int(port)  # 转为 int
-        # 获取 web 服务器需要动态资源时，访问的 web 框架名字，形如 'mini_frame:application'
+        # 获取 web 服务器的 port，str 类型
+        port = sys.argv[1]
+        # isdigit() 判断字符串是否全由数字组成，返回 bool
+        if port.isdigit():
+            # 转为 int
+            port = int(port)
+        # 获取 web 服务器需要动态资源时，访问的 web 框架名字，
+        # 形如 'mini_frame:application'
         web_frame_module_app_name = sys.argv[2]
     else:
+        # 参数个数不对，提示正确的运行方式
         print('运行方式如: python3 xxx.py 7890 my_web_frame_name:application')
-        return  # 参数不对，直接结束
+        # 直接结束
+        return
 
+    # 输出使用的端口
     print('http 服务器使用的 port:%s' % port)
 
-    # 将动态路径（存放 py 文件的路径）添加到 sys.path 中，这样 Python 就能找到这个路径下的框架模块了
-    # 这一步必须在下面的 __import__ 之前：import 只会在 sys.path 的目录中查找模块，
-    # 否则会抛出 ModuleNotFoundError
+    # 将动态路径（存放 py 文件的路径）添加到 sys.path 中，
+    # 这样 Python 就能找到这个路径下的框架模块了
+    # 这一步必须在下面的 __import__ 之前：import 只会在 sys.path 的目录中
+    # 查找模块，否则会抛出 ModuleNotFoundError
     sys.path.append(g_dynamic_document_root)
 
     # 正则：([^:]*) 取冒号前面的部分（模块名），(.*) 取冒号后面的部分（应用名）
     ret = re.match(r'([^:]*):(.*)', web_frame_module_app_name)
+    # 匹配成功
     if ret:
-        # 获取模块名，如 'mini_frame'
+        # 获取模块名（str），如 'mini_frame'
         web_frame_module_name = ret.group(1)
-        # 获取可以调用 web 框架的应用名称，如 'application'
+        # 获取可以调用 web 框架的应用名称（str），如 'application'
         app_name = ret.group(2)
 
         # 导入 web 框架的主模块：__import__(模块名字符串) 返回模块对象
         # 能导入成功，是因为前面已经把框架所在目录加入了 sys.path
         web_frame_module = __import__(web_frame_module_name)
-        # 获取那个可以直接调用的函数（对象）：getattr(模块, 名字字符串) 取模块中的同名成员
+        # 获取那个可以直接调用的函数（对象）：
+        # getattr(模块, 名字字符串) 取模块中的同名成员，这里得到函数对象 app
         app = getattr(web_frame_module, app_name)
         # print(app)  # for test：测试时可打印，确认拿到的是函数
 
         # 启动 http 服务器：传入端口、静态资源目录、框架入口函数
         http_server = WSGIServer(port, g_static_document_root, app)
-        # 运行 http 服务器
+        # 运行 http 服务器：进入 accept 死循环
         http_server.run_forever()
 
 
-if __name__ == '__main__':  # 直接运行本文件时才执行（Windows 下多进程必须要有）
+# 直接运行本文件时才执行（Windows 下多进程必须要有）
+if __name__ == '__main__':
     main()
 ```
 
@@ -9527,18 +9783,19 @@ if __name__ == '__main__':  # 直接运行本文件时才执行（Windows 下多
 
 **运行**
 
+```bash
+# 在 web_server.py 所在目录启动服务器
+#   python3：Python 解释器
+#   web_server.py：要运行的服务器脚本
+#   7890：参数 1，端口号（对应 sys.argv[1]）
+#   mini_frame:application：参数 2，框架模块名:应用函数名（对应 sys.argv[2]）
+$ python3 web_server.py 7890 mini_frame:application
 ```
-# 1. 打开终端，进入 web_server.py 所在目录，输入以下命令启动服务器
-$ python3 web_server.py 7890 mini_frame:application  # 参数 1：端口号 7890；参数 2：框架模块名:应用函数名
 
-# 2. 如果使用 PyCharm 运行，设置传参的方法：
-#    Run/Debug Configurations -> Configurations -> Script Parameters（脚本参数）
-#    和 VS 类似，都不用输入程序名字，直接输入参数 7890 mini_frame:application 即可
-
-# 3. 打开浏览器访问
-#    http://127.0.0.1:7890/xxx.py   以 .py 结尾的 url：动态页面，多次刷新可以看到时间在变化
-#    http://127.0.0.1:7890/index.html  普通文件：静态页面
-```
+> - **用 PyCharm 运行时传参**：`Run/Debug Configurations` -> `Configurations` -> `Script Parameters`（脚本参数），不用输入程序名字，直接输入 `7890 mini_frame:application` 即可（和 VS 类似）。
+> - **打开浏览器访问**：
+>   - `http://127.0.0.1:7890/xxx.py`：以 `.py` 结尾的 url，动态页面，多次刷新可以看到时间在变化；
+>   - `http://127.0.0.1:7890/index.html`：普通文件，静态页面。
 
 > 浏览器访问 `http://127.0.0.1:7890/xxx.py`，页面显示 `{'PATH_INFO': '/xxx.py'}==Hello world from a simple WSGI application!--->当前时间`，**多次刷新可以看到时间是变化的**，说明页面是动态生成的。
 
@@ -9590,25 +9847,32 @@ $ python3 web_server.py 7890 mini_frame:application  # 参数 1：端口号 7890
 > 与 16.15.7 相比，`web_server.py` 只需要修改文件中两个**模块级常量**（定义在 `WSGIServer` 类外面、`main()` 函数前面），类和函数都不用改：
 
 ```python
-# 设置静态资源访问的路径（原来是 './html'）
+# 以下是 web_server.py 中的两个模块级常量（定义在类外面、main() 前面）
+# 静态资源目录（str）：css、js、图片等由服务器直接返回（原来是 './html'）
 g_static_document_root = './static'
-# 设置动态资源访问的路径（原来是 './web'）
+# 动态资源目录（str）：框架模块 mini_frame.py 所在目录（原来是 './web'）
 g_dynamic_document_root = './dynamic'
 ```
 
 **`dynamic/mini_frame.py`**
 
 ```python
+# dynamic/mini_frame.py：框架模块
 def index():
     """主页：读取模板文件并返回
 
     Returns:
         str: index.html 的内容
     """
-    # 路径是相对于“运行服务器时所在目录”的；encoding='utf-8' 避免中文乱码
+    # open(路径, encoding=...)：打开文件，返回文件对象
+    # 路径是相对于“运行服务器时所在目录”的，所以要在项目根目录运行服务器
+    # encoding='utf-8'：按 utf-8 解码，避免中文乱码
+    # with：离开代码块时自动关闭文件，as f 把文件对象赋给 f
     with open('./templates/index.html', encoding='utf-8') as f:
-        content = f.read()  # 读取整个模板文件，返回 str
-    return content  # 返回给服务器作为响应体
+        # read()：读取整个模板文件，返回 str
+        content = f.read()
+    # 返回给服务器作为响应体
+    return content
 
 
 def center():
@@ -9617,8 +9881,10 @@ def center():
     Returns:
         str: center.html 的内容
     """
+    # 打开个人中心的模板文件，with 结束时自动关闭文件
     with open('./templates/center.html', encoding='utf-8') as f:
-        return f.read()  # 读完直接返回，with 结束时自动关闭文件
+        # 读完直接返回（str）；return 在 with 内也会先关闭文件再返回
+        return f.read()
 
 
 def application(env, start_response):
@@ -9631,17 +9897,24 @@ def application(env, start_response):
     Returns:
         str: 响应体
     """
-    # 设置状态码和响应头
+    # 设置状态码和响应头（只是登记给服务器，此时不发送）
     start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
 
-    file_name = env['PATH_INFO']  # 取出请求路径
+    # 取出请求路径（str），如 '/index.py'
+    file_name = env['PATH_INFO']
     # file_name = '/index.py'
 
-    if file_name == '/index.py':  # 请求主页
+    # 请求主页
+    if file_name == '/index.py':
+        # 调用 index()，返回读取到的模板内容
         return index()
-    elif file_name == '/center.py':  # 请求个人中心
+    # 请求个人中心
+    elif file_name == '/center.py':
+        # 调用 center()，返回个人中心的模板内容
         return center()
-    else:  # 其他路径
+    # 其他路径
+    else:
+        # 返回默认的内容
         return 'Hello World! 我爱你中国....'
 ```
 
@@ -9673,13 +9946,19 @@ def index():
     Returns:
         str: 替换之后的页面内容
     """
+    # 打开主页模板，with 结束时自动关闭文件
     with open('./templates/index.html', encoding='utf-8') as f:
-        content = f.read()  # 读取模板内容，str
-    my_stock_info = '哈哈哈哈这是你的本月名称.....'  # 动态数据（这里先用固定文字模拟）
-    # re.sub(正则, 替换内容, 原字符串)：返回替换后的新字符串
-    # 占位符 {%content%} 中的 { 和 % 在正则里有特殊含义，所以前面要加反斜杠转义
+        # 读取模板内容，返回 str
+        content = f.read()
+    # 动态数据（str）：这里先用固定文字模拟，以后可以换成数据库查询的结果
+    my_stock_info = '哈哈哈哈这是你的本月名称.....'
+    # re.sub(正则, 替换内容, 原字符串)：把原字符串中匹配正则的部分替换掉，
+    # 返回替换后的新字符串（原字符串不会被修改）
+    # 正则 \{%content%\} 匹配字面的占位符 {%content%}：
+    # { 在正则里可以表示重复次数（如 a{2}），所以前面要加反斜杠转义
     content = re.sub(r'\{%content%\}', my_stock_info, content)
-    return content  # 返回替换之后的页面
+    # 返回替换之后的页面（str）
+    return content
 
 
 def center():
@@ -9688,11 +9967,16 @@ def center():
     Returns:
         str: 替换之后的页面内容
     """
+    # 打开个人中心模板，with 结束时自动关闭文件
     with open('./templates/center.html', encoding='utf-8') as f:
-        content = f.read()  # 读取模板内容
-    my_stock_info = '这里是从 mysql 查询出来的数据。。。'  # 以后换成 pymysql 查询（见第十八章）的结果
-    content = re.sub(r'\{%content%\}', my_stock_info, content)  # 替换占位符
-    return content  # 返回替换之后的页面
+        # 读取模板内容，返回 str
+        content = f.read()
+    # 动态数据（str）：以后换成 pymysql 查询（见第十八章）的结果
+    my_stock_info = '这里是从 mysql 查询出来的数据。。。'
+    # 用动态数据替换占位符，得到新字符串
+    content = re.sub(r'\{%content%\}', my_stock_info, content)
+    # 返回替换之后的页面（str）
+    return content
 ```
 
 > 浏览器打开 `http://127.0.0.1:7890/index.py` 即可看到占位符位置已显示动态内容。
@@ -9738,17 +10022,24 @@ import json
 # }
 
 # 推荐写法：配置文件本身就是合法的 JSON，使用 json.load 读取，安全且更规范
-    with open('./web_server.conf', encoding='utf-8') as f:  # 打开配置文件
-        conf_info = json.load(f)  # json.load：从文件对象读取 JSON，返回 dict
+    # open(路径, encoding=...)：打开配置文件，返回文件对象，as f 赋给 f
+    with open('./web_server.conf', encoding='utf-8') as f:
+        # json.load(文件对象)：从文件读取 JSON 并转换成 Python 对象，
+        # 这里返回 dict，键和值都是 str：
+        # {'static_path': './static', 'dynamic_path': './dynamic'}
+        conf_info = json.load(f)
 
     # 使用配置里的动态路径：加入搜索路径，让 Python 能找到框架模块
     sys.path.append(conf_info['dynamic_path'])
-    print(conf_info['static_path'])  # 输出 ./static，静态资源路径同样来自配置文件
+    # 输出 ./static，静态资源路径同样来自配置文件
+    print(conf_info['static_path'])
 ```
 
 ```python
 # 同样在 main() 函数中：创建服务器时，静态资源路径也改为从配置中读取
 # （替换原来的全局常量 g_static_document_root）
+# 参数依次是：端口 port（int）、静态资源目录 conf_info['static_path']（str）、
+# 框架入口函数 app
         http_server = WSGIServer(port, conf_info['static_path'], app)
 ```
 
