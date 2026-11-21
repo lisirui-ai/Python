@@ -9259,6 +9259,8 @@ def main():
     print('http 服务器使用的 port:%s' % port)
 
     # 将动态路径（存放 py 文件的路径）添加到 sys.path 中，这样 Python 就能找到这个路径下的框架模块了
+    # 这一步必须在下面的 __import__ 之前：import 只会在 sys.path 的目录中查找模块，
+    # 否则会抛出 ModuleNotFoundError
     sys.path.append(g_dynamic_document_root)
 
     # 正则：([^:]*) 取冒号前面的部分（模块名），(.*) 取冒号后面的部分（应用名）
@@ -9270,6 +9272,7 @@ def main():
         app_name = ret.group(2)
 
         # 导入 web 框架的主模块：__import__(模块名字符串) 返回模块对象
+        # 能导入成功，是因为前面已经把框架所在目录加入了 sys.path
         web_frame_module = __import__(web_frame_module_name)
         # 获取那个可以直接调用的函数（对象）：getattr(模块, 名字字符串) 取模块中的同名成员
         app = getattr(web_frame_module, app_name)
