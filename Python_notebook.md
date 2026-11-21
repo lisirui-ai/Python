@@ -25,7 +25,7 @@ Python 是一门简洁、优雅的高级编程语言，由吉多·范·罗苏姆
 | 十三  | 文件操作：文件分类与路径、打开与关闭、文件模式、读写操作、乱码问题、MD5 文件校验、with 与上下文管理器 |
 | 十四  | 正则表达式：re 模块（match/search/findall/sub）、常用语法、re.compile、flags、finditer |
 | 十五  | 常用标准库：os、sys、time、datetime、random、json、copy（深浅拷贝）、tqdm |
-| 十六  | 网络编程：网络通信基础（IP/端口）、Socket、UDP 与 TCP 编程、编码转换、TCP 连接原理（三次握手/四次挥手）、TCP/IP 协议族、高级网络编程（epoll/粘包/C-S 与 B-S）、DDoS 简介、速查、HTTP、静态请求与动态请求、Web 静态服务器、WSGI 与 mini-web 动态服务器 |
+| 十六  | 网络编程：网络通信基础（IP/端口）、Socket、UDP 与 TCP 编程、编码转换、TCP 连接原理（三次握手/四次挥手）、TCP/IP 协议族、高级网络编程（epoll/粘包/C-S 与 B-S）、DDoS 简介、速查、HTTP、静态请求与动态请求、Web 静态服务器、WSGI 与 mini-web 动态服务器（路由与装饰器、伪静态、对接 MySQL、正则路由、增删改功能、logging 日志） |
 | 十七  | 并发编程：并发基础概念、Linux 进程管理命令、多进程（multiprocessing）、多线程（threading，锁与死锁）、协程（greenlet/gevent）、选型与 GIL |
 | 十八  | 数据库：MySQL 与 Python 交互：pymysql 的 Connection 与 Cursor、增删改查、参数化防 SQL 注入、事务与异常处理、executemany/DictCursor、连接池、速查 |
 
@@ -9917,7 +9917,1700 @@ import json
 >
 > **注意**：JSON 格式要求键必须用**双引号**，且最后一项后面**不能有逗号**。
 
-#### 16.15.11 WSGI 与 mini-web 小结
+#### 16.15.11 mini web 框架（三）：路由——用字典替换 if 判断
+
+> **问题**：16.15.8 ~ 16.15.9 中，框架的 `application` 函数是靠一连串 `if ... elif ...` 判断 `PATH_INFO`，决定调用哪个函数的。每增加一个页面，就要多写一个 `elif`，页面一多，代码会变得又长又乱：
+>
+> ```python
+> if file_name == '/index.py':
+>     return index()
+> elif file_name == '/center.py':
+>     return center()
+> # ……页面越多，elif 越多
+> ```
+>
+> **思路：用“配置”代替“判断”**。很多框架（如 Java 的三大框架）都是通过**配置**让开发者少写代码、少出错。这里用一个**字典**保存“请求路径 → 处理函数”的对应关系，这张对应表就叫**路由表**，根据路径找到函数的过程就叫**路由**。
+>
+> - **键（key）**：请求路径，`str`，如 `'/index.py'`
+> - **值（value）**：对应的处理函数（**函数名本身也是对象，可以当作值存进字典**，见 8.8.1）
+> - 访问字典用 `字典[键]`，直接得到函数对象，再加 `()` 即可调用
+
+```python
+# 以下是 dynamic/mini_frame.py 中的修改（index、center 函数内容不变）
+# 路由表：dict，键是请求路径 str，值是处理该请求的函数对象
+# 注意：值是函数名（不带括号），带括号就变成“调用函数”了
+URL_FUNC_DICT = {
+    '/index.py': index,
+    '/center.py': center,
+}
+
+
+def application(env, start_response):
+    """框架入口：用路由表找到处理函数
+
+    Args:
+        env (dict): 服务器传来的字典，PATH_INFO 是请求路径
+        start_response (function): 设置状态码和响应头的函数
+
+    Returns:
+        str: 响应体
+    """
+    # 登记状态码和响应头，此时并不发送
+    start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
+    # 取出请求路径（str），如 '/index.py'
+    file_name = env['PATH_INFO']
+    # 按路径从路由表中取出函数对象；
+    # 路径不在表中会抛出 KeyError，交给下面的 except 处理
+    func = URL_FUNC_DICT[file_name]
+    # 加括号调用函数，返回页面内容（str）
+    return func()
+```
+
+> 运行效果与之前的 `if...elif` 版本完全相同。**好处**：以后新增页面，只需要在字典里多加一行，不需要改 `application`。
+>
+> **注意**：直接用 `URL_FUNC_DICT[file_name]` 时，如果请求了一个字典里没有的路径（如 `/xxx.py`），会抛出 `KeyError`。下一小节会用 `try...except` 把它转换成友好的提示。
+
+#### 16.15.12 mini web 框架（四）：用装饰器自动生成路由表
+
+> **问题**：上面的字典要手写，每新增一个页面函数，都要**记得**去字典里再登记一次，容易忘。能不能**定义函数的同时，自动把它登记到字典里**？
+>
+> **思路：带参数的装饰器**（见 8.8.6）。在函数上方写 `@route('/index.py')`，装饰器在函数定义完成时，自动把“路径 → 函数”存进字典。
+
+```python
+# 以下是 dynamic/mini_frame.py 的完整内容
+# 导入 re 模块：用 re.sub 替换模板里的占位符
+import re
+
+# 路由表：dict，键是请求路径 str，值是函数对象；开始是空字典，由装饰器自动填充
+URL_FUNC_DICT = dict()
+
+
+def route(url):
+    """带参数的装饰器：把 url 和被装饰的函数登记到路由表中
+
+    Args:
+        url (str): 请求路径，如 '/index.py'
+
+    Returns:
+        function: 真正的装饰器 set_func
+    """
+    def set_func(func):
+        """真正的装饰器：接收被装饰的函数
+
+        Args:
+            func (function): 被装饰的函数，如 index
+
+        Returns:
+            function: 替代原函数的新函数 call_func
+        """
+        # 登记到路由表，等价于手写 URL_FUNC_DICT['/index.py'] = index
+        URL_FUNC_DICT[url] = func
+
+        def call_func(*args, **kwargs):
+            """调用原函数，参数和返回值原样传递"""
+            # *args 接收所有位置参数（tuple），**kwargs 接收所有关键字参数
+            # （dict），再原样传给原函数，这样被装饰的函数不管有没有参数
+            # 都能正常调用
+            return func(*args, **kwargs)
+
+        # 装饰器必须返回一个函数，否则被装饰的函数名（如 index）会变成 None
+        return call_func
+
+    # route 返回 set_func，Python 再用它去装饰下面的函数
+    return set_func
+
+
+# 等价于：index = route('/index.py')(index)
+# 即：先调用 route('/index.py') 得到 set_func，再调用 set_func(index)
+@route('/index.py')
+def index():
+    """主页：读取模板，用动态数据替换占位符
+
+    Returns:
+        str: 替换之后的页面内容
+    """
+    # 打开主页模板，with 结束时自动关闭文件
+    with open('./templates/index.html', encoding='utf-8') as f:
+        # 读取整个模板文件，返回 str
+        content = f.read()
+    # 动态数据（str）：先用固定文字模拟
+    my_stock_info = '哈哈哈哈 这是你的本月名称.....'
+    # 把占位符 {%content%} 替换成动态数据，返回新字符串
+    content = re.sub(r'\{%content%\}', my_stock_info, content)
+    # 返回页面内容（str）
+    return content
+
+
+@route('/center.py')
+def center():
+    """个人中心页面：读取模板，用动态数据替换占位符
+
+    Returns:
+        str: 替换之后的页面内容
+    """
+    # 打开个人中心模板
+    with open('./templates/center.html', encoding='utf-8') as f:
+        # 读取模板内容
+        content = f.read()
+    # 动态数据（str）：以后换成从 mysql 查询出来的数据
+    my_stock_info = '这里是从 mysql 查询出来的数据。。。'
+    # 替换占位符
+    content = re.sub(r'\{%content%\}', my_stock_info, content)
+    # 返回页面内容
+    return content
+
+
+def application(env, start_response):
+    """框架入口：根据路由表分发请求
+
+    Args:
+        env (dict): 服务器传来的字典，PATH_INFO 是请求路径
+        start_response (function): 设置状态码和响应头的函数
+
+    Returns:
+        str: 响应体
+    """
+    # 登记状态码和响应头
+    start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
+    # 取出请求路径（str）
+    file_name = env['PATH_INFO']
+    # try...except：路径不在路由表中、或函数执行出错时，不让服务器崩溃
+    try:
+        # 从路由表取出函数对象，加括号调用，返回页面内容
+        func = URL_FUNC_DICT[file_name]
+        return func()
+    # 捕获所有异常，ret 是异常对象
+    except Exception as ret:
+        # 返回异常信息（str），方便定位问题
+        return '产生了异常：%s' % str(ret)
+```
+
+> **关键理解**：
+>
+> - **装饰器在函数定义时就已经执行**（见 8.8.3：“装饰的时机是定义函数的时候”）。`mini_frame.py` 被服务器 `__import__` 导入时，文件从上到下执行，每遇到一个 `@route(...)`，就往 `URL_FUNC_DICT` 里添加一项。所以在**第一次请求到来之前**，路由表就已经填好了
+> - **`@route('/index.py')` 的执行顺序**：① 先执行 `route('/index.py')`，得到内层的 `set_func`；② 再执行 `set_func(index)`，登记路由，返回的 `call_func` 重新赋给名字 `index`
+> - 本例中 `call_func` 并没有增加新功能，只是原样转发。其实装饰器只需要完成“登记”，即使 `set_func` 直接 `return func` 也能工作；但**一定要有返回值**，如果 `set_func` 什么都不返回，被装饰的函数名会变成 `None`
+> - **以后新增页面**，只需写“函数 + 一行 `@route(...)`”，不用改 `application`，这就是 Flask 里 `@app.route('/')` 的原理
+
+---
+
+#### 16.15.13 静态 URL、动态 URL 与伪静态 URL
+
+> 目前开发的网站，其实**真正意义上都是动态网站**（页面由程序生成），区别只在于 **URL 的样子**。常见的 URL 分为三类：**静态 URL**、**动态 URL**、**伪静态 URL**。
+>
+> ---
+
+| 类型 | 示例 | 页面是否真实存在于服务器 |
+|---|---|---|
+| **静态 URL**（真静态） | `域名/news/2012-5-18/110.html` | **真实存在**，每个网页都有真实的物理路径，是磁盘上的文件 |
+| **动态 URL** | `域名/NewsMore.asp?id=5`、`域名/DaiKuan.php?id=17` | **不存在**，带有 `?` 的 URL，每个 URL 只是一个**逻辑地址**，由程序现场生成 |
+| **伪静态 URL** | `域名/course/74.html` | **不存在**，通过**伪静态规则**（重写规则）把动态 URL **伪装**成静态网址的样子，也是逻辑地址 |
+
+> ---
+>
+> **各自的优缺点**：
+>
+> ---
+
+| 类型 | 优点 | 缺点 |
+|---|---|---|
+| **静态 URL** | ① 打开速度快，因为不需要运算；② 网址结构友好，利于记忆 | ① 中大型网站页面特别多，**不好管理**；② “占用硬盘空间大”“伤硬盘”的说法可以忽略不计，现在硬盘空间大 |
+| **动态 URL** | ① 适合中大型网站，**修改页面很方便**；② 是逻辑地址，占用硬盘空间比纯静态网站小 | ① 要进行运算，打开速度稍慢（现在有服务器缓存技术可以解决）；② URL 结构稍复杂，**不利于记忆** |
+| **伪静态 URL** | ① URL 友好，利于记忆；② 适合大中型网站，是个**折中方案** | ① 设置麻烦，服务器要支持**重写规则**；② 访问速度并没有变快，实质上多了一步“解释”的运算，增加服务器负担（现在服务器很强大，可忽略）；③ 可能造成动态 URL 和静态 URL 都被搜索引擎收录，可以用 `robots` 禁止动态地址 |
+
+> ---
+>
+> **对 SEO（搜索引擎优化）的影响**：
+>
+> - **静态 URL**：对 SEO 肯定有**加分**影响，本质是打开速度快
+> - **动态 URL**：目前搜索引擎已经能很好地理解动态 URL，所以**没有什么减分影响**（特别复杂的 URL 结构除外）。无论选动态还是静态，其实都无所谓，看选择的程序和需求
+> - **伪静态 URL**：和动态 URL 一样，**没有什么减分影响**
+>
+> **小结**：下一小节我们要让 mini-web 使用 `/index.html`、`/center.html` 这样“长得像静态”的 URL，而背后其实是框架动态生成页面，这就是**伪静态**。
+
+#### 16.15.14 mini web 框架（五）：实现伪静态 URL
+
+> **目标**：让 URL 以 `.html` 结尾，如 `http://127.0.0.1:7890/index.html`，但页面仍由框架动态生成。
+>
+> **做法**：修改 `web_server.py` 判断动态请求的规则，原来是“**不以 `.py` 结尾**就是静态资源”，现在改成“**不以 `.html` 结尾**才是静态资源（css/js/png/jpg 等）”，即以 `.html` 结尾的请求都交给框架。
+
+**运行方式（不变）**
+
+```bash
+# 启动服务器：端口 7890，框架模块 mini_frame 中的 application 函数
+$ python3 web_server.py 7890 mini_frame:application
+```
+
+**`web_server.py` 的修改**：只改 `deal_with_request()` 中判断静态资源的那一行
+
+```python
+# 以下是 web_server.py 中 deal_with_request() 方法里的修改
+# 原来：不是以 .py 结尾的，认为是静态文件
+#     if not file_name.endswith('.py'):
+# 现在：不是以 .html 结尾的（css/js/png/jpg 等），认为是静态资源，
+# 由服务器直接读取文件返回；以 .html 结尾的，认为是动态资源，交给框架
+            if not file_name.endswith('.html'):
+                # ……读取并返回静态文件的代码不变
+                pass
+            # 以 .html 结尾，是动态资源（伪静态 URL）
+            else:
+                # ……构造 env、调用框架的代码不变
+                pass
+```
+
+**`dynamic/mini_frame.py` 的修改**：路由的路径从 `.py` 改成 `.html`
+
+```python
+# 路由路径改成 .html，与浏览器访问的 URL 对应
+# 注意：模板文件 ./templates/index.html 是框架读取的“原料”，
+# 浏览器访问的 /index.html 是路由，二者名字相同但不是同一个东西
+@route('/index.html')
+def index():
+    """主页（函数内容与 16.15.12 相同）"""
+    # ……函数体不变
+
+
+@route('/center.html')
+def center():
+    """个人中心页面（函数内容与 16.15.12 相同）"""
+    # ……函数体不变
+```
+
+> **说明**：
+>
+> - 现在访问根路径 `/` 时，服务器会把它改成 `/index.html`（见 16.15.7 的 `if file_name == '/'`），因为以 `.html` 结尾，所以会交给框架处理，直接显示动态的主页
+> - 模板页面中引用的 `/css/xxx.css`、`/js/xxx.js`、图片等不以 `.html` 结尾，仍然由服务器从 `static` 目录直接返回
+> - 浏览器并不知道服务器里到底有没有 `index.html` 这个文件，它看到的只是一个以 `.html` 结尾的网址，这就是“伪静态”
+
+#### 16.15.15 mini web 框架（六）：准备 MySQL 数据
+
+> 接下来要让页面显示**数据库里的数据**，先准备一个“个人选股系统”用的数据库 `stock_db`（课件里提供了 `stock_db.sql`，可以直接导入）。
+>
+> **操作步骤**：
+>
+> 1. 创建数据库：`create database stock_db charset=utf8;`
+> 2. 选择数据库：`use stock_db;`
+> 3. 导入数据：`source stock_db.sql`（`source` 是 MySQL 客户端的命令，后面是 sql 文件路径，作用是依次执行文件里的所有 SQL）
+> 4. 查看表结构：`desc 表名;`
+
+```sql
+-- 创建数据库，charset=utf8 指定字符集，保证能存中文
+create database stock_db charset=utf8;
+-- 选择（进入）数据库
+use stock_db;
+-- 导入课件提供的 sql 文件：source 后面是文件路径，会依次执行文件里所有的 SQL 语句
+source stock_db.sql
+-- 查看 focus 表的结构
+desc focus;
+-- 查看 info 表的结构
+desc info;
+```
+
+> **两张表的作用**：
+>
+> - **`info` 表**：所有股票的**基本信息**（股票代码、简称、涨跌幅、换手率、价格、最高价、日期），对应网站的“股票信息”页面（主页 `index.html`）
+> - **`focus` 表**：用户**关注**的股票和备注信息，`info_id` 是**外键**，对应 `info` 表的 `id`，对应网站的“个人中心”页面（`center.html`）
+>
+> **表结构**（`desc` 命令的输出）：
+>
+> ---
+
+`desc focus;` 的结果：
+
+| Field | Type | Null | Key | Default | Extra | 含义 |
+|---|---|---|---|---|---|---|
+| `id` | `int(10) unsigned` | NO | PRI | NULL | `auto_increment` | 主键，自增 |
+| `note_info` | `varchar(200)` | YES | | NULL | | 关注时的备注信息 |
+| `info_id` | `int(10) unsigned` | YES | MUL | NULL | | 外键，对应 `info` 表的 `id` |
+
+`desc info;` 的结果：
+
+| Field | Type | Null | Key | Default | Extra | 含义 |
+|---|---|---|---|---|---|---|
+| `id` | `int(10) unsigned` | NO | PRI | NULL | `auto_increment` | 主键，自增 |
+| `code` | `varchar(6)` | NO | | NULL | | 股票代码，6 位 |
+| `short` | `varchar(10)` | NO | | NULL | | 股票简称 |
+| `chg` | `varchar(10)` | NO | | NULL | | 涨跌幅 |
+| `turnover` | `varchar(255)` | NO | | NULL | | 换手率 |
+| `price` | `decimal(10,2)` | NO | | NULL | | 价格，共 10 位有效数字，2 位小数 |
+| `highs` | `decimal(10,2)` | NO | | NULL | | 最高价 |
+| `time` | `date` | YES | | NULL | | 日期 |
+
+> ---
+>
+> **没有课件的 `stock_db.sql` 怎么办？** 可以按上面的表结构自己建表并插入几条测试数据（以下是按 `desc` 结果还原的示例，数据是随便写的）：
+
+```sql
+-- 股票信息表 info
+create table info(
+    -- id：无符号整型主键，自增
+    id int unsigned primary key auto_increment not null,
+    -- code：股票代码，6 位
+    code varchar(6) not null,
+    -- short：股票简称
+    short varchar(10) not null,
+    -- chg：涨跌幅
+    chg varchar(10) not null,
+    -- turnover：换手率
+    turnover varchar(255) not null,
+    -- price：价格，共 10 位有效数字，其中 2 位小数
+    price decimal(10,2) not null,
+    -- highs：最高价
+    highs decimal(10,2) not null,
+    -- time：日期，允许为空
+    time date
+) engine=InnoDB default charset=utf8;
+
+-- 关注表 focus
+create table focus(
+    -- id：无符号整型主键，自增
+    id int unsigned primary key auto_increment not null,
+    -- note_info：备注信息，允许为空
+    note_info varchar(200),
+    -- info_id：关联 info 表的 id
+    info_id int unsigned,
+    -- 外键约束：info_id 的值必须是 info 表中已存在的 id
+    foreign key (info_id) references info(id)
+) engine=InnoDB default charset=utf8;
+
+-- 插入几条测试数据（id 自增，不用写）
+insert into info(code, short, chg, turnover, price, highs, time) values
+    ('000007', '全新好', '10.01%', '4.40%', 16.05, 14.60, '2017-07-18'),
+    ('000036', '华联控股', '10.04%', '10.80%', 11.29, 10.26, '2017-07-20'),
+    ('000039', '中集集团', '1.35%', '1.78%', 18.07, 18.06, '2017-06-28'),
+    ('300268', '万福生科', '-1.78%', '8.10%', 26.88, 28.05, '2017-07-24');
+-- 先关注一只股票，备注是“你确定要买这个？”（info_id=1 对应 info 表中 id 为 1 的股票）
+insert into focus(note_info, info_id) values ('你确定要买这个？', 1);
+```
+
+#### 16.15.16 mini web 框架（七）：从 MySQL 中查询数据
+
+> **目标**：让页面显示 `info` 表中的数据，而不是固定文字。
+>
+> **做法**：`index` 函数中，先用 `pymysql` 把数据查出来（见**第十八章**：`connect` → `cursor` → `execute` → `fetchall` → 关闭），再用查询结果替换模板里的占位符。
+>
+> **前提**：先安装 `pymysql`（`pip install pymysql`），并保证 Python 能连上 MySQL（`host` 要换成你自己的 MySQL 所在主机的 IP，本机用 `127.0.0.1`，课程中 MySQL 在虚拟机里，IP 为 `192.168.0.111`）。
+
+```python
+# 以下是 dynamic/mini_frame.py 的修改
+# 导入 re 模块：使用 re.sub 替换占位符
+import re
+# 从 pymysql 导入 connect：创建数据库连接（见 18.2.1）
+from pymysql import connect
+
+# 路由表：dict，键是请求路径 str，值是函数对象；由 route 装饰器自动填充
+URL_FUNC_DICT = dict()
+
+
+def route(url):
+    """带参数的装饰器：把 url 和被装饰的函数登记到路由表（同 16.15.12）
+
+    Args:
+        url (str): 请求路径
+
+    Returns:
+        function: 真正的装饰器 set_func
+    """
+    def set_func(func):
+        """接收被装饰的函数 func，登记路由后返回 call_func"""
+        # 登记到路由表：路径 -> 函数对象
+        URL_FUNC_DICT[url] = func
+
+        def call_func(*args, **kwargs):
+            """原样调用原函数，参数和返回值都不改变"""
+            # *args 接收位置参数（tuple），**kwargs 接收关键字参数（dict）
+            return func(*args, **kwargs)
+        # 返回新函数，替代原函数名
+        return call_func
+    # 返回 set_func，Python 再用它去装饰下面的函数
+    return set_func
+
+
+@route('/index.html')
+def index():
+    """主页：从数据库查询所有股票信息，显示在页面上
+
+    Returns:
+        str: 替换之后的页面内容
+    """
+    # 打开主页模板，返回文件对象 f；with 结束时自动关闭文件
+    with open('./templates/index.html', encoding='utf-8') as f:
+        # f.read()：读取整个文件，返回 str（含 {%content%} 占位符的模板）
+        content = f.read()
+
+    # connect(...)：创建数据库连接，返回 Connection 对象 conn；
+    # 关键字参数：host 主机 IP（str）、port 端口（int，MySQL 默认 3306）、
+    # user 用户名（str）、password 密码（str）、
+    # database 数据库名（str）、charset 字符集（str）
+    conn = connect(host='127.0.0.1', port=3306, user='root',
+                   password='123', database='stock_db', charset='utf8')
+    # conn.cursor()：创建游标，返回 Cursor 对象 cs，用来执行 SQL、读取结果
+    cs = conn.cursor()
+    # cs.execute(sql)：执行查询语句，返回 int（查到的行数），这里用不到
+    cs.execute('select * from info;')
+    # cs.fetchall()：取出全部结果，返回 tuple 嵌套 tuple：
+    # 外层 tuple 的长度 = 查到的行数，每个元素代表一行；
+    # 内层 tuple 的长度 = 列数 8，依次是 id、code、short、chg、
+    # turnover、price、highs、time，形如 ((1, '000007', '全新好', ...), ...)
+    stock_infos = cs.fetchall()
+    # cs.close()：关闭游标，释放资源，返回 None
+    cs.close()
+    # conn.close()：关闭数据库连接，返回 None
+    conn.close()
+
+    # str(stock_infos)：把嵌套元组转成字符串，直接替换占位符，
+    # 先看看数据长什么样；re.sub 返回替换后的新 str
+    content = re.sub(r'\{%content%\}', str(stock_infos), content)
+    # 返回页面内容（str），作为响应体
+    return content
+
+
+@route('/center.html')
+def center():
+    """个人中心页面（此时还没有改，仍显示固定文字）
+
+    Returns:
+        str: 替换之后的页面内容
+    """
+    # 打开个人中心模板，返回文件对象 f
+    with open('./templates/center.html', encoding='utf-8') as f:
+        # 读取模板内容，返回 str
+        content = f.read()
+    # 固定文字（str），下一小节再改成查询数据库
+    my_stock_info = '这里是从 mysql 查询出来的数据。。。'
+    # 用固定文字替换占位符，返回新 str
+    content = re.sub(r'\{%content%\}', my_stock_info, content)
+    # 返回页面内容
+    return content
+
+
+# application 函数不变，同 16.15.12
+```
+
+> **运行效果**：浏览器访问 `http://127.0.0.1:7890/index.html`，页面上显示的是一大串元组 `((1, '000007', ...), ...)`，数据确实是从数据库里查出来的，但是**格式不对**，不是我们想要的表格。下一小节解决。
+>
+> **说明**：`str(stock_infos)` 只是为了让你直观看到“查询结果就是嵌套元组”。
+
+#### 16.15.17 mini web 框架（八）：把数据组装成 HTML 表格
+
+> **问题**：怎样让数据**一行一行**显示成表格？
+>
+> **思路**：HTML 表格的一行是 `<tr>...</tr>`，每个单元格是 `<td>...</td>`。先写好**一行的模板** `tr_template`，里面每个单元格用 `%s` 占位；然后**遍历查询结果**，每一行数据填进模板生成一行 HTML，用 `+=` 拼接成完整的表格内容，最后再替换页面里的 `{%content%}`。
+>
+> **index 页面**用 `select * from info;`，`info` 表有 8 列（id、code、short、chg、turnover、price、highs、time），所以一行有 8 个 `%s`，再加一个“添加”按钮。
+>
+> **center 页面**要显示“用户关注的股票”，需要同时用到 `info` 和 `focus` 两张表，所以用**内连接** `inner join` 把两表按 `i.id = f.info_id` 关联起来：
+
+```python
+# 以下是 dynamic/mini_frame.py 中 index 和 center 两个函数的修改
+@route('/index.html')
+def index():
+    """主页：把 info 表的数据组装成 html 表格
+
+    Returns:
+        str: 替换之后的页面内容
+    """
+    # 打开主页模板，返回文件对象 f；with 结束时自动关闭
+    with open('./templates/index.html', encoding='utf-8') as f:
+        # 读取模板内容，返回 str
+        content = f.read()
+
+    # connect(...)：创建数据库连接，返回 Connection 对象 conn；
+    # 关键字参数：host 主机 IP（str）、port 端口（int，MySQL 默认 3306）、
+    # user 用户名（str）、password 密码（str）、
+    # database 数据库名（str）、charset 字符集（str）
+    conn = connect(host='127.0.0.1', port=3306, user='root',
+                   password='123', database='stock_db', charset='utf8')
+    # conn.cursor()：创建游标，返回 Cursor 对象 cs，用来执行 SQL、读取结果
+    cs = conn.cursor()
+    # 查询 info 表的所有数据，execute 返回 int（行数），这里用不到
+    cs.execute('select * from info;')
+    # fetchall() 返回 tuple 嵌套 tuple：外层长度 = 行数，
+    # 内层长度 = 列数 8（id、code、short、chg、turnover、price、highs、time）
+    stock_infos = cs.fetchall()
+    # cs.close()：关闭游标，释放资源，返回 None
+    cs.close()
+    # conn.close()：关闭数据库连接，返回 None
+    conn.close()
+
+    # 一行的 html 模板（str）：前 8 个 %s 对应 info 表的 8 列，
+    # 最后一个单元格是“添加”按钮；三引号字符串可以直接换行
+    # （此处 systemidvaule 是写死的 000007，下一小节改成动态）
+    tr_template = """<tr>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>
+            <input type="button" value="添加" id="toAdd" name="toAdd"
+                   systemidvaule="000007">
+        </td>
+    </tr>
+    """
+    # 保存拼接后的全部 html（str），一开始是空字符串
+    html = ''
+    # 遍历每一行数据，line_info 是 tuple，长度为 8，如 (1, '000007', ...)
+    for line_info in stock_infos:
+        # 字符串 % 元组：元组里的 8 个值依次填入 8 个 %s，返回填好的 str；
+        # += 把这一行 html 拼接到 html 后面
+        html += tr_template % (line_info[0], line_info[1], line_info[2],
+                               line_info[3], line_info[4], line_info[5],
+                               line_info[6], line_info[7])
+
+    # 用拼好的 html 替换占位符（不再是 str(stock_infos)），返回新 str
+    content = re.sub(r'\{%content%\}', html, content)
+    # 返回页面内容
+    return content
+
+
+@route('/center.html')
+def center():
+    """个人中心：显示用户关注的股票
+
+    Returns:
+        str: 替换之后的页面内容
+    """
+    # 打开个人中心模板，返回文件对象 f
+    with open('./templates/center.html', encoding='utf-8') as f:
+        # 读取模板内容，返回 str
+        content = f.read()
+
+    # connect(...)：创建数据库连接，返回 Connection 对象 conn；
+    # 关键字参数：host 主机 IP（str）、port 端口（int，MySQL 默认 3306）、
+    # user 用户名（str）、password 密码（str）、
+    # database 数据库名（str）、charset 字符集（str）
+    conn = connect(host='127.0.0.1', port=3306, user='root',
+                   password='123', database='stock_db', charset='utf8')
+    # conn.cursor()：创建游标，返回 Cursor 对象 cs，用来执行 SQL、读取结果
+    cs = conn.cursor()
+    # 连表查询：info as i 给 info 表起别名 i，focus as f 给 focus 表起别名 f；
+    # inner join ... on 把两表中满足 i.id = f.info_id 的行拼成一行，
+    # 既能取到股票信息，又能取到关注时的备注 f.note_info；
+    # 只查 7 列：code、short、chg、turnover、price、highs、note_info；
+    # 相邻的字符串字面量会自动拼接成一条 SQL
+    cs.execute('select i.code, i.short, i.chg, i.turnover, i.price, '
+               'i.highs, f.note_info from info as i '
+               'inner join focus as f on i.id = f.info_id;')
+    # fetchall() 返回 tuple 嵌套 tuple：外层长度 = 关注的股票数，
+    # 内层长度 = 列数 7
+    stock_infos = cs.fetchall()
+    # cs.close()：关闭游标，释放资源，返回 None
+    cs.close()
+    # conn.close()：关闭数据库连接，返回 None
+    conn.close()
+
+    # 一行 html 模板（str）：前 7 个 %s 对应 7 列，后面是“修改”链接和
+    # “删除”按钮（此时 300268 是写死的，后面会改成动态）
+    tr_template = """
+    <tr>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>
+            <a type="button" class="btn btn-default btn-xs"
+               href="/update/300268.html">
+                <span class="glyphicon glyphicon-star"
+                      aria-hidden="true"></span> 修改
+            </a>
+        </td>
+        <td>
+            <input type="button" value="删除" id="toDel" name="toDel"
+                   systemidvaule="300268">
+        </td>
+    </tr>
+    """
+    # 保存拼接后的 html（str）
+    html = ''
+    # 遍历每一行关注的股票，line_info 是长度为 7 的 tuple
+    for line_info in stock_infos:
+        # 7 个值依次填入 7 个 %s，返回 str，再拼接到 html 后面
+        html += tr_template % (line_info[0], line_info[1], line_info[2],
+                               line_info[3], line_info[4], line_info[5],
+                               line_info[6])
+
+    # 替换占位符，返回新 str
+    content = re.sub(r'\{%content%\}', html, content)
+    # 返回页面内容
+    return content
+```
+
+> **说明**：
+>
+> - `tr_template % (...)` 是字符串的 `%` 格式化：元组里有几个值，模板里就要有几个 `%s`，**数量必须相等**，否则抛出 `TypeError`
+> - 这里“添加”“删除”按钮的 `systemidvaule`、修改链接里的股票代码都是**写死的固定值**，所以无论点哪一行的按钮，传出去的都是同一个代码。下面几个小节会把它们改成**每行自己的代码**
+> - `systemidvaule` 是模板作者自定义的 HTML 属性（单词拼写不准确，但前后端保持一致即可，HTML 属性名不区分大小写，JS 里 `attr('systemIdVaule')` 可以读到）
+> - 每个函数里都创建和关闭一次数据库连接，代码重复较多，以后可以把它抽取成公共函数
+
+---
+
+#### 16.15.18 mini web 框架（九）：路由支持正则表达式
+
+> **需求**：点击页面上的“添加”按钮，希望服务器有响应。现在点了没有任何反应，因为我们还没有给按钮绑定事件。
+>
+> **第一步：在 `index.html` 的 `<head>` 中添加 JS 代码**。让页面能用 JS 动态响应，这里用的是 **jQuery**（一个 JS 库，`$` 是它的入口）。
+
+```html
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>首页 - 个人选股系统 V5.87</title>
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <script src="/js/jquery-1.12.4.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script>
+        // 页面加载完成后执行
+        $(document).ready(function(){
+            // 找到所有 name 属性为 toAdd 的 input（即“添加”按钮），
+            // 对每一个按钮执行 function
+            $("input[name='toAdd']").each(function(){
+                // $(this) 表示当前这个按钮
+                var currentAdd = $(this);
+                // 给按钮绑定“点击”事件
+                currentAdd.click(function(){
+                    // 读取按钮上自定义属性 systemIdVaule 的值，即股票代码
+                    code = $(this).attr("systemIdVaule");
+                    // $.get：向服务器发送 GET 请求，请求的 url 是 /add/股票代码.html；
+                    // 服务器返回的内容通过 data 参数传入，status 是请求状态
+                    $.get("/add/" + code + ".html", function(data, status){
+                        // 弹出提示框，显示服务器返回的数据和状态
+                        alert("数据: " + data + "\n 状态: " + status);
+                    });
+                });
+            });
+        });
+    </script>
+</head>
+```
+
+> **这段 JS 的作用**：当点击 `name="toAdd"` 的按钮时，浏览器会向服务器请求 `/add/000007.html` 这样的页面，并把服务器返回的内容用弹窗显示出来。
+>
+> 此时点击“添加”，弹窗提示请求的 url 没有对应的函数（或者异常），**原因是 `mini_frame.py` 里还没有处理 `/add/000007.html` 这个路径的函数**。
+>
+> **难点**：股票代码有很多（`000007`、`000036`……），每个代码对应一个不同的 URL，难道要写 N 个 `@route('/add/000007.html')`、`@route('/add/000036.html')` 吗？
+>
+> **解决办法：让路由支持正则表达式**。把 URL 写成**正则**，一个 `@route(r'/add/\d+\.html')` 就能匹配所有 `/add/数字.html` 的请求（正则见**第十四章**）：
+>
+> - `\d+`：一个或多个数字
+> - `\.`：字面的小数点（`.` 在正则里表示任意字符，要转义）
+>
+> ---
+
+| 不使用正则 | 使用正则 |
+|---|---|
+| 需要写 N 次 `@route`，字典里有 **N 个**键值对 | 只写 **1 次** `@route`，字典里只有 **1 个**键值对 |
+| `/add/00007.html`、`/add/000036.html` 要各写一个函数的登记 | 一个正则同时匹配 `/add/00007.html`、`/add/000036.html` 等 |
+
+> ---
+>
+> **因为路由表的键现在是正则，所以 `application` 不能再直接用 `URL_FUNC_DICT[file_name]` 取函数了**，而要**遍历路由表，逐个用 `re.match` 匹配**，匹配成功就调用对应的函数。
+
+```python
+# 以下是 dynamic/mini_frame.py 的修改
+# 路由的路径统一写成原始字符串 r'...'，避免正则中的反斜杠被转义
+@route(r'/index.html')
+def index():
+    """主页：与 16.15.17 相比，“添加”按钮的 systemidvaule 改成每行自己的代码
+
+    Returns:
+        str: 替换之后的页面内容
+    """
+    # 打开主页模板，返回文件对象 f
+    with open('./templates/index.html', encoding='utf-8') as f:
+        # 读取模板内容，返回 str
+        content = f.read()
+    # connect(...)：创建数据库连接，返回 Connection 对象 conn；
+    # 关键字参数：host 主机 IP（str）、port 端口（int，MySQL 默认 3306）、
+    # user 用户名（str）、password 密码（str）、
+    # database 数据库名（str）、charset 字符集（str）
+    conn = connect(host='127.0.0.1', port=3306, user='root',
+                   password='123', database='stock_db', charset='utf8')
+    # conn.cursor()：创建游标，返回 Cursor 对象 cs，用来执行 SQL、读取结果
+    cs = conn.cursor()
+    # 查询 info 表所有数据，execute 返回 int（行数），这里用不到
+    cs.execute('select * from info;')
+    # fetchall() 返回 tuple 嵌套 tuple：外层长度 = 行数，内层长度 = 列数 8
+    stock_infos = cs.fetchall()
+    # cs.close()：关闭游标，释放资源，返回 None
+    cs.close()
+    # conn.close()：关闭数据库连接，返回 None
+    conn.close()
+
+    # 一行 html 模板：现在有 9 个 %s，前 8 个对应 8 列，
+    # 最后一个是“添加”按钮的 systemidvaule（该行股票的代码）
+    tr_template = """<tr>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>
+            <input type="button" value="添加" id="toAdd" name="toAdd"
+                   systemidvaule="%s">
+        </td>
+    </tr>
+    """
+    # 保存拼接后的 html（str）
+    html = ''
+    # 遍历每一行数据，line_info 是长度为 8 的 tuple
+    for line_info in stock_infos:
+        # 第 9 个值用 line_info[1]（code，股票代码），
+        # 这样每个按钮带的是自己那一行的代码
+        html += tr_template % (line_info[0], line_info[1], line_info[2],
+                               line_info[3], line_info[4], line_info[5],
+                               line_info[6], line_info[7], line_info[1])
+    # 替换占位符，返回新 str
+    content = re.sub(r'\{%content%\}', html, content)
+    # 返回页面内容
+    return content
+
+
+# center 函数同 16.15.17，只是路由改成 @route(r'/center.html')
+
+
+# 路由中使用正则表达式的原因：
+# 实际开发时，url 里往往带有参数，例如 /add/000007.html 中 000007 就是参数。
+# 没有正则，就要写 N 次 @route 把 N 个 url 登记到字典里，浪费空间；
+# 用了正则，只写 1 次 @route，/add/000007.html、/add/000036.html 等
+# 都对应同一个函数，字典里的键值对少很多
+@route(r'/add/\d+\.html')
+def add_focus():
+    """处理“添加关注”的请求（目前只返回提示）
+
+    Returns:
+        str: 提示信息
+    """
+    # 返回给浏览器（str），会显示在 JS 的 alert 弹窗里
+    return 'add ok ....'
+
+
+def application(env, start_response):
+    """框架入口：遍历路由表，用正则匹配请求路径
+
+    Args:
+        env (dict): 服务器传来的字典，PATH_INFO 是请求路径
+        start_response (function): 设置状态码和响应头的函数
+
+    Returns:
+        str: 响应体
+    """
+    # 登记状态码和响应头，此时并不发送，返回 None
+    start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
+    # 取出请求路径（str），如 '/add/000007.html'
+    file_name = env['PATH_INFO']
+    # 异常保护：路由函数出错时，不让服务器崩溃
+    try:
+        # 遍历路由表：URL_FUNC_DICT.items() 每次给出 (键, 值) 元组，
+        # url 是正则（str），func 是函数对象，路由表形如
+        # {
+        #     r'/index.html': index,
+        #     r'/center.html': center,
+        #     r'/add/\d+\.html': add_focus,
+        # }
+        for url, func in URL_FUNC_DICT.items():
+            # re.match(正则, 字符串)：从字符串开头匹配，
+            # 成功返回 Match 对象，失败返回 None
+            ret = re.match(url, file_name)
+            # Match 对象为真，说明匹配成功
+            if ret:
+                # 调用对应的处理函数，返回值 str 就是响应体
+                return func()
+        # for...else：for 循环正常结束（没有被 return 打断，
+        # 即所有路由都没匹配上）才会执行 else
+        else:
+            # 返回提示：没有对应的处理函数
+            return '请求的 url(%s) 没有对应的函数....' % file_name
+    # 捕获所有异常，ret 是异常对象（这里 ret 被重新使用，只用来打印）
+    except Exception as ret:
+        # 返回异常信息（str）
+        return '产生了异常：%s' % str(ret)
+```
+
+> **说明**：
+>
+> - **`for...else`**：`else` 对应的是 `for`（不是 `if`）。循环里匹配成功会直接 `return` 结束函数；所有路由都匹配失败时，循环**正常走完**，才会执行 `else` 里的提示。如果误把 `else` 和 `if` 对齐，就会变成“第一个路由匹配不上就直接返回错误”，后面的路由永远不会被尝试
+> - **`re.match` 只从开头匹配，不要求匹配到结尾**。例如路由 `r'/index.html'` 也会匹配 `/index.html123`；其中的 `.` 还能匹配任意字符。需要精确匹配时，可以在正则末尾加 `$`（如 `r'/index\.html$'`），或使用 `re.fullmatch`
+> - 点击“添加”后，弹窗显示 `add ok ....`，说明服务器已经能响应了。但此时 `add_focus` 还不知道**用户点的是哪个股票**，下一小节解决
+
+#### 16.15.19 mini web 框架（十）：增加关注功能
+
+> **目标**：点击“添加”后，真正把对应股票写入 `focus` 表。
+>
+> **第一步：让函数拿到“匹配结果”**。上一小节 `add_focus` 虽然匹配到了 `/add/000007.html`，但没有拿到其中的 `000007`。方法：
+>
+> - 路由的正则里，用括号**分组**：`r'/add/(\d+)\.html'`（见 14.1.1 match 对象的 `group` 方法）
+> - `application` 里把匹配结果 `ret`（`Match` 对象）**传给处理函数**：`func(ret)`
+> - 处理函数用 `ret.group(1)` 取出第 1 个括号匹配到的内容，即股票代码
+> - 因为路由表里**所有函数都被同样的方式调用**，所以**所有处理函数（包括 `index`、`center`）都要增加一个参数 `ret`**，即使不使用它
+>
+> **第二步：处理“添加关注”的逻辑**。虽然股票代码本来是后端传给前端页面的，但**服务器不能无条件相信浏览器传来的数据**，因为黑客可以直接在浏览器地址栏里手动输入链接。所以要做三步判断：
+>
+> 1. 这支股票在 `info` 表中存在吗？不存在，就是非法请求
+> 2. 已经关注过了吗？已经关注，就提示不要重复关注
+> 3. 以上都通过，再往 `focus` 表插入数据
+
+```python
+# 以下是 dynamic/mini_frame.py 的修改
+# 所有处理函数都增加参数 ret（re.Match 对象），index、center 同理：
+#     def index(ret):
+#     def center(ret):
+# 函数体与 16.15.18 相同，这里不再重复
+
+
+# 括号分组 (\d+)：把股票代码捕获出来，之后用 ret.group(1) 取
+@route(r'/add/(\d+)\.html')
+def add_focus(ret):
+    """处理“添加关注”的请求
+
+    Args:
+        ret (re.Match): 路由正则的匹配结果，ret.group(1) 是股票代码
+
+    Returns:
+        str: 处理结果的提示信息
+    """
+    # ret.group(1)：取第 1 个括号匹配到的内容，返回 str，如 '000007'
+    stock_code = ret.group(1)
+
+    # 第一步：判断 info 表里有没有这个股票代码
+    # connect(...)：创建数据库连接，返回 Connection 对象 conn；
+    # 关键字参数：host 主机 IP（str）、port 端口（int，MySQL 默认 3306）、
+    # user 用户名（str）、password 密码（str）、
+    # database 数据库名（str）、charset 字符集（str）
+    conn = connect(host='127.0.0.1', port=3306, user='root',
+                   password='123', database='stock_db', charset='utf8')
+    # conn.cursor()：创建游标，返回 Cursor 对象 cs，用来执行 SQL、读取结果
+    cs = conn.cursor()
+    # SQL 语句（str）：%s 是占位符，值通过 execute 的第二个参数传入，
+    # 这就是“参数化查询”，能防止 SQL 注入（见 18.5）
+    sql = """select * from info where code=%s;"""
+    # 第二个参数必须是元组（或列表）；只有一个值时要写成 (值,)，
+    # 末尾的逗号不能省，否则 (stock_code) 只是一个字符串，不是元组
+    cs.execute(sql, (stock_code,))
+    # cs.fetchone()：取一行，查到返回 tuple（长度 = 列数），没查到返回 None；
+    # not None 为 True，说明没有这支股票，认为是非法请求
+    if not cs.fetchone():
+        # 返回前先关闭游标和连接（直接 return 后面的代码不会再执行）
+        cs.close()
+        conn.close()
+        # 返回提示（str）
+        return '没有这支股票，大哥，我们是创业公司，请手下留情...'
+
+    # 第二步：判断是否已经关注过：info 内连接 focus，能查到记录就说明关注过了
+    sql = """select * from info as i inner join focus as f
+             on i.id = f.info_id where i.code=%s;"""
+    # 再次执行查询，参数仍是 (股票代码,)
+    cs.execute(sql, (stock_code,))
+    # 能查出一行（tuple），布尔值为真，表示已经关注过
+    if cs.fetchone():
+        # 返回前先关闭游标和连接，避免连接泄漏
+        cs.close()
+        conn.close()
+        # 返回提示（str）
+        return '已经关注过了，请勿重复关注...'
+
+    # 第三步：添加关注。insert ... select：把“从 info 表查出的 id”
+    # 直接作为 focus 表的 info_id 插入，不需要先把 id 查出来再拼 SQL
+    sql = """insert into focus (info_id)
+             select id from info where code=%s;"""
+    # 执行插入，返回 int（受影响的行数）
+    cs.execute(sql, (stock_code,))
+    # commit()：提交事务，增删改后必须调用，修改才会真正写入数据库（见 18.3）
+    conn.commit()
+    # cs.close()：关闭游标，释放资源，返回 None
+    cs.close()
+    # conn.close()：关闭数据库连接，返回 None
+    conn.close()
+    # 返回成功提示（str），会显示在 alert 弹窗中
+    return '关注成功....'
+
+
+def application(env, start_response):
+    """框架入口（与 16.15.18 相比，只有一处修改：调用函数时传入 ret）
+
+    Args:
+        env (dict): 服务器传来的字典，PATH_INFO 是请求路径
+        start_response (function): 设置状态码和响应头的函数
+
+    Returns:
+        str: 响应体
+    """
+    # 登记状态码和响应头，此时并不发送，返回 None
+    start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
+    # 取出请求路径（str），如 '/add/000007.html'
+    file_name = env['PATH_INFO']
+    # 异常保护：路由函数出错时，不让服务器崩溃
+    try:
+        # 遍历路由表：URL_FUNC_DICT.items() 每次给出 (键, 值) 元组，
+        # url 是正则（str），func 是函数对象，路由表形如
+        # {
+        #     r'/index.html': index,
+        #     r'/center.html': center,
+        #     r'/add/\d+\.html': add_focus,
+        # }
+        for url, func in URL_FUNC_DICT.items():
+            # re.match(正则, 字符串)：从字符串开头匹配，
+            # 成功返回 Match 对象，失败返回 None
+            ret = re.match(url, file_name)
+            # Match 对象为真，说明匹配成功
+            if ret:
+                # 调用对应的处理函数，返回值 str 就是响应体
+                return func(ret)  # 修改在这里：把 Match 对象传给处理函数
+        # for...else：for 循环正常结束（没有被 return 打断，
+        # 即所有路由都没匹配上）才会执行 else
+        else:
+            # 返回提示：没有对应的处理函数
+            return '请求的 url(%s) 没有对应的函数....' % file_name
+    # 捕获所有异常，ret 是异常对象（这里 ret 被重新使用，只用来打印）
+    except Exception as ret:
+        # 返回异常信息（str）
+        return '产生了异常：%s' % str(ret)
+```
+
+> **说明**：
+>
+> - `insert into 表(列) select ...`：把一条 `select` 的查询结果直接插入表里，是 SQL 中“用子查询的结果插入数据”的写法
+> - **为什么要先判断再插入？** 既防止重复关注，也防止非法请求（伪造股票代码）往表里插入垃圾数据
+> - **为什么每个分支返回前都要关闭游标和连接？** 因为直接 `return` 之后，后面的代码不会再执行，不先关闭就会造成连接泄漏
+> - 判断“是否存在”用的是 `fetchone()` 而不是 `fetchall()`：只需要知道有没有，不需要取出所有行
+
+#### 16.15.20 mini web 框架（十一）：增加删除功能
+
+> **需求**：个人中心页面点击“删除”按钮，取消对这支股票的关注。目前点了没有反应，原因同样是：① 页面里还没有 JS 去发请求；② 服务器里还没有处理删除请求的函数。
+>
+> **第一步：在 `center.html` 里加入 JS**。思路与“添加”完全相同，只是按钮的 `name` 是 `toDel`，请求的 url 是 `/del/股票代码.html`：
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>个人中心 - 个人选股系统 V5.87</title>
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <script src="/js/jquery-1.12.4.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script>
+        // 页面加载完成后执行
+        $(document).ready(function(){
+            // 找到所有 name 属性为 toDel 的 input（“删除”按钮）
+            $("input[name='toDel']").each(function(){
+                // 当前按钮
+                var currentAdd = $(this);
+                // 绑定点击事件
+                currentAdd.click(function(){
+                    // 读取按钮上的股票代码
+                    code = $(this).attr("systemIdVaule");
+                    // 向服务器请求 /del/股票代码.html，弹窗显示服务器的响应
+                    $.get("/del/" + code + ".html", function(data, status){
+                        alert("数据: " + data + "\n 状态: " + status);
+                    });
+                    // 刷新页面，让删除后的列表立即显示出来
+                    window.location.reload()
+                });
+            });
+        });
+    </script>
+</head>
+```
+
+> **第二步：让 `center` 函数生成的“删除”按钮和“修改”链接带上每行自己的股票代码**。原来 `tr_template` 里写死了 `300268`，现在改成两个 `%s`，加上前面的 7 列，共 9 个值（`line_info[0]` 就是查询结果里的 `code`，它在“修改”链接和“删除”按钮里各用一次）：
+
+```python
+# 以下是 dynamic/mini_frame.py 中 center 函数的修改
+@route(r'/center.html')
+def center(ret):
+    """个人中心：显示用户关注的股票，修改/删除按钮带上各自的股票代码
+
+    Args:
+        ret (re.Match): 路由正则的匹配结果（本函数用不到，但必须接收）
+
+    Returns:
+        str: 替换之后的页面内容
+    """
+    # 打开个人中心模板，返回文件对象 f
+    with open('./templates/center.html', encoding='utf-8') as f:
+        # 读取模板内容，返回 str
+        content = f.read()
+    # connect(...)：创建数据库连接，返回 Connection 对象 conn；
+    # 关键字参数：host 主机 IP（str）、port 端口（int，MySQL 默认 3306）、
+    # user 用户名（str）、password 密码（str）、
+    # database 数据库名（str）、charset 字符集（str）
+    conn = connect(host='127.0.0.1', port=3306, user='root',
+                   password='123', database='stock_db', charset='utf8')
+    # conn.cursor()：创建游标，返回 Cursor 对象 cs，用来执行 SQL、读取结果
+    cs = conn.cursor()
+    # 连表查询关注的股票，共 7 列（含义同 16.15.17）
+    cs.execute('select i.code, i.short, i.chg, i.turnover, i.price, '
+               'i.highs, f.note_info from info as i '
+               'inner join focus as f on i.id = f.info_id;')
+    # fetchall() 返回 tuple 嵌套 tuple：外层长度 = 关注数，内层长度 = 7
+    stock_infos = cs.fetchall()
+    # cs.close()：关闭游标，释放资源，返回 None
+    cs.close()
+    # conn.close()：关闭数据库连接，返回 None
+    conn.close()
+
+    # 一行 html 模板（str）：现在共 9 个 %s：
+    # 前 7 个是表格数据，第 8 个是“修改”链接里的代码，
+    # 第 9 个是“删除”按钮的 systemidvaule（JS 点击时读取它）
+    tr_template = """
+    <tr>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>%s</td>
+        <td>
+            <a type="button" class="btn btn-default btn-xs"
+               href="/update/%s.html">
+                <span class="glyphicon glyphicon-star"
+                      aria-hidden="true"></span> 修改
+            </a>
+        </td>
+        <td>
+            <input type="button" value="删除" id="toDel" name="toDel"
+                   systemidvaule="%s">
+        </td>
+    </tr>
+    """
+    # 保存拼接后的 html（str）
+    html = ''
+    # 遍历每一行，line_info 是长度为 7 的 tuple
+    for line_info in stock_infos:
+        # line_info[0] 是股票代码，最后两个 %s 都用它
+        html += tr_template % (line_info[0], line_info[1], line_info[2],
+                               line_info[3], line_info[4], line_info[5],
+                               line_info[6], line_info[0], line_info[0])
+    # 替换占位符，返回新 str
+    content = re.sub(r'\{%content%\}', html, content)
+    # 返回页面内容
+    return content
+```
+
+> **第三步：增加 `del_focus` 处理删除请求**。逻辑与 `add_focus` 对称：先判断股票存在，再判断**已经关注**（没关注过就无从删除，属于非法请求），最后执行 `delete`。
+
+```python
+# 路由：/del/股票代码.html，括号分组捕获股票代码
+@route(r'/del/(\d+)\.html')
+def del_focus(ret):
+    """处理“取消关注”的请求
+
+    Args:
+        ret (re.Match): 路由正则的匹配结果，ret.group(1) 是股票代码
+
+    Returns:
+        str: 处理结果的提示信息
+    """
+    # 取第 1 个括号匹配到的内容，返回 str，如 '300268'
+    stock_code = ret.group(1)
+
+    # 第一步：判断 info 表中是否有这个股票代码
+    # connect(...)：创建数据库连接，返回 Connection 对象 conn；
+    # 关键字参数：host 主机 IP（str）、port 端口（int，MySQL 默认 3306）、
+    # user 用户名（str）、password 密码（str）、
+    # database 数据库名（str）、charset 字符集（str）
+    conn = connect(host='127.0.0.1', port=3306, user='root',
+                   password='123', database='stock_db', charset='utf8')
+    # conn.cursor()：创建游标，返回 Cursor 对象 cs，用来执行 SQL、读取结果
+    cs = conn.cursor()
+    # 参数化查询的 SQL（str），%s 由 execute 的第二个参数填入
+    sql = """select * from info where code=%s;"""
+    # 执行查询，参数是只有一个元素的元组
+    cs.execute(sql, (stock_code,))
+    # fetchone() 没查到返回 None，not None 为 True：没有这个股票，非法请求
+    if not cs.fetchone():
+        # 返回前关闭游标和连接
+        cs.close()
+        conn.close()
+        # 返回提示（str）
+        return '没有这支股票，大哥，我们是创业公司，请手下留情...'
+
+    # 第二步：判断是否关注过（info 内连接 focus）
+    sql = """select * from info as i inner join focus as f
+             on i.id = f.info_id where i.code=%s;"""
+    # 执行查询
+    cs.execute(sql, (stock_code,))
+    # 没查到（None），表示之前没有关注过，取消关注是非法请求
+    if not cs.fetchone():
+        # 返回前关闭游标和连接
+        cs.close()
+        conn.close()
+        # 返回提示（str），% 把股票代码填进去
+        return '%s 之前未关注，请勿取消关注...' % stock_code
+
+    # 第三步：取消关注。子查询 (select id from info where code=%s) 先查出
+    # info 表的 id，再删除 focus 表中 info_id 等于这个 id 的记录
+    sql = """delete from focus
+             where info_id = (select id from info where code=%s);"""
+    # 执行删除，返回 int（受影响的行数）
+    cs.execute(sql, (stock_code,))
+    # 提交事务，删除才真正生效
+    conn.commit()
+    # cs.close()：关闭游标，释放资源，返回 None
+    cs.close()
+    # conn.close()：关闭数据库连接，返回 None
+    conn.close()
+    # 返回成功提示（str）
+    return '取消关注成功....'
+```
+
+> **注意**：上面 JS 中 `$.get(...)` 是**异步**请求，发出请求后马上执行 `window.location.reload()` 刷新页面，此时服务器可能还没删完，页面里会还显示这条数据，再刷新一次才消失。更严谨的做法是把 `window.location.reload()` 放进 `$.get` 的回调函数里（`alert` 之后），等服务器返回后再刷新。
+
+#### 16.15.21 mini web 框架（十二）：增加修改功能
+
+> **需求**：个人中心点击“修改”，跳转到修改页面，修改这支股票的备注信息，点击“修改”按钮保存。
+>
+> **整个流程涉及两次请求，两个函数**：
+>
+> ---
+
+| 步骤 | 浏览器的请求 | 路由（正则） | 处理函数 | 作用 |
+|---|---|---|---|---|
+| ① 点击“修改”链接 | `/update/300268.html` | `r'/update/(\d+)\.html'` | `show_update_page` | 显示修改页面（带出当前的备注） |
+| ② 点击页面里的“修改”按钮 | `/update/300268/新的备注.html` | `r'/update/(\d+)/(.*)\.html'` | `save_update_page` | 把新备注保存到数据库 |
+
+> ---
+>
+> **第一步：编写 `templates/update.html`** 修改页面。页面中有两个占位符：`{%code%}`（股票代码）和 `{%note_info%}`（当前备注），点击“修改”按钮时，用 JS 把新备注拼进 URL，请求服务器保存：
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>首页 - 个人选股系统 V5.87</title>
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <script src="/js/jquery-1.12.4.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script>
+        // 页面加载完成后执行
+        $(document).ready(function(){
+            // 给 id 为 update 的“修改”按钮绑定点击事件
+            $("#update").click(function(){
+                // 读取 id 为 note_info 的输入框中的内容（新的备注）
+                var item = $("#note_info").val();
+                // 请求 /update/股票代码/新备注.html；{%code%} 在服务器端被替换成真实代码
+                $.get("/update/{%code%}/" + item + ".html",
+                      function(data, status){
+                    // 弹窗显示服务器返回的结果
+                    alert("数据: " + data + "\n 状态: " + status);
+                    // 修改完成后，跳转回个人中心页面
+                    self.location = '/center.html';
+                });
+            });
+        });
+    </script>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <div class="navbar navbar-inverse navbar-static-top ">
+        <div class="container">
+            <div class="navbar-header">
+                <button class="navbar-toggle" data-toggle="collapse"
+                        data-target="#mymenu">
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                </button>
+                <a href="#" class="navbar-brand">选股系统</a>
+            </div>
+            <div class="collapse navbar-collapse" id="mymenu">
+                <ul class="nav navbar-nav">
+                    <li><a href="/index.html">股票信息</a></li>
+                    <li><a href="/center.html">个人中心</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- 修改框：显示正在修改的股票代码，输入框里是当前备注 -->
+    <div class="container">
+        <div class="container-fluid">
+            <div class="input-group">
+                <span class="input-group-addon">正在修改：</span>
+                <span class="input-group-addon">{%code%}</span>
+                <input id="note_info" type="text" class="form-control"
+                       aria-label="Amount (to the nearest dollar)"
+                       value="{%note_info%}">
+                <span id="update" class="input-group-addon"
+                      style="cursor: pointer">修改</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+```
+
+> **注意**：光把 `update.html` 放进 `templates` 是不行的（浏览器会提示请求的 url 没有对应的函数），因为**所有 `.html` 请求都要由 `mini_frame` 框架响应**（见 16.15.14）。所以要写处理函数，**打开模板、查询数据库、替换占位符、返回页面**：
+
+```python
+# 路由：/update/股票代码.html，括号分组捕获股票代码
+@route(r'/update/(\d+)\.html')
+def show_update_page(ret):
+    """显示修改页面
+
+    Args:
+        ret (re.Match): 路由正则的匹配结果，ret.group(1) 是股票代码
+
+    Returns:
+        str: 替换了股票代码和备注信息之后的修改页面
+    """
+    # 第一步：取股票代码，返回 str，如 '300268'
+    stock_code = ret.group(1)
+
+    # 第二步：打开修改页面的模板，返回文件对象 f
+    with open('./templates/update.html', encoding='utf-8') as f:
+        # 读取模板内容，返回 str（含 {%code%}、{%note_info%} 两个占位符）
+        content = f.read()
+
+    # 第三步：根据股票代码查询当前的备注信息
+    # connect(...)：创建数据库连接，返回 Connection 对象 conn；
+    # 关键字参数：host 主机 IP（str）、port 端口（int，MySQL 默认 3306）、
+    # user 用户名（str）、password 密码（str）、
+    # database 数据库名（str）、charset 字符集（str）
+    conn = connect(host='127.0.0.1', port=3306, user='root',
+                   password='123', database='stock_db', charset='utf8')
+    # conn.cursor()：创建游标，返回 Cursor 对象 cs，用来执行 SQL、读取结果
+    cs = conn.cursor()
+    # 连表查询：只要 focus 表的备注列 note_info（1 列）
+    sql = """select f.note_info from focus as f
+             inner join info as i on i.id = f.info_id
+             where i.code=%s;"""
+    # 执行查询，参数是 (股票代码,)
+    cs.execute(sql, (stock_code,))
+    # fetchone() 返回 tuple，长度 = 查询的列数 1，如 ('你确定要买这个？',)；
+    # 没关注过则返回 None
+    stock_infos = cs.fetchone()
+    # 下标 0 取出备注信息（str）；若上一步是 None，这里会抛 TypeError
+    note_info = stock_infos[0]
+    # cs.close()：关闭游标，释放资源，返回 None
+    cs.close()
+    # conn.close()：关闭数据库连接，返回 None
+    conn.close()
+
+    # 第四步：替换模板中的两个占位符；re.sub 会替换所有出现的位置，
+    # 返回新 str；两次替换都用 content 接收
+    content = re.sub(r'\{%note_info%\}', note_info, content)
+    content = re.sub(r'\{%code%\}', stock_code, content)
+    # 返回修改页面（str）
+    return content
+```
+
+> 进入修改页面后，输入内容并点击“修改”，会再次提示“请求的 url 没有对应的函数”。原因是点击“修改”按钮时，浏览器又发出了一个**全新的请求** `/update/300268/新备注.html`，这是一个新的 url，需要**另外写一个函数**来处理。请求里带了**两个值**：股票代码和新备注，所以正则里要有**两个括号分组**。
+
+```python
+# 路由：/update/股票代码/备注.html，两个括号分别捕获股票代码和备注；
+# (.*) 匹配任意个任意字符，用来匹配备注内容
+@route(r'/update/(\d+)/(.*)\.html')
+def save_update_page(ret):
+    """保存修改后的备注信息
+
+    Args:
+        ret (re.Match): 匹配结果，group(1) 是股票代码，group(2) 是新的备注
+
+    Returns:
+        str: 处理结果的提示信息
+    """
+    # 取第 1 个括号的内容：股票代码（str）
+    stock_code = ret.group(1)
+    # 取第 2 个括号的内容：新的备注信息（str）
+    comment = ret.group(2)
+
+    # connect(...)：创建数据库连接，返回 Connection 对象 conn；
+    # 关键字参数：host 主机 IP（str）、port 端口（int，MySQL 默认 3306）、
+    # user 用户名（str）、password 密码（str）、
+    # database 数据库名（str）、charset 字符集（str）
+    conn = connect(host='127.0.0.1', port=3306, user='root',
+                   password='123', database='stock_db', charset='utf8')
+    # conn.cursor()：创建游标，返回 Cursor 对象 cs，用来执行 SQL、读取结果
+    cs = conn.cursor()
+    # 更新语句（str）：把 focus 表中对应股票的 note_info 改成新备注；
+    # 两个 %s 依次对应 execute 第二个参数里的两个值：新备注、股票代码
+    sql = """update focus set note_info=%s
+             where info_id = (select id from info where code=%s);"""
+    # 执行更新，返回 int（受影响的行数）；元组里的顺序要和 %s 的顺序一致
+    cs.execute(sql, (comment, stock_code))
+    # 提交事务，修改才真正生效
+    conn.commit()
+    # cs.close()：关闭游标，释放资源，返回 None
+    cs.close()
+    # conn.close()：关闭数据库连接，返回 None
+    conn.close()
+    # 返回成功提示（str）
+    return '修改成功...'
+```
+
+> **路由的匹配顺序**：路由表里同时有 `r'/update/(\d+)\.html'` 和 `r'/update/(\d+)/(.*)\.html'`。访问 `/update/300268/abc.html` 时，第一个正则在 `300268` 后面要求出现 `.`，实际是 `/`，所以不匹配，只有第二个匹配；访问 `/update/300268.html` 时，第二个正则要求有 `/备注`，也不匹配。两者**不会冲突**。写正则路由时要留意：**范围太宽的正则（如 `.*`）可能抢先匹配到本该属于别的函数的请求**，因为路由是按字典顺序依次尝试的。
+>
+> **注意**：如果股票没有被关注过（`focus` 里没有记录），`fetchone()` 返回 `None`，`None[0]` 会抛出 `TypeError`，会被 `application` 的 `except` 捕获并显示“产生了异常”。
+
+#### 16.15.22 mini web 框架（十三）：修复中文乱码（URL 编码）
+
+> **现象**：上面的修改功能，如果备注里输入了**中文**，保存到数据库后会发现是**乱码**（如 `%E4%BD%A0...`）。
+>
+> **原因**：浏览器发送请求时，会对 URL 里的**汉字、空格、斜杠等特殊字符进行转码**（URL 编码，也叫百分号编码：把字符按 utf-8 编码成字节，每个字节写成 `%XX`）。服务器收到的 `PATH_INFO` 是**转码后的字符串**，如果直接存数据库，存进去的就是 `%E4%BD%A0%E5%A5%BD` 这样的内容。
+>
+> **解决办法**：服务器收到后，用 `urllib.parse.unquote()` 把它**还原（解码）**成汉字。`quote()` 则相反，是编码。
+
+```python
+# 导入 urllib.parse 模块的两个函数：quote 编码，unquote 解码
+from urllib.parse import quote, unquote
+
+# quote(字符串)：把字符串按 utf-8 编码成 URL 格式，返回 str；
+# 默认斜杠 / 不转码（safe='/'）
+print(quote('你好 world'))
+# 输出：%E4%BD%A0%E5%A5%BD%20world （一个汉字 3 个字节，空格是 %20）
+
+# unquote(字符串)：把 URL 编码的字符串还原，返回 str
+print(unquote('%E4%BD%A0%E5%A5%BD%20world'))
+# 输出：你好 world
+```
+
+```python
+# 以下是 dynamic/mini_frame.py 的修改
+# 方式一：导入整个 urllib.parse 模块（写在文件开头）
+import urllib.parse
+# 方式二：只导入 parse 子模块，之后用 parse.unquote（二选一即可）
+# from urllib import parse
+
+
+@route(r'/update/(\d+)/(.*)\.html')
+def save_update_page(ret):
+    """保存修改后的备注信息（修复中文乱码）
+
+    Args:
+        ret (re.Match): 匹配结果，group(1) 是股票代码，group(2) 是备注
+
+    Returns:
+        str: 处理结果的提示信息
+    """
+    # 取股票代码（str）
+    stock_code = ret.group(1)
+    # 取备注信息（str），此时还是 URL 编码后的字符串，
+    # 如 '%E4%BD%A0%E5%A5%BD'
+    comment = ret.group(2)
+    # unquote(字符串)：把 URL 编码的字符串还原成汉字，返回 str，如 '你好'
+    comment = urllib.parse.unquote(comment)
+    # 方式二的写法：comment = parse.unquote(comment)
+
+    # 后面连接数据库、执行 update 语句、commit、关闭连接、返回提示的代码
+    # 与 16.15.21 的 save_update_page 完全相同，不再重复
+```
+
+> **补充**：
+>
+> - 把用户输入放进 **URL 路径**里传递，有很多限制：含有 `/`、`?`、`#` 等有特殊含义的字符时，URL 会被截断或匹配出错
+> - 更规范的做法是用 **POST 请求**，把数据放在**请求体**里提交，由 JS 处理。以后学习 Web 框架时会学到
+>
+> ---
+
+#### 16.15.23 logging 日志
+
+> **为什么需要日志**：开发中出现 bug 是不可避免的，你会怎样 debug？从第 1 行代码开始一行行看吗？如果有一个**文件把程序运行时发生的事情记录下来**，哪里出错了一目了然，就方便多了，这个记录就是**日志（log）**。
+>
+> Python 的 **`logging` 模块**可以完成相关信息的记录，debug 时往往事半功倍。
+
+##### 16.15.23.1 日志级别
+
+> 日志一共分成 **5 个等级**，从低到高依次是：`DEBUG`、`INFO`、`WARNING`、`ERROR`、`CRITICAL`。
+>
+> ---
+
+| 级别 | 数值 | 对应的方法 | 含义 |
+|---|---|---|---|
+| `DEBUG` | 10 | `logging.debug()` | 详细的信息，通常只出现在诊断问题时 |
+| `INFO` | 20 | `logging.info()` | 确认一切按预期运行 |
+| `WARNING` | 30 | `logging.warning()` | 表明发生了一些意想不到的事情，或不久的将来可能出现问题（如“磁盘空间低”），软件仍能按预期工作 |
+| `ERROR` | 40 | `logging.error()` | 更严重的问题，软件没能执行某些功能 |
+| `CRITICAL` | 50 | `logging.critical()` | 严重错误，表明程序本身可能无法继续运行 |
+
+> ---
+>
+> **默认级别是 `WARNING`**：只有**级别大于等于**设置的级别的日志才会被输出（跟踪）。例如设置为 `WARNING`，则 `DEBUG` 和 `INFO` 不会输出，`WARNING`、`ERROR`、`CRITICAL` 才会输出。
+
+##### 16.15.23.2 日志输出到控制台
+
+> 用 `logging.basicConfig()` 对日志的**输出级别**和**输出格式**做配置，然后就可以直接调用 `logging.xxx()` 记录日志了。
+
+```python
+# log1.py
+# 导入 logging 模块
+import logging
+
+# basicConfig：对日志系统做基本配置，只在第一次调用时生效
+# level：日志级别，低于此级别的日志不输出，这里设置为 WARNING
+# format：输出格式（str），% 开头的是日志属性，见 16.15.23.5
+logging.basicConfig(level=logging.WARNING,
+                    format='%(asctime)s - %(filename)s[line:%(lineno)d] - '
+                           '%(levelname)s: %(message)s')
+
+# 开始使用 log 功能：下面 5 行分别记录 5 个级别的日志，
+# 参数是日志内容（str）
+logging.info('这是 logging info message')
+logging.debug('这是 logging debug message')
+logging.warning('这是 logging a warning message')
+logging.error('这是 an logging error message')
+logging.critical('这是 logging critical message')
+```
+
+> **运行结果**（只有 `WARNING` 及以上的 3 条会输出，`info` 和 `debug` 被过滤）：
+
+```text
+2026-11-21 16:56:46,169 - log1.py[line:16] - WARNING: 这是 logging a warning message
+2026-11-21 16:56:46,169 - log1.py[line:17] - ERROR: 这是 an logging error message
+2026-11-21 16:56:46,169 - log1.py[line:18] - CRITICAL: 这是 logging critical message
+```
+
+> **说明**：
+>
+> - `basicConfig` 设置了日志的**输出级别**为 `WARNING`，也设置了**输出格式**：时间 - 文件名[行号] - 级别: 日志内容
+> - **注意**：只要已经使用过一次 log 功能，**再次调用 `basicConfig` 设置格式将不会生效**（Python 3.8+ 可以加参数 `force=True` 强制重新配置）。实际开发中日志格式不会经常变化，所以刚开始就要设定好格式
+
+##### 16.15.23.3 日志输出到文件
+
+> 只需要在 `basicConfig` 中指定**文件名** `filename` 和**写文件的模式** `filemode`，日志就会写入文件，不再输出到控制台。
+
+```python
+# log2.py
+# 导入 logging 模块
+import logging
+
+# filename：日志文件的路径（str）
+# filemode：文件打开模式（str），'w' 每次运行覆盖原内容，
+# 'a' 追加到文件末尾（默认值），实际开发建议用追加
+# encoding：文件编码，Python 3.9+ 支持，写中文日志在 Windows 下建议加上，
+# 避免默认的 gbk 编码出现问题
+logging.basicConfig(level=logging.WARNING,
+                    filename='./log.txt',
+                    filemode='w',
+                    encoding='utf-8',
+                    format='%(asctime)s - %(filename)s[line:%(lineno)d] - '
+                           '%(levelname)s: %(message)s')
+
+# 记录日志，这次会被写到 log.txt 文件中，控制台没有输出
+logging.info('这是 logging info message')
+logging.debug('这是 logging debug message')
+logging.warning('这是 logging a warning message')
+logging.error('这是 an logging error message')
+logging.critical('这是 logging critical message')
+```
+
+```bash
+# 查看日志文件的内容
+#   cat：打印文件内容；./log.txt：日志文件路径
+$ cat log.txt
+```
+
+```text
+2026-11-21 16:56:46,258 - log2.py[line:20] - WARNING: 这是 logging a warning message
+2026-11-21 16:56:46,258 - log2.py[line:21] - ERROR: 这是 an logging error message
+2026-11-21 16:56:46,259 - log2.py[line:22] - CRITICAL: 这是 logging critical message
+```
+
+##### 16.15.23.4 同时输出到控制台和文件
+
+> `basicConfig` 只能“二选一”（要么控制台，要么文件）。如果既想在控制台看到，又想写入日志文件，就需要 **`Logger`（日志记录器）** 对象来帮忙。
+>
+> **日志系统的四个角色**：
+>
+> ---
+
+| 角色 | 类 | 作用 |
+|---|---|---|
+| **记录器** | `Logger` | 日志的入口，程序调用 `logger.info()` 等方法产生日志；有一个**总级别开关** |
+| **处理器** | `Handler` | 决定日志**输出到哪里**：`FileHandler` 输出到文件，`StreamHandler` 输出到控制台；每个处理器有自己的**级别开关** |
+| **格式器** | `Formatter` | 决定日志**长什么样**，每个处理器可以设置不同的格式 |
+| **级别** | `DEBUG` ~ `CRITICAL` | 过滤日志，日志必须先通过 `Logger` 的级别，再通过 `Handler` 的级别，才会输出 |
+
+> ---
+>
+> **使用步骤**：① 创建 `logger` → ② 创建处理器 `handler`（文件、控制台各一个）→ ③ 定义格式 `Formatter` 并设置给处理器 → ④ 把处理器添加到 `logger` → ⑤ 使用 `logger` 记录日志。
+
+```python
+# log3.py
+# 导入 logging 模块
+import logging
+
+# 第一步：创建一个 logger（日志记录器）
+# getLogger()：不传名字，获取根记录器 root logger，返回 Logger 对象
+logger = logging.getLogger()
+# 设置 logger 的级别，相当于日志的“总开关”，
+# 低于 INFO 的日志（DEBUG）在这里就被过滤了，下面的处理器收不到
+logger.setLevel(logging.INFO)
+
+# 第二步：创建一个 handler，用于写入日志文件
+# 日志文件路径（str）
+logfile = './log.txt'
+# FileHandler(文件路径, mode=打开模式, encoding=编码)：输出到文件的处理器，
+# mode 的取值同 open 函数（见 13.3），'a' 表示追加
+fh = logging.FileHandler(logfile, mode='a', encoding='utf-8')
+# 设置输出到文件的日志级别（文件的开关）
+fh.setLevel(logging.DEBUG)
+
+# 第三步：再创建一个 handler，用于输出到控制台
+# StreamHandler()：输出到流的处理器，不传参数时输出到标准错误流（控制台）
+ch = logging.StreamHandler()
+# 设置输出到控制台的日志级别（控制台的开关）
+ch.setLevel(logging.WARNING)
+
+# 第四步：定义 handler 的输出格式
+# Formatter(格式字符串)：创建格式器对象
+formatter = logging.Formatter('%(asctime)s - %(filename)s[line:%(lineno)d] - '
+                              '%(levelname)s: %(message)s')
+# 给两个处理器设置同一个格式（也可以设置不同格式）
+fh.setFormatter(formatter)
+ch.setFormatter(formatter)
+
+# 第五步：把 handler 添加到 logger 里面
+logger.addHandler(fh)
+logger.addHandler(ch)
+
+# 记录日志
+logger.debug('这是 logger debug message')
+logger.info('这是 logger info message')
+logger.warning('这是 logger warning message')
+logger.error('这是 logger error message')
+logger.critical('这是 logger critical message')
+```
+
+> **运行时终端的输出结果**（控制台处理器的级别是 `WARNING`，所以只有 3 条）：
+
+```text
+2026-11-21 16:56:46,398 - log3.py[line:42] - WARNING: 这是 logger warning message
+2026-11-21 16:56:46,398 - log3.py[line:43] - ERROR: 这是 logger error message
+2026-11-21 16:56:46,398 - log3.py[line:44] - CRITICAL: 这是 logger critical message
+```
+
+> **`log.txt` 中的内容**（文件处理器的级别是 `DEBUG`，但 `logger` 总开关是 `INFO`，所以 `debug` 在到达处理器之前就被过滤，文件里有 `INFO` 及以上 4 条）：
+
+```text
+2026-11-21 16:56:46,398 - log3.py[line:41] - INFO: 这是 logger info message
+2026-11-21 16:56:46,398 - log3.py[line:42] - WARNING: 这是 logger warning message
+2026-11-21 16:56:46,398 - log3.py[line:43] - ERROR: 这是 logger error message
+2026-11-21 16:56:46,398 - log3.py[line:44] - CRITICAL: 这是 logger critical message
+```
+
+> **理解“两层过滤”**：
+>
+> - 日志先经过 **`logger` 的级别**（总开关），不够级别的直接丢弃；
+> - 通过后，再分别交给每个 **`handler`**，每个 `handler` 用**自己的级别**再过滤一次；
+> - 所以 `logger` 的级别要**不高于**所有 `handler` 的级别，否则 `handler` 的设置没有意义。常见做法是 `logger` 设为最低的 `DEBUG`，由各个 `handler` 控制具体输出什么
+> - 重复运行脚本时，注意不要重复 `addHandler`，否则同一条日志会输出多次
+
+##### 16.15.23.5 日志格式说明
+
+> `logging.basicConfig` 函数（以及 `Formatter`）中，可以用 `format` 参数指定日志的输出格式，可以输出很多有用的信息：
+>
+> ---
+
+| 格式 | 含义 |
+|---|---|
+| `%(levelno)s` | 打印日志级别的数值 |
+| `%(levelname)s` | 打印日志级别名称 |
+| `%(pathname)s` | 打印当前执行程序的路径，其实就是 `sys.argv[0]` |
+| `%(filename)s` | 打印当前执行程序名 |
+| `%(funcName)s` | 打印日志的当前函数 |
+| `%(lineno)d` | 打印日志的当前行号 |
+| `%(asctime)s` | 打印日志的时间 |
+| `%(thread)d` | 打印线程 ID |
+| `%(threadName)s` | 打印线程名称 |
+| `%(process)d` | 打印进程 ID |
+| `%(message)s` | 打印日志信息 |
+
+> ---
+>
+> **工作中常用的格式**（输出日志的时间、是哪个模块输出的、日志级别是什么、日志内容）：
+>
+> ```python
+> format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s'
+> ```
+
+##### 16.15.23.6 在 mini-web 框架中使用日志
+
+> 在 mini-web 中，页面出现异常时只把错误信息返回给浏览器，服务器这边没有任何记录。加上日志后，异常、非法请求都会被记录下来，方便排查问题。下面以 `application` 和 `add_focus` 为例（在 `mini_frame.py` 开头配置一次日志即可）：
+
+```python
+# 以下是 dynamic/mini_frame.py 的修改
+# 导入 logging 模块
+import logging
+
+# 在模块加载时配置日志，只需配置一次：
+# level：日志级别，INFO 及以上才记录；
+# filename：日志写入的文件；filemode：'a' 追加模式；
+# encoding：文件编码（Python 3.9+）；format：输出格式
+logging.basicConfig(level=logging.INFO,
+                    filename='./log.txt',
+                    filemode='a',
+                    encoding='utf-8',
+                    format='%(asctime)s - %(filename)s[line:%(lineno)d] - '
+                           '%(levelname)s: %(message)s')
+
+
+def application(env, start_response):
+    """框架入口：增加日志记录
+
+    Args:
+        env (dict): 服务器传来的字典，PATH_INFO 是请求路径
+        start_response (function): 设置状态码和响应头的函数
+
+    Returns:
+        str: 响应体
+    """
+    # 登记状态码和响应头，此时并不发送，返回 None
+    start_response('200 OK', [('Content-Type', 'text/html;charset=utf-8')])
+    # 取出请求路径（str）
+    file_name = env['PATH_INFO']
+    # 记录每次请求的路径（INFO 级别：确认程序按预期运行）；
+    # logging.info 返回 None
+    logging.info('访问的是：%s' % file_name)
+    # 异常保护
+    try:
+        # 遍历路由表，url 是正则，func 是处理函数
+        for url, func in URL_FUNC_DICT.items():
+            # 用正则匹配请求路径，成功返回 Match 对象，失败返回 None
+            ret = re.match(url, file_name)
+            # 匹配成功
+            if ret:
+                # 调用处理函数，把 Match 对象传进去，返回响应体 str
+                return func(ret)
+        # 所有路由都没匹配上才执行 else
+        else:
+            # 没有匹配的路由，记录为 WARNING 级别
+            logging.warning('请求的 url(%s) 没有对应的函数....' % file_name)
+            # 返回提示（str）
+            return '请求的 url(%s) 没有对应的函数....' % file_name
+    # 捕获所有异常，ret 是异常对象
+    except Exception as ret:
+        # logging.exception：记录 ERROR 级别日志，并自动附上异常的详细
+        # 堆栈信息，只能在 except 块里使用，比只记录异常对象更利于定位错误
+        logging.exception('产生了异常：%s' % str(ret))
+        # 返回异常信息（str）
+        return '产生了异常：%s' % str(ret)
+```
+
+> **小贴士**：
+>
+> - 服务器每个客户端请求由一个**子进程**处理（见 16.15.7），多个进程同时写同一个日志文件时，偶尔可能出现内容交错，生产环境会使用专门的日志方案；Windows 下子进程是重新启动的，日志配置是否在子进程中生效，需要自己运行验证
+> - 日志里不要记录**密码**等敏感信息
+> - 开发阶段把级别设为 `DEBUG` 看详细信息，上线后调到 `WARNING` 或 `ERROR`，减少日志量
+
+#### 16.15.24 WSGI 与 mini-web 小结
 
 | 步骤 | 内容 | 要点 |
 |---|---|---|
@@ -9929,6 +11622,13 @@ import json
 | 命令行传参 | `web_server.py 端口 模块名:应用名` | `__import__` + `getattr` 动态加载框架，`sys.path.append` 加入搜索路径 |
 | 模板 | `templates` 放模板，`{%content%}` 占位符替换 | 模板引擎的雏形 |
 | 配置文件 | `web_server.conf` 记录目录路径 | 改配置不改代码，推荐用 `json.load` 读取 |
+| 路由表与装饰器 | `URL_FUNC_DICT` 字典 + `@route(url)` 带参数装饰器 | 定义函数时自动登记“路径 → 函数”，新增页面不用改 `application` |
+| 伪静态 URL | 以 `.html` 结尾的请求交给框架 | URL 看起来像静态页面，实际由框架动态生成 |
+| 读取 MySQL | `pymysql` 查询后，用 `tr_template % (...)` 拼成表格行，替换占位符 | `info` 表存股票信息，`focus` 表存关注，`inner join` 连表查询 |
+| 路由支持正则 | `r'/add/(\d+)\.html'`，`application` 遍历路由表 `re.match`，`func(ret)` | 括号分组 + `ret.group(n)` 取 url 中的参数；`for...else` 处理无匹配 |
+| 增删改功能 | `add_focus`、`del_focus`、`show_update_page`、`save_update_page` | 先校验再操作；参数化查询；增删改后 `commit()` |
+| URL 中文乱码 | `urllib.parse.unquote()` 解码 | 浏览器会对汉字、空格等做 URL 编码 |
+| 日志 | `logging`：`basicConfig`，或 `Logger` + `Handler` + `Formatter` | 5 个级别（默认 `WARNING`），可同时输出到控制台和文件 |
 
 > **整体调用链**：浏览器请求 `xxx.py` → 服务器 `accept` 并解析请求 → 构造 `env` → 调用 `app(env, start_response)` → 框架调用 `start_response` 设置状态码和响应头 → 框架返回 body → 服务器拼接响应头和 body → `send` 给浏览器。
 
