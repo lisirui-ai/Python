@@ -21,7 +21,7 @@ Python 是一门简洁、优雅的高级编程语言，由吉多·范·罗苏姆
 | 九   | 迭代器与生成器：可迭代对象、iter/next、yield、生成器函数与生成器表达式 |
 | 十   | 面向对象：类与对象、封装、继承、多态（抽象类与接口）、装饰器、单例模式、魔法方法、多继承与 MRO、类属性与三种方法、property 属性、魔法属性、面向对象设计（工厂模式） |
 | 十一  | 异常处理：try/except/else/finally、常见异常类型、主动抛出异常、自定义异常 |
-| 十二  | 模块与包：模块的导入方式与规范、`__name__`/`__file__`/`__all__`、包的结构与相对导入、搜索路径与 reload、多模块共享变量 |
+| 十二  | 模块与包：模块的导入方式与规范、`__name__`/`__file__`/`__all__`、包的结构与相对导入、搜索路径与 reload、多模块共享变量、动态导入（`__import__`/`getattr`） |
 | 十三  | 文件操作：文件分类与路径、打开与关闭、文件模式、读写操作、乱码问题、MD5 文件校验、with 与上下文管理器 |
 | 十四  | 正则表达式：re 模块（match/search/findall/sub）、常用语法、re.compile、flags、finditer |
 | 十五  | 常用标准库：os、sys、time、datetime、random、json、copy（深浅拷贝）、tqdm |
@@ -5046,6 +5046,54 @@ handle_msg.py    import common                 │
 > - 多个模块需要共享并**重新赋值**的变量，使用 `import 模块` + `模块.变量` 的方式访问和修改
 > - 共享的**可变对象**（如列表）原地修改（`append` 等）时，`from 模块 import 变量` 也能共享，因为大家引用的是同一个对象；但一旦**重新赋值**（`=`），就会断开共享
 
+#### 12.1.5 动态导入模块：`__import__()` 与 `getattr()`
+
+> `import 模块名` 语句要求模块名**直接写在代码里**。如果模块名在程序运行时才知道（比如来自命令行参数、配置文件），就需要根据**字符串**来导入模块，并取出模块里的成员。16.15.7 的 Web 服务器就是这样加载 Web 框架的。
+>
+> ---
+
+| 函数 | 作用 | 返回值 |
+|---|---|---|
+| `__import__(name)` | 根据**模块名字符串**导入模块 | 模块对象（`module`） |
+| `importlib.import_module(name)` | 同上，官方更推荐的写法 | 模块对象（`module`） |
+| `getattr(obj, name[, default])` | 根据**属性名字符串**取出对象的属性（模块中的函数、变量、类，对象的属性和方法） | 该属性的值 |
+| `hasattr(obj, name)` | 判断对象是否有该名字的属性 | `bool` |
+
+> ---
+
+```python
+# 导入 importlib 模块：提供 import_module 函数
+import importlib
+
+# __import__(name)：参数 name 是 str 类型的模块名；返回导入后的模块对象
+# 效果等同于 import math，区别在于模块名可以是变量
+module_name = 'math'  # 模块名保存在字符串变量中，运行时才确定
+m = __import__(module_name)  # 返回模块对象，m 就相当于 import math 之后的 math
+print(m.sqrt(16))  # 4.0，通过模块对象调用模块里的函数
+
+# importlib.import_module(name)：效果与 __import__ 相同，官方更推荐
+m2 = importlib.import_module(module_name)  # 返回模块对象
+
+# getattr(obj, name)：参数 obj 是对象（这里是模块），name 是 str 类型的属性名
+# 返回该属性的值；这里取出的是函数 sqrt 本身（没有加括号，没有调用）
+func = getattr(m, 'sqrt')
+print(func(16))  # 4.0，func 就是 math.sqrt，加括号才是调用
+
+# getattr 的第三个参数 default：属性不存在时返回它，而不是抛出异常
+print(getattr(m, 'nope', None))  # None
+# hasattr(obj, name)：判断属性是否存在，返回 bool
+print(hasattr(m, 'pi'))  # True
+
+# 属性不存在且没有给 default 时，会抛出 AttributeError
+# getattr(m, 'nope')  # AttributeError: module 'math' has no attribute 'nope'
+```
+
+> **注意**：
+>
+> - 能导入成功的前提是模块所在目录在 `sys.path` 中（见 12.1.2）。模块在其他目录时，要先 `sys.path.append(目录)`，否则抛出 `ModuleNotFoundError`；
+> - **带点的模块名**两者行为不同：`__import__('os.path')` 返回的是顶层包 `os`，而 `importlib.import_module('os.path')` 返回的才是 `os.path` 这个子模块。所以导入子模块时，应使用 `importlib.import_module`；
+> - `__import__` 是解释器内部用来实现 `import` 语句的函数，一般只在需要动态导入时才直接使用。
+
 ### 12.2 包（Package）
 
 包是包含 `__init__.py` 文件的文件夹（只要有一个 `__init__.py` 文件，就是包）。
@@ -9295,7 +9343,7 @@ if __name__ == '__main__':  # 直接运行本文件时才执行（Windows 下多
 
 > **几个关键点**：
 >
-> - **`__import__` 与 `getattr`**：根据**字符串**导入模块、取出模块里的函数，这样服务器不需要提前知道框架叫什么。更推荐的写法是 `importlib.import_module(模块名)`，效果相同
+> - **`__import__` 与 `getattr`**：根据**字符串**导入模块、取出模块里的函数，这样服务器不需要提前知道框架叫什么（详见 12.1.5）。更推荐的写法是 `importlib.import_module(模块名)`，模块名不含点（如 `mini_frame`）时效果相同
 > - **`sys.path.append(...)`**：框架模块放在 `./web` 目录下，不在 Python 默认的搜索路径里，所以必须把目录加入搜索路径，`__import__` 才能找到它（见 12.1.2 import 搜索路径）
 > - **长连接 + 超时**：`settimeout(3)` 让服务器最多等 3 秒，浏览器没有新请求就关闭连接，避免一直占用进程
 > - **`self.status` / `self.headers`**：`set_response_headers` 就是 WSGI 中的 `start_response`，框架调用它时，数据被保存在服务器对象里，之后服务器拼接响应时再取出来
