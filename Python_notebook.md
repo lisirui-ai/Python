@@ -9461,11 +9461,31 @@ def application(env, start_response):
 import time
 
 
+def index():
+    """主页
+
+    Returns:
+        str: 主页的内容，包含当前时间
+    """
+    # time.ctime() 返回当前时间的字符串；% 把它填入 %s 的位置
+    return '这是主页，当前时间：%s' % time.ctime()
+
+
+def login():
+    """登录页面
+
+    Returns:
+        str: 登录页面的内容，包含当前时间
+    """
+    # 把当前时间填入字符串
+    return '这是登录页面，当前时间：%s' % time.ctime()
+
+
 def application(environ, start_response):
-    """符合 WSGI 的应用程序示例
+    """符合 WSGI 的应用程序示例：根据请求路径返回不同的页面
 
     Args:
-        environ (dict): 服务器传来的请求信息字典
+        environ (dict): 服务器传来的请求信息字典，PATH_INFO 是请求路径
         start_response (function): 设置状态码和响应头的函数
 
     Returns:
@@ -9478,12 +9498,25 @@ def application(environ, start_response):
     response_headers = [('Content-Type', 'text/html; charset=utf-8')]
     # 把状态和响应头登记给服务器（此时并不发送）
     start_response(status, response_headers)
-    # 返回响应体（str）：
-    # str(environ) 把整个 environ 字典转成字符串显示出来，
-    # 方便观察服务器传入了什么；后面用 % 拼接当前时间 time.ctime()
-    return (str(environ) +
-            '==Hello world from a simple WSGI application!--->%s\n'
-            % time.ctime())
+
+    # 取出请求路径（str），如 '/index.py'；服务器把它放在 environ 的
+    # 'PATH_INFO' 键里（见 16.15.6.2）
+    file_name = environ['PATH_INFO']
+    # 请求主页
+    if file_name == '/index.py':
+        # 调用 index()，返回主页内容
+        return index()
+    # 请求登录页
+    elif file_name == '/login.py':
+        # 调用 login()，返回登录页内容
+        return login()
+    # 其他路径
+    else:
+        # 返回响应体（str）：str(environ) 把整个 environ 字典转成字符串，
+        # 方便观察服务器传入了什么；后面用 % 拼接当前时间 time.ctime()
+        return (str(environ) +
+                '==Hello world from a simple WSGI application!--->%s\n'
+                % time.ctime())
 ```
 
 **`web_server.py`（完整版）**
@@ -9769,9 +9802,9 @@ if __name__ == '__main__':
     main()
 ```
 
-> **本版代码相对于教材的两处改进**（避免初学者踩坑）：
+> **本版代码中两个容易出错的地方**（避免初学者踩坑）：
 >
-> - **响应头的 `Date` 拼写**：原资料中写成了 `Data`，正确的 HTTP 响应头是 **`Date`**，其值使用 `time.ctime()`（时间字符串），而不是 `time.time()`（浮点时间戳）
+> - **响应头的 `Date` 拼写**：表示响应时间的 HTTP 响应头名称是 **`Date`**（容易误写成 `Data`），其值使用 `time.ctime()`（时间字符串），而不是 `time.time()`（浮点时间戳）。注意：HTTP 标准规定的时间格式形如 `Sat, 21 Nov 2026 07:00:00 GMT`，`time.ctime()` 的格式不完全相同，这里为了教学简化；需要严格符合标准时，可使用 `email.utils.formatdate(usegmt=True)`
 > - **`Content-Length` 必须是 `bytes` 的长度**：含有中文时，`str` 的长度不等于字节数（一个汉字 utf-8 占 3 字节），所以响应体先 `encode`，再计算 `len`，否则长连接下页面会显示不全或浏览器一直转圈
 
 > **几个关键点**：
@@ -9794,7 +9827,9 @@ $ python3 web_server.py 7890 mini_frame:application
 
 > - **用 PyCharm 运行时传参**：`Run/Debug Configurations` -> `Configurations` -> `Script Parameters`（脚本参数），不用输入程序名字，直接输入 `7890 mini_frame:application` 即可（和 VS 类似）。
 > - **打开浏览器访问**：
->   - `http://127.0.0.1:7890/xxx.py`：以 `.py` 结尾的 url，动态页面，多次刷新可以看到时间在变化；
+>   - `http://127.0.0.1:7890/index.py`：动态页面，显示“这是主页，当前时间：……”，多次刷新可以看到时间在变化；
+>   - `http://127.0.0.1:7890/login.py`：动态页面，显示“这是登录页面，当前时间：……”；
+>   - `http://127.0.0.1:7890/xxx.py`：其他以 `.py` 结尾的 url，走框架的默认分支，显示 `environ` 字典和当前时间；
 >   - `http://127.0.0.1:7890/index.html`：普通文件，静态页面。
 
 > 浏览器访问 `http://127.0.0.1:7890/xxx.py`，页面显示 `{'PATH_INFO': '/xxx.py'}==Hello world from a simple WSGI application!--->当前时间`，**多次刷新可以看到时间是变化的**，说明页面是动态生成的。
@@ -10011,7 +10046,7 @@ def center():
 # 文件开头需要新增 import json，导入 json 模块（见 15.6）
 import json
 
-# 原资料的写法：用 eval 把文件里的文本当作 Python 代码执行，得到字典
+# 常见的简便写法：用 eval 把文件里的文本当作 Python 代码执行，得到字典
 # 缺点：配置文件里如果被写入恶意代码，eval 也会执行，存在安全隐患，不推荐
 #     with open('./web_server.conf') as f:
 #         conf_info = eval(f.read())
