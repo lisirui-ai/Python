@@ -19,7 +19,7 @@ Python 是一门简洁、优雅的高级编程语言，由吉多·范·罗苏姆
 | 七   | 容器：字符串、列表、元组、字典、集合、公共操作（运算符/公共函数/sorted）、推导式 |
 | 八   | 函数：定义与调用、参数种类、变量作用域、高阶函数与 lambda、拆包、递归、闭包（`nonlocal`）、装饰器（带参数/多层/类装饰器/`wraps`） |
 | 九   | 迭代器与生成器：可迭代对象、iter/next、yield、生成器函数与生成器表达式 |
-| 十   | 面向对象：类与对象、封装、继承、多态（抽象类与接口）、装饰器、单例模式、魔法方法、多继承与 MRO、类属性与三种方法、property 属性、魔法属性、面向对象设计（工厂模式） |
+| 十   | 面向对象：类与对象、封装、继承、多态（抽象类与接口）、装饰器、单例模式、魔法方法、多继承与 MRO、类属性与三种方法、property 属性、魔法属性、反射（hasattr/getattr/setattr/delattr）、面向对象设计（工厂模式） |
 | 十一  | 异常处理：try/except/else/finally、常见异常类型、主动抛出异常、自定义异常 |
 | 十二  | 模块与包：模块的导入方式与规范、`__name__`/`__file__`/`__all__`、包的结构与相对导入、搜索路径与 reload、多模块共享变量、动态导入（`__import__`/`getattr`） |
 | 十三  | 文件操作：文件分类与路径、打开与关闭、文件模式、读写操作、乱码问题、MD5 文件校验、with 与上下文管理器 |
@@ -4029,9 +4029,184 @@ print(obj2.__dict__)                        # 获取对象 obj2 的属性：{'na
 
 
 
-### 10.10 面向对象设计
+### 10.10 反射
 
-#### 10.10.1 工厂模式
+#### 10.10.1 什么是反射
+
+> **反射（Reflection）**：程序在**运行时**检查、获取甚至修改自身结构（对象有哪些属性和方法、模块里有哪些成员），并且可以**用字符串形式的名字**去访问、调用它们。
+>
+> - 普通写法：名字在**写代码时**就确定，如 `d.bark()`；
+> - 反射写法：名字在**运行时**才知道，以字符串传入，如 `getattr(d, 'bark')()`。
+>
+> Python 中一切皆对象，类、实例、模块都有属性，所以反射对它们都适用。
+
+> **为什么叫“反射”**：它是英文 `reflection` 的译名，来自“镜子”的比喻：光照到镜子上会反射回来，让人看到自己；程序通过反射也能“照见自己”，在运行时看到并操作自身的结构。这一概念由 Brian Cantwell Smith 在 1982 年的博士论文《Procedural Reflection in Programming Languages》中系统提出，后来 Java、C#、Python 等语言都提供了类似能力。
+>
+> **反射与内省**：**内省（Introspection）**指程序在运行时只**查看**自身信息（如 `dir()`、`type()`、`hasattr()`）；**反射**范围更大，除了查看，还包括**修改**和**动态调用**（如 `setattr()`、`delattr()`、`getattr(obj, name)()`）。Python 中这两个词常常混用。
+>
+> ---
+
+| 函数 | 作用 | 返回值 |
+|---|---|---|
+| `hasattr(obj, name)` | 判断对象是否有名为 `name` 的属性或方法 | `bool` |
+| `getattr(obj, name[, default])` | 按名字取出属性或方法 | 属性的值；不存在又没给 `default` 时抛出 `AttributeError` |
+| `setattr(obj, name, value)` | 按名字设置属性：已有则修改，没有则新增 | `None` |
+| `delattr(obj, name)` | 按名字删除属性 | `None`；属性不存在时抛出 `AttributeError` |
+| `dir(obj)` | 列出对象的所有属性和方法名 | `list[str]`（按字母排序） |
+| `vars(obj)` | 返回对象的 `__dict__`（见 10.9.3），即对象自己的属性字典 | `dict` |
+
+> ---
+>
+> 参数 `name` 必须是 **`str`** 类型，参数 `obj` 可以是实例、类或模块。
+
+#### 10.10.2 `hasattr`、`getattr`、`setattr`、`delattr` 的使用
+
+```python
+class Dog:
+    """狗类，用来演示反射"""
+    species = '犬科'  # 类属性：所有狗共享
+
+    def __init__(self, name):
+        """初始化方法，创建实例属性 name
+
+        Args:
+            name (str): 狗的名字
+        """
+        self.name = name  # 实例属性：每只狗各自的名字
+
+    def bark(self):
+        """叫，不带参数的实例方法
+
+        Returns:
+            str: 形如 '旺财: 汪汪' 的字符串
+        """
+        return '%s: 汪汪' % self.name  # 用 %s 把名字拼进字符串
+
+    def eat(self, food):
+        """吃东西，带参数的实例方法
+
+        Args:
+            food (str): 食物名称
+
+        Returns:
+            str: 形如 '旺财 在吃 骨头' 的字符串
+        """
+        return '%s 在吃 %s' % (self.name, food)  # 拼接名字和食物
+
+
+d = Dog('旺财')  # 创建实例，d 是 Dog 类型的对象
+
+# hasattr(obj, name)：判断对象是否有该名字的属性或方法，返回 bool
+print(hasattr(d, 'name'))  # True：有实例属性 name
+print(hasattr(d, 'bark'))  # True：方法也是属性，有 bark 方法
+print(hasattr(d, 'age'))  # False：没有 age 属性
+
+# getattr(obj, name)：按名字取出属性的值
+print(getattr(d, 'name'))  # 旺财：等同于 d.name
+# getattr(obj, name, default)：属性不存在时返回 default，而不抛出异常
+print(getattr(d, 'age', 0))  # 0：d 没有 age，返回默认值 0
+
+# 取出方法：得到的是绑定方法对象（没有加括号，还没有调用）
+method = getattr(d, 'eat')  # method 的类型是 method（绑定方法）
+print(method('骨头'))  # 旺财 在吃 骨头：加括号并传参才是调用
+print(getattr(d, 'bark')())  # 旺财: 汪汪：取出后立即调用，等同于 d.bark()
+
+# setattr(obj, name, value)：按名字设置属性，返回 None
+setattr(d, 'age', 3)  # 属性不存在则新增，等同于 d.age = 3
+print(d.age)  # 3
+setattr(d, 'name', '小黑')  # 属性已存在则修改，等同于 d.name = '小黑'
+print(d.name)  # 小黑
+
+# delattr(obj, name)：按名字删除属性，返回 None
+delattr(d, 'age')  # 等同于 del d.age
+print(hasattr(d, 'age'))  # False：已被删除
+
+# getattr(obj, name) 在属性不存在且没有 default 时，抛出 AttributeError
+# getattr(d, 'nope')  # AttributeError: 'Dog' object has no attribute 'nope'
+```
+
+#### 10.10.3 对类、模块使用反射，以及 `dir`、`vars`
+
+```python
+import math  # 导入 math 模块：后面演示对模块使用反射
+
+# 接上例：反射同样适用于类（类也是对象）
+print(getattr(Dog, 'species'))  # 犬科：从类上取类属性
+print(getattr(Dog, 'bark'))  # <function Dog.bark ...>：从类上取到的是普通函数，不是绑定方法
+setattr(Dog, 'legs', 4)  # 给类新增类属性，等同于 Dog.legs = 4
+print(d.legs)  # 4：已创建的实例也能访问到新增的类属性
+
+# vars(obj)：返回对象自己的属性字典（等价于 obj.__dict__，见 10.9.3）
+print(vars(d))  # {'name': '小黑'}：只有实例属性，不含类属性和方法
+
+# dir(obj)：返回对象能访问到的所有名字（含继承来的、类属性、方法）
+# 这里过滤掉以下划线开头的魔法成员，只看自定义的
+print([n for n in dir(d) if not n.startswith('_')])
+# ['bark', 'eat', 'legs', 'name', 'species']
+
+# 对模块使用反射：见 12.1.5，按名字符串取出模块里的函数
+print(getattr(math, 'sqrt')(16))  # 4.0：等同于 math.sqrt(16)
+```
+
+> **实例与类上取方法的区别**：从**实例**上 `getattr` 取到的方法已经绑定了实例（调用时自动传入 `self`）；从**类**上取到的是**普通函数**，调用时需要手动传入实例。
+
+#### 10.10.4 典型应用：按名字分发
+
+> 当要执行的操作名来自**外部输入**（命令、请求路径、配置文件）时，用反射代替一长串 `if ... elif ...`。约定**方法名与操作名的对应规则**（如 `do_` 加操作名），新增操作时只需要新增一个方法，分发代码不用改。
+
+```python
+class Command:
+    """命令处理类：方法名约定为 do_ 加命令名"""
+
+    def do_start(self):
+        """处理 start 命令
+
+        Returns:
+            str: 处理结果
+        """
+        return '启动'
+
+    def do_stop(self):
+        """处理 stop 命令
+
+        Returns:
+            str: 处理结果
+        """
+        return '停止'
+
+    def run(self, cmd):
+        """根据命令名，找到并执行对应的方法
+
+        Args:
+            cmd (str): 命令名，如 'start'
+
+        Returns:
+            str: 命令的处理结果；命令不存在时返回提示
+        """
+        # 拼出方法名 do_start，找不到时返回 None（不抛出异常）
+        method = getattr(self, 'do_' + cmd, None)
+        if method is None:  # 没有对应的方法，说明命令不存在
+            return '未知命令：%s' % cmd
+        return method()  # 找到了，加括号调用
+
+
+c = Command()  # 创建命令处理对象
+print(c.run('start'))  # 启动
+print(c.run('stop'))  # 停止
+print(c.run('xxx'))  # 未知命令：xxx
+```
+
+> 16.15.7 中 Web 服务器加载框架用的就是这种思路：根据命令行传入的字符串 `'mini_frame:application'`，用 `__import__` 导入模块，再用 `getattr` 取出函数（见 12.1.5）。
+
+#### 10.10.5 注意事项
+
+> - **名字来自用户输入时要有限制**：如果直接把用户输入当作属性名去 `getattr`，用户可能访问到不该访问的属性或方法。应当检查 `hasattr`，或限制在白名单内，如示例中约定的 `do_` 前缀就起到限制作用。
+> - **`hasattr` 的判断依据是 `getattr` 是否抛出 `AttributeError`**：如果属性是 `property`，`hasattr` 会真正执行它的取值函数。取值函数内抛出 `AttributeError` 时，`hasattr` 返回 `False`（可能误判为“没有这个属性”）；抛出其他异常（如 `ValueError`）时，异常会直接向外抛出。
+> - **能直接写名字就不用反射**：写代码时就能确定名字的地方，直接用 `obj.attr`，可读性更好，反射适合名字在运行时才能确定的场景。
+
+### 10.11 面向对象设计
+
+#### 10.11.1 工厂模式
 
 > **工厂模式**：把“创建哪个类的对象”的判断封装到一个工厂类中，调用者只需传入参数，不必关心具体类。
 >
@@ -4089,7 +4264,7 @@ animal.voice()                              # 猫叫喵喵
 
 > 运行程序，发现通过传入参数的不同，工厂对象分别创建出 `dog` 和 `cat` 对象，并执行了对应的方法，工厂模式创建对象测试成功。
 
-#### 10.10.2 装饰器模式
+#### 10.11.2 装饰器模式
 
 > **装饰器模式**：在不修改原函数（或方法）代码的前提下，用 `@装饰器名` 语法为它附加额外功能，本质上是把被装饰的对象传给装饰器，再用装饰器的返回值替换原名字。本节演示 Python 内置的 3 个与类相关的装饰器：
 >
@@ -4137,7 +4312,7 @@ print(MathUtils.add(1, 2))   # 3
 
 ```
 
-#### 10.10.3 单例模式（Singleton）
+#### 10.11.3 单例模式（Singleton）
 
 > **单例模式**：保证一个类只有一个实例对象，每次 `类名()` 得到的都是同一个对象（内存地址相同）。
 >
@@ -4167,7 +4342,7 @@ b = Singleton()  # 把 Singleton() 的结果保存到变量 b
 print(id(a) == id(b))    # True（同一个对象）
 ```
 
-#### 10.10.4 参考实例：腾讯即时通信模块的初级封装
+#### 10.11.4 参考实例：腾讯即时通信模块的初级封装
 
 > 下面的实例展示了如何用**继承 + `@property` + 方法封装**来设计一组协议消息类：`Message` 表示一条消息请求，`MsgDict` 是各种消息体的基类，其子类 `TextMsg`、`LocationMsg` 等分别对应不同的消息类型。
 
@@ -4369,7 +4544,7 @@ class ImageInfo(object):  # 定义类 ImageInfo，继承 object
 > - `FileMsg.set_uuid` 中 `self.msgcontent['UUID'] = UUID`，应为 `= uuid`
 > - 默认参数使用了可变对象（如 `msgarr=[]`、`msgcontent={}`、`imginfo=[]`），多个实例会**共享同一个默认对象**，更稳妥的写法是默认 `None` 后在函数体内新建
 
-#### 10.10.5 参考实例：微信开发包（wechat_sdk）中的类设计
+#### 10.11.5 参考实例：微信开发包（wechat_sdk）中的类设计
 
 > 微信开发包（Python 实现）可用于学习类的设计，项目地址：
 >
@@ -5088,6 +5263,8 @@ print(hasattr(m, 'pi'))  # True
 # getattr(m, 'nope')  # AttributeError: module 'math' has no attribute 'nope'
 ```
 
+> **说明**：根据字符串名字访问属性或方法的做法统称为**反射**，`getattr`、`hasattr`、`setattr`、`delattr` 的完整用法见 10.10。
+>
 > **注意**：
 >
 > - 能导入成功的前提是模块所在目录在 `sys.path` 中（见 12.1.2）。模块在其他目录时，要先 `sys.path.append(目录)`，否则抛出 `ModuleNotFoundError`；
@@ -9343,7 +9520,7 @@ if __name__ == '__main__':  # 直接运行本文件时才执行（Windows 下多
 
 > **几个关键点**：
 >
-> - **`__import__` 与 `getattr`**：根据**字符串**导入模块、取出模块里的函数，这样服务器不需要提前知道框架叫什么（详见 12.1.5）。更推荐的写法是 `importlib.import_module(模块名)`，模块名不含点（如 `mini_frame`）时效果相同
+> - **`__import__` 与 `getattr`**：根据**字符串**导入模块、取出模块里的函数，这样服务器不需要提前知道框架叫什么（`__import__` 见 12.1.5，`getattr` 即反射，见 10.10）。更推荐的写法是 `importlib.import_module(模块名)`，模块名不含点（如 `mini_frame`）时效果相同
 > - **`sys.path.append(...)`**：框架模块放在 `./web` 目录下，不在 Python 默认的搜索路径里，所以必须把目录加入搜索路径，`__import__` 才能找到它（见 12.1.2 import 搜索路径）
 > - **长连接 + 超时**：`settimeout(3)` 让服务器最多等 3 秒，浏览器没有新请求就关闭连接，避免一直占用进程
 > - **`self.status` / `self.headers`**：`set_response_headers` 就是 WSGI 中的 `start_response`，框架调用它时，数据被保存在服务器对象里，之后服务器拼接响应时再取出来
