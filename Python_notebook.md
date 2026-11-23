@@ -1838,64 +1838,6 @@ test1()  # 调用装饰完成后的 test1
 > - **执行顺序由外而内**：调用时先走最外层的 `add_first` 的新函数，再进入 `add_second` 的新函数，最后才是原函数（类似栈的后进先出调用过程）
 > - 多个装饰器 `@A @B def f()` 等价于 `f = A(B(f))`
 
-**示例：为文本包裹 HTML 标签**
-
-```python
-def makeBold(fn):
-    """装饰器：给返回的字符串外面包裹 <b></b>
-
-    Args:
-        fn (function): 无参数、返回 str 的函数
-
-    Returns:
-        function: 包装后的新函数
-    """
-
-    def wrapped():
-        """新函数：在原函数返回值外面加粗体标签"""
-        return '<b>' + fn() + '</b>'  # 拼接标签
-
-    return wrapped
-
-
-def makeItalic(fn):
-    """装饰器：给返回的字符串外面包裹 <i></i>
-
-    Args:
-        fn (function): 无参数、返回 str 的函数
-
-    Returns:
-        function: 包装后的新函数
-    """
-
-    def wrapped():
-        """新函数：在原函数返回值外面加斜体标签"""
-        return '<i>' + fn() + '</i>'  # 拼接标签
-
-    return wrapped
-
-
-@makeBold  # 只加粗
-def test1():
-    return 'hello world-1'
-
-
-@makeItalic  # 只斜体
-def test2():
-    return 'hello world-2'
-
-
-@makeBold  # 后装饰：对已经斜体的结果再加粗，所以粗体标签在最外层
-@makeItalic  # 先装饰：先包裹斜体标签
-def test3():
-    return 'hello world-3'
-
-
-print(test1())  # 输出 <b>hello world-1</b>
-print(test2())  # 输出 <i>hello world-2</i>
-print(test3())  # 输出 <b><i>hello world-3</i></b>
-```
-
 #### 8.8.4 被装饰函数的参数处理
 
 > 装饰器内部的新函数要想**适配各种被装饰函数**，其形参要能接收被装饰函数的参数（使用 `*args, **kwargs`）。
@@ -1906,12 +1848,11 @@ print(test3())  # 输出 <b><i>hello world-3</i></b>
 > - 实参先由 `call_func` 的形参接收，再由内层函数手动转交给原函数（如 `func(*args, **kwargs)`），原函数并不会直接收到调用者传入的实参
 > - 内层函数的形参有两种写法：① 与原函数的形参保持一致（如 `def call_func(a, b)`），只能装饰参数形式相同的函数；② 写成 `*args, **kwargs`，可接收任意位置参数和关键字参数并原样转交，适用于任意函数
 
-**例 1：被装饰的函数没有参数**
-
 ```python
 from time import ctime, sleep  # ctime：返回当前时间字符串；sleep：暂停指定秒数
 
 
+#### 例 1：被装饰的函数没有参数 ####
 def timefun(func):
     """装饰器：调用函数前打印函数名和调用时间
 
@@ -1939,23 +1880,9 @@ def foo():
 foo()  # 输出 foo called at 当前时间，再输出 I am foo
 sleep(2)  # 暂停 2 秒，便于观察两次调用时间的差别
 foo()  # 再次调用
-```
-
-> **执行过程**：
->
-> ```python
-> foo = timefun(foo)  # foo 先作为参数传给 func，再接收 timefun 返回的 wrapped_func
-> foo()               # 调用 foo()，等价于调用 wrapped_func()
-> ```
->
-> 内部函数 `wrapped_func` 被引用（`foo` 指向它），所以外部函数的变量 `func`（**自由变量**）不会被释放，`func` 里保存的就是**原来的 `foo` 函数对象**。
-
-**例 2：被装饰的函数有固定参数**
-
-```python
-from time import ctime, sleep  # 导入时间相关函数
 
 
+#### 例 2：被装饰的函数有固定参数 ####
 def timefun(func):
     """装饰器：被装饰函数有两个参数 a、b
 
@@ -1983,11 +1910,9 @@ def foo(a, b):
 foo(3, 5)  # 输出日志、3 5、8
 sleep(2)  # 暂停 2 秒
 foo(2, 4)  # 输出日志、2 4、6
-```
 
-**例 3：被装饰的函数有不定长参数**
 
-```python
+#### 例 3：被装饰的函数有不定长参数 ####
 def set_func(func):
     """装饰器：适配任意个数、任意形式的参数
 
@@ -2021,6 +1946,15 @@ test1(100)  # args 为 ()，kwargs 为 {}
 test1(100, 200)  # args 为 (200,)，kwargs 为 {}
 test1(100, 200, 300, mm=100)  # args 为 (200, 300)，kwargs 为 {'mm': 100}
 ```
+
+> **例 1 的执行过程**：
+>
+> ```python
+> foo = timefun(foo)  # foo 先作为参数传给 func，再接收 timefun 返回的 wrapped_func
+> foo()               # 调用 foo()，等价于调用 wrapped_func()
+> ```
+>
+> 内部函数 `wrapped_func` 被引用（`foo` 指向它），所以外部函数的变量 `func`（**自由变量**）不会被释放，`func` 里保存的就是**原来的 `foo` 函数对象**。
 
 > **说明**：新函数采用 `*args, **kwargs` 的参数设计后，无论被装饰的函数无参数、有单个参数还是有多个参数，参数均可正确传递。**需要装饰参数形式不固定的函数时，推荐使用这种写法**。
 
