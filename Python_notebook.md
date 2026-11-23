@@ -1963,7 +1963,7 @@ test1(100, 200, 300, mm=100)  # args 为 (200, 300)，kwargs 为 {'mm': 100}
 
 > **带参数的装饰器**：装饰器本身也需要接收参数（如日志前缀、权限级别），此时要再**多包一层函数**：最外层接收装饰器的参数，返回真正的装饰器。
 
-**例 4：在原有装饰器的基础上，设置外部变量**
+**示例：为装饰器设置日志前缀**
 
 ```python
 from time import ctime, sleep  # 导入时间相关函数
@@ -2024,50 +2024,7 @@ too()  # 再次调用
 
 > 可以这样理解：`@timefun_arg('python')` 加在 `foo` 上，相当于 `foo = timefun_arg('python')(foo)`；因此调用 `foo()` 就是 `timefun_arg('python')(foo)()`。
 
-**实际场景：`test1` 和 `test2` 需要不同级别的权限验证**
-
-```python
-def set_func(func):
-    """不推荐的做法：权限级别由调用者在调用时传入
-
-    Args:
-        func (function): 被装饰的函数
-
-    Returns:
-        function: 包装后的新函数
-    """
-
-    def call_func(*args, **kwargs):
-        level = args[0]  # 从调用参数中取权限级别
-        if level == 1:  # 级别 1
-            print('----权限级别1，验证----')
-        elif level == 2:  # 级别 2
-            print('----权限级别2，验证----')
-        return func()  # 调用原函数
-
-    return call_func
-
-
-@set_func
-def test1():
-    print('-----test1---')
-    return 'ok'
-
-
-@set_func
-def test2():
-    print('-----test2---')
-    return 'ok'
-
-
-# 这种方式不推荐，原因如下：
-# 1. 如果 test1 已在多处被调用，则需要修改所有调用处（增加级别参数）
-# 2. 验证的级别应该由函数定义者（开发者）设定，而不是由调用者设定
-test1(1)  # 调用者传入级别
-test2(2)  # 调用者传入级别
-```
-
-> 上述做法并不合理。推荐的做法是：**由函数的定义者在装饰时指定级别**，也就是使用带参数的装饰器。
+**示例：为 `test1` 和 `test2` 指定不同级别的权限验证**
 
 ```python
 def set_level(level_num):
