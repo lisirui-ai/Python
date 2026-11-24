@@ -9671,6 +9671,18 @@ import re
 URL_FUNC_DICT = dict()
 
 
+# 写法二（两层，本例未使用）：route 和 set_func 两层，没有 call_func
+# def route(url):
+#     def set_func(func):
+#         URL_FUNC_DICT[url] = func  # 改变路由表（字典）
+#         # 注意：此时 set_func 没有任何 return，隐式返回 None，
+#         # 装饰之后 index 这个名字会变成 None；
+#         # 但路由表里保存的是原函数，通过路由表调用不受影响；
+#         # 如果还想让 index() 能直接调用，需要在最后加上 return func
+#
+#     return set_func
+#
+# 写法一（三层，本例使用）：route、set_func、call_func 三层
 def route(url):
     """带参数的装饰器：把 url 和被装饰的函数登记到路由表中
 
@@ -9699,6 +9711,7 @@ def route(url):
             # 都能正常调用
             return func(*args, **kwargs)
 
+        # 写法一：返回 call_func，index 被替换成 call_func
         # 装饰器必须返回一个函数，否则被装饰的函数名（如 index）会变成 None
         return call_func
 
@@ -9708,6 +9721,10 @@ def route(url):
 
 # 等价于：index = route('/index.py')(index)
 # 即：先调用 route('/index.py') 得到 set_func，再调用 set_func(index)
+# 两种写法的区别在于 set_func(index) 的返回值，它会重新赋给名字 index：
+#     写法一：返回 call_func，index 指向 call_func，index() 可以直接调用
+#     写法二：没有返回值（None），index 变成 None，index() 直接调用会报错
+# 无论哪种写法，路由表里保存的都是原来的 index 函数，通过路由表调用不受影响
 @route('/index.py')
 def index():
     """主页：读取模板，用动态数据替换占位符
@@ -9763,6 +9780,9 @@ def application(env, start_response):
     # try...except：路径不在路由表中、或函数执行出错时，不让服务器崩溃
     try:
         # 从路由表取出函数对象，加括号调用，返回页面内容
+        # 注意：路由表里保存的是装饰时登记的原函数（如 index），
+        # 而不是 call_func，所以这里调用的是原函数本身，
+        # 不会经过 call_func；call_func 只在代码中直接写 index() 时才会被调用
         func = URL_FUNC_DICT[file_name]
         return func()
     # 捕获所有异常，ret 是异常对象
