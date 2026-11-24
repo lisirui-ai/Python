@@ -3512,7 +3512,7 @@ del obj.PRICE                               # 自动调用第三个参数 del_pr
 
 ### 10.9 魔法属性
 
-> Python 的类属性中存在着一些具有特殊含义的属性（魔法属性），详情如下：
+> 类和对象上存在着一些具有特殊含义的属性（魔法属性），详情如下：
 
 #### 10.9.1 `__doc__`：类的描述信息
 
@@ -3525,7 +3525,10 @@ class Foo:  # 定义类 Foo
 
 
 print(Foo.__doc__)                          # 输出：描述类信息，这是用于演示魔法属性
+print(Foo().__doc__)                        # 对象也可以访问：输出所属类的文档字符串，内容与上一行相同
 ```
+
+> `__doc__` 既可以通过类访问，也可以通过对象访问；通过对象访问时，得到的是**所属类**的文档字符串。
 
 #### 10.9.2 `__module__` 和 `__class__`
 
@@ -3551,8 +3554,11 @@ print(obj.__class__)                        # 输出 <class 'test.Person'>，即
 
 #### 10.9.3 `__dict__`：类或对象中的所有属性
 
-> `__dict__` 是一个字典，键是属性名或方法名，值是对应的属性值或函数对象。\
->实例属性存储在对象的 `__dict__` 中；类属性和方法存储在类的 `__dict__` 中，二者相互独立：
+> `__dict__` 是一个字典式的映射，键是属性名或方法名，值是对应的属性值或函数对象。\
+> 实例属性存储在对象的 `__dict__` 中；类属性和方法存储在类的 `__dict__` 中，二者相互独立：
+>
+> - 对象的 `__dict__` 是普通的 `dict`，可以直接修改
+> - 类的 `__dict__` 是 `mappingproxy`（只读的映射视图），不能直接赋值修改，需要通过 `setattr` 或 `类名.属性 = 值` 来修改
 
 ```python
 class Province(object):  # 定义省份类
@@ -3567,10 +3573,11 @@ class Province(object):  # 定义省份类
 
 
 # 获取类的属性，即：类属性、方法
-print(Province.__dict__)  # 输出类的 __dict__（dict）：包含类属性和方法
+print(Province.__dict__)  # 输出类的 __dict__（mappingproxy 类型）：包含类属性和方法
 # 输出：{'__module__': '__main__', 'country': 'China', '__init__': <function Province.__init__ at 0x...>,
 #        'func': <function Province.func at 0x...>, '__dict__': <attribute '__dict__' of 'Province' objects>,
 #        '__weakref__': <attribute '__weakref__' of 'Province' objects>, '__doc__': None}
+# 提示：不同 Python 版本输出的内置项略有差异（如 3.13 起会多出 __firstlineno__、__static_attributes__）
 
 obj1 = Province('山东', 10000)  # 创建第一个对象
 print(obj1.__dict__)                        # 获取对象 obj1 的属性：{'name': '山东', 'count': 10000}
@@ -3579,6 +3586,35 @@ obj2 = Province('山西', 20000)  # 创建第二个对象
 print(obj2.__dict__)                        # 获取对象 obj2 的属性：{'name': '山西', 'count': 20000}
 ```
 
+#### 10.9.4 `__name__` 和 `__qualname__`：类或函数的名字
+
+> `__name__`：表示类、函数、模块的名字（`str`）\
+> `__qualname__`：表示类或函数的**限定名**（`str`），包含它所在的外层类或函数的路径
+>
+> - `__name__` 属于类、函数、模块，**实例对象上没有**这个属性，通过对象访问会报 `AttributeError`；若要获取对象所属类的名字，写成 `对象.__class__.__name__`
+> - 模块的 `__name__` 见 12.1.1
+
+```python
+class Person(object):  # 定义人类
+    """演示 __name__ 和 __qualname__"""
+
+    class Inner(object):  # 在类内部定义的嵌套类
+        """嵌套类"""
+
+    def eat(self):  # 实例方法：无额外参数，返回 None
+        """吃饭"""
+
+
+p = Person()  # 创建对象，返回 Person 实例
+
+print(Person.__name__)                      # 输出 Person：类的名字（str）
+print(Person.eat.__name__)                  # 输出 eat：函数的名字（str）
+print(Person.Inner.__name__)                # 输出 Inner：只有名字本身
+print(Person.Inner.__qualname__)            # 输出 Person.Inner：限定名，包含外层类
+print(Person.eat.__qualname__)              # 输出 Person.eat：限定名，包含所属的类
+print(p.__class__.__name__)                 # 输出 Person：通过对象所属的类获取类名
+# print(p.__name__)                         # 报错 AttributeError：实例对象上没有 __name__
+```
 
 
 ### 10.10 反射
