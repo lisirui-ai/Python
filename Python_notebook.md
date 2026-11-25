@@ -9984,7 +9984,8 @@ desc info;
 >
 > **表结构**（`desc` 命令的输出）：
 >
->`desc focus;` 的结果：
+> `desc focus;` 的结果：
+>
 > ---
 
 | Field | Type | Null | Key | Default | Extra | 含义 |
@@ -9992,9 +9993,13 @@ desc info;
 | `id` | `int(10) unsigned` | NO | PRI | NULL | `auto_increment` | 主键，自增 |
 | `note_info` | `varchar(200)` | YES | | NULL | | 关注时的备注信息 |
 | `info_id` | `int(10) unsigned` | YES | MUL | NULL | | 外键，对应 `info` 表的 `id` |
+
 > ---
->`desc info;` 的结果：
+>
+> `desc info;` 的结果：
+>
 > ---
+
 | Field | Type | Null | Key | Default | Extra | 含义 |
 |---|---|---|---|---|---|---|
 | `id` | `int(10) unsigned` | NO | PRI | NULL | `auto_increment` | 主键，自增 |
@@ -10005,6 +10010,8 @@ desc info;
 | `price` | `decimal(10,2)` | NO | | NULL | | 价格，共 10 位有效数字，2 位小数 |
 | `highs` | `decimal(10,2)` | NO | | NULL | | 最高价 |
 | `time` | `date` | YES | | NULL | | 日期 |
+
+> ---
 
 #### 16.15.16 mini web 框架（八）：从 MySQL 中查询数据
 
