@@ -10194,7 +10194,13 @@ def index():
                                line_info[3], line_info[4], line_info[5],
                                line_info[6], line_info[7])
 
-    # 用拼好的 html 替换占位符（不再是 str(stock_infos)），返回新 str
+    # 用拼好的 html 替换占位符（不再是 str(stock_infos)），返回新 str；
+    # 模式串 r'\{%content%\}' 匹配字面的占位符 {%content%}：
+    # { 在正则里是表示重复次数的量词起始符（如 a{2}），所以加反斜杠转义；
+    # Python 的 re 遇到不符合量词格式的 {...} 会当普通字符，不转义也能匹配，
+    # 但转义后含义明确，且不依赖这种容错行为；
+    # r 前缀（原始字符串）让 Python 不处理反斜杠，原样交给正则引擎，
+    # 再由正则引擎把 \{ 解析为字面的 {
     content = re.sub(r'\{%content%\}', html, content)
     # 返回页面内容
     return content
