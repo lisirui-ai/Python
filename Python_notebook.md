@@ -9984,18 +9984,17 @@ desc info;
 >
 > **表结构**（`desc` 命令的输出）：
 >
+>`desc focus;` 的结果：
 > ---
-
-`desc focus;` 的结果：
 
 | Field | Type | Null | Key | Default | Extra | 含义 |
 |---|---|---|---|---|---|---|
 | `id` | `int(10) unsigned` | NO | PRI | NULL | `auto_increment` | 主键，自增 |
 | `note_info` | `varchar(200)` | YES | | NULL | | 关注时的备注信息 |
 | `info_id` | `int(10) unsigned` | YES | MUL | NULL | | 外键，对应 `info` 表的 `id` |
-
-`desc info;` 的结果：
-
+> ---
+>`desc info;` 的结果：
+> ---
 | Field | Type | Null | Key | Default | Extra | 含义 |
 |---|---|---|---|---|---|---|
 | `id` | `int(10) unsigned` | NO | PRI | NULL | `auto_increment` | 主键，自增 |
