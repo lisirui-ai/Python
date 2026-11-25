@@ -9912,13 +9912,13 @@ def center():
 
 #### 16.15.15 mini web 框架（七）：准备 MySQL 数据
 
-> 接下来要让页面显示**数据库里的数据**，先准备一个“个人选股系统”用的数据库 `stock_db`（课件里提供了 `stock_db.sql`，可以直接导入）。
+> 接下来要让页面显示**数据库里的数据**，先准备一个“个人选股系统”场景使用的数据库 `stock_db`，用于存放股票信息等业务数据。
 >
 > **操作步骤**：
 >
 > 1. 创建数据库：`create database stock_db charset=utf8;`
 > 2. 选择数据库：`use stock_db;`
-> 3. 导入数据：`source stock_db.sql`（`source` 是 MySQL 客户端的命令，后面是 sql 文件路径，作用是依次执行文件里的所有 SQL）
+> 3. 建表并插入数据：按下文给出的表结构创建 `info`、`focus` 两张表，并插入测试数据
 > 4. 查看表结构：`desc 表名;`
 
 ```sql
@@ -9926,8 +9926,7 @@ def center():
 create database stock_db charset=utf8;
 -- 选择（进入）数据库
 use stock_db;
--- 导入课件提供的 sql 文件：source 后面是文件路径，会依次执行文件里所有的 SQL 语句
-source stock_db.sql
+-- 建表并插入测试数据：见下文“建表与测试数据”中的 SQL 语句，执行完成后再查看表结构
 -- 查看 focus 表的结构
 desc focus;
 -- 查看 info 表的结构
@@ -9966,7 +9965,7 @@ desc info;
 
 > ---
 >
-> **没有课件的 `stock_db.sql` 怎么办？** 可以按上面的表结构自己建表并插入几条测试数据（以下是按 `desc` 结果还原的示例，数据是随便写的）：
+> **建表与测试数据**：按上面的表结构创建两张表并插入几条测试数据（以下是按 `desc` 结果还原的示例，数据仅作演示）：
 
 ```sql
 -- 股票信息表 info
