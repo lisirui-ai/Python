@@ -10127,9 +10127,9 @@ def center():
 >
 > **思路**：HTML 表格的一行是 `<tr>...</tr>`，每个单元格是 `<td>...</td>`。先写好**一行的模板** `tr_template`，里面每个单元格用 `%s` 占位；然后**遍历查询结果**，每一行数据填进模板生成一行 HTML，用 `+=` 拼接成完整的表格内容，最后再替换页面里的 `{%content%}`。
 >
-> **index 页面**用 `select * from info;`，`info` 表有 8 列（id、code、short、chg、turnover、price、highs、time），所以一行有 8 个 `%s`，再加一个“添加”按钮。
+> **index 页面**用 `select * from info;`，`info` 表有 8 列（id、code、short、chg、turnover、price、highs、time），所以一行有 8 个 `%s`，再加一个“添加”按钮。该按钮是“添加关注”功能的入口：点击后把这一行的股票加入 `focus` 表，具体实现见 16.15.18（绑定点击事件）和 16.15.19（增加关注功能）。
 >
-> **center 页面**要显示“用户关注的股票”，需要同时用到 `info` 和 `focus` 两张表，所以用**内连接** `inner join` 把两表按 `i.id = f.info_id` 关联起来：
+> **center 页面**要显示“用户关注的股票”，需要同时用到 `info` 和 `focus` 两张表，所以用**内连接** `inner join` 把两表按 `i.id = f.info_id` 关联起来。每一行最后有两个操作入口：“修改”链接用于修改该股票的备注信息，具体实现见 16.15.21（增加修改功能）；“删除”按钮用于取消对该股票的关注，具体实现见 16.15.20（增加删除功能）：
 
 ```python
 # 以下是 dynamic/mini_frame.py 中 index 和 center 两个函数的修改
