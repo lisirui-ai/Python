@@ -9918,56 +9918,16 @@ def center():
 >
 > 1. 创建数据库：`create database stock_db charset=utf8;`
 > 2. 选择数据库：`use stock_db;`
-> 3. 建表并插入数据：按下文给出的表结构创建 `info`、`focus` 两张表，并插入测试数据
-> 4. 查看表结构：`desc 表名;`
+> 3. 建表：按下文给出的表结构创建 `info`、`focus` 两张表
+> 4. 插入测试数据：向 `info`、`focus` 表中插入几条演示数据（数据仅作演示）
+> 5. 查看表结构：`desc 表名;`
 
 ```sql
 -- 创建数据库，charset=utf8 指定字符集，保证能存中文
 create database stock_db charset=utf8;
 -- 选择（进入）数据库
 use stock_db;
--- 建表并插入测试数据：见下文“建表与测试数据”中的 SQL 语句，执行完成后再查看表结构
--- 查看 focus 表的结构
-desc focus;
--- 查看 info 表的结构
-desc info;
-```
 
-> **两张表的作用**：
->
-> - **`info` 表**：所有股票的**基本信息**（股票代码、简称、涨跌幅、换手率、价格、最高价、日期），对应网站的“股票信息”页面（主页 `index.html`）
-> - **`focus` 表**：用户**关注**的股票和备注信息，`info_id` 是**外键**，对应 `info` 表的 `id`，对应网站的“个人中心”页面（`center.html`）
->
-> **表结构**（`desc` 命令的输出）：
->
-> ---
-
-`desc focus;` 的结果：
-
-| Field | Type | Null | Key | Default | Extra | 含义 |
-|---|---|---|---|---|---|---|
-| `id` | `int(10) unsigned` | NO | PRI | NULL | `auto_increment` | 主键，自增 |
-| `note_info` | `varchar(200)` | YES | | NULL | | 关注时的备注信息 |
-| `info_id` | `int(10) unsigned` | YES | MUL | NULL | | 外键，对应 `info` 表的 `id` |
-
-`desc info;` 的结果：
-
-| Field | Type | Null | Key | Default | Extra | 含义 |
-|---|---|---|---|---|---|---|
-| `id` | `int(10) unsigned` | NO | PRI | NULL | `auto_increment` | 主键，自增 |
-| `code` | `varchar(6)` | NO | | NULL | | 股票代码，6 位 |
-| `short` | `varchar(10)` | NO | | NULL | | 股票简称 |
-| `chg` | `varchar(10)` | NO | | NULL | | 涨跌幅 |
-| `turnover` | `varchar(255)` | NO | | NULL | | 换手率 |
-| `price` | `decimal(10,2)` | NO | | NULL | | 价格，共 10 位有效数字，2 位小数 |
-| `highs` | `decimal(10,2)` | NO | | NULL | | 最高价 |
-| `time` | `date` | YES | | NULL | | 日期 |
-
-> ---
->
-> **建表与测试数据**：按上面的表结构创建两张表并插入几条测试数据（以下是按 `desc` 结果还原的示例，数据仅作演示）：
-
-```sql
 -- 股票信息表 info
 create table info(
     -- id：无符号整型主键，自增
@@ -10009,6 +9969,43 @@ insert into info(code, short, chg, turnover, price, highs, time) values
 -- 先关注一只股票，备注是“你确定要买这个？”（info_id=1 对应 info 表中 id 为 1 的股票）
 insert into focus(note_info, info_id) values ('你确定要买这个？', 1);
 ```
+
+```sql
+-- 查看 focus 表的结构
+desc focus;
+-- 查看 info 表的结构
+desc info;
+```
+
+> **两张表的作用**：
+>
+> - **`info` 表**：所有股票的**基本信息**（股票代码、简称、涨跌幅、换手率、价格、最高价、日期），对应网站的“股票信息”页面（主页 `index.html`）
+> - **`focus` 表**：用户**关注**的股票和备注信息，`info_id` 是**外键**，对应 `info` 表的 `id`，对应网站的“个人中心”页面（`center.html`）
+>
+> **表结构**（`desc` 命令的输出）：
+>
+> ---
+
+`desc focus;` 的结果：
+
+| Field | Type | Null | Key | Default | Extra | 含义 |
+|---|---|---|---|---|---|---|
+| `id` | `int(10) unsigned` | NO | PRI | NULL | `auto_increment` | 主键，自增 |
+| `note_info` | `varchar(200)` | YES | | NULL | | 关注时的备注信息 |
+| `info_id` | `int(10) unsigned` | YES | MUL | NULL | | 外键，对应 `info` 表的 `id` |
+
+`desc info;` 的结果：
+
+| Field | Type | Null | Key | Default | Extra | 含义 |
+|---|---|---|---|---|---|---|
+| `id` | `int(10) unsigned` | NO | PRI | NULL | `auto_increment` | 主键，自增 |
+| `code` | `varchar(6)` | NO | | NULL | | 股票代码，6 位 |
+| `short` | `varchar(10)` | NO | | NULL | | 股票简称 |
+| `chg` | `varchar(10)` | NO | | NULL | | 涨跌幅 |
+| `turnover` | `varchar(255)` | NO | | NULL | | 换手率 |
+| `price` | `decimal(10,2)` | NO | | NULL | | 价格，共 10 位有效数字，2 位小数 |
+| `highs` | `decimal(10,2)` | NO | | NULL | | 最高价 |
+| `time` | `date` | YES | | NULL | | 日期 |
 
 #### 16.15.16 mini web 框架（八）：从 MySQL 中查询数据
 
