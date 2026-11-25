@@ -9487,7 +9487,11 @@ def application(env, start_response):
 
 ```html
 <!-- templates/index.html 中预留占位符的位置示例 -->
+<!-- div：块级容器，独占一行；class="content" 给它起一个样式类名，
+     方便 CSS 设置样式或 JS 选中它 -->
 <div class="content">
+    <!-- 占位符：框架读取模板后，把这段文字整体替换成动态生成的内容；
+         它不是 HTML 标准语法，浏览器直接打开模板文件会原样显示 -->
     {%content%}
 </div>
 ```
@@ -10320,30 +10324,45 @@ def center():
 > **第一步：在 `index.html` 的 `<head>` 中添加 JS 代码**。让页面能用 JS 动态响应，这里用的是 **jQuery**（一个 JS 库，`$` 是它的入口）。
 
 ```html
+<!-- head：页面头部，放不直接显示的信息（编码、标题、样式、脚本） -->
 <head>
+    <!-- 声明文档使用 utf-8 编码，否则中文可能显示为乱码 -->
     <meta charset="utf-8">
+    <!-- 让 IE 浏览器使用最新的渲染引擎（edge 表示当前能用的最高版本） -->
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <!-- 移动端适配：宽度等于设备屏幕宽度，初始缩放比例为 1 -->
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- 浏览器标签页上显示的标题 -->
     <title>首页 - 个人选股系统 V5.87</title>
+    <!-- 引入 Bootstrap 的 CSS 样式文件；/css/... 是静态资源，由服务器从 static 目录返回；
+         rel="stylesheet" 表示这个链接指向的是样式表 -->
     <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 引入 jQuery 库：提供 $ 函数，用来选中元素、绑定事件、发送请求 -->
     <script src="/js/jquery-1.12.4.min.js"></script>
+    <!-- 引入 Bootstrap 的 JS 文件（如导航栏折叠）；它依赖 jQuery，所以必须放在 jQuery 之后 -->
     <script src="/js/bootstrap.min.js"></script>
     <script>
-        // 页面加载完成后执行
+        // 当整个页面（DOM）加载完成后执行里面的函数；
+        // $(document) 把 document 包装成 jQuery 对象，ready 注册“加载完成”回调
         $(document).ready(function(){
-            // 找到所有 name 属性为 toAdd 的 input（即“添加”按钮），
-            // 对每一个按钮执行 function
+            // 属性选择器：选中所有 name 属性为 toAdd 的 input 元素（即“添加”按钮），
+            // 返回 jQuery 对象；each 对其中每一个元素各执行一次 function
             $("input[name='toAdd']").each(function(){
-                // $(this) 表示当前这个按钮
+                // 在 each 的回调里，this 是当前这个按钮（DOM 对象），
+                // $(this) 把它包装成 jQuery 对象，保存到变量 currentAdd
                 var currentAdd = $(this);
-                // 给按钮绑定“点击”事件
+                // click(function)：给按钮绑定“点击”事件，点击时执行这个函数
                 currentAdd.click(function(){
-                    // 读取按钮上自定义属性 systemIdVaule 的值，即股票代码
+                    // attr("属性名")：读取元素的属性值，返回字符串；
+                    // 这里读出自定义属性 systemIdVaule（HTML 属性名不区分大小写），
+                    // 即这一行股票的代码；没写 var，所以 code 是全局变量
                     code = $(this).attr("systemIdVaule");
-                    // $.get：向服务器发送 GET 请求，请求的 url 是 /add/股票代码.html；
-                    // 服务器返回的内容通过 data 参数传入，status 是请求状态
+                    // $.get(url, callback)：向服务器发送 GET 请求（异步，不会卡住页面）；
+                    // 参数 url：字符串，拼成 /add/股票代码.html；
+                    // 参数 callback：服务器响应后被调用的函数，
+                    //   其中 data 是服务器返回的内容（字符串），status 是请求状态（如 success）
                     $.get("/add/" + code + ".html", function(data, status){
-                        // 弹出提示框，显示服务器返回的数据和状态
+                        // alert：弹出提示框；\n 是换行符
                         alert("数据: " + data + "\n 状态: " + status);
                     });
                 });
@@ -10660,32 +10679,50 @@ def application(env, start_response):
 > **第一步：在 `center.html` 里加入 JS**。思路与“添加”完全相同，只是按钮的 `name` 是 `toDel`，请求的 url 是 `/del/股票代码.html`：
 
 ```html
+<!-- 文档类型声明：告诉浏览器这是 HTML5 文档 -->
 <!DOCTYPE html>
+<!-- html 是根元素；lang="zh-CN" 声明页面语言为简体中文（利于搜索引擎和读屏软件） -->
 <html lang="zh-CN">
+<!-- head：页面头部，放不直接显示的信息（编码、标题、样式、脚本） -->
 <head>
+    <!-- 声明文档使用 utf-8 编码，否则中文可能显示为乱码 -->
     <meta charset="utf-8">
+    <!-- 让 IE 浏览器使用最新的渲染引擎（edge 表示当前能用的最高版本） -->
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <!-- 移动端适配：宽度等于设备屏幕宽度，初始缩放比例为 1 -->
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- 浏览器标签页上显示的标题 -->
     <title>个人中心 - 个人选股系统 V5.87</title>
+    <!-- 引入 Bootstrap 的 CSS 样式文件；/css/... 是静态资源，由服务器从 static 目录返回；
+         rel="stylesheet" 表示这个链接指向的是样式表 -->
     <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 引入 jQuery 库：提供 $ 函数，用来选中元素、绑定事件、发送请求 -->
     <script src="/js/jquery-1.12.4.min.js"></script>
+    <!-- 引入 Bootstrap 的 JS 文件（如导航栏折叠）；它依赖 jQuery，所以必须放在 jQuery 之后 -->
     <script src="/js/bootstrap.min.js"></script>
     <script>
-        // 页面加载完成后执行
+        // 页面（DOM）加载完成后执行里面的函数
         $(document).ready(function(){
-            // 找到所有 name 属性为 toDel 的 input（“删除”按钮）
+            // 选中所有 name 属性为 toDel 的 input 元素（“删除”按钮），
+            // each 对其中每一个按钮各执行一次 function
             $("input[name='toDel']").each(function(){
-                // 当前按钮
+                // $(this) 是当前按钮的 jQuery 对象；
+                // 变量名 currentAdd 是沿用“添加”按钮时的写法，实际指向“删除”按钮
                 var currentAdd = $(this);
-                // 绑定点击事件
+                // 给按钮绑定“点击”事件
                 currentAdd.click(function(){
-                    // 读取按钮上的股票代码
+                    // attr 读取按钮的自定义属性 systemIdVaule，即这一行股票的代码（字符串）
                     code = $(this).attr("systemIdVaule");
-                    // 向服务器请求 /del/股票代码.html，弹窗显示服务器的响应
+                    // $.get(url, callback)：向服务器发送异步 GET 请求，
+                    // url 为 /del/股票代码.html；
+                    // callback 的 data 是服务器返回的内容，status 是请求状态
                     $.get("/del/" + code + ".html", function(data, status){
+                        // 弹出提示框，显示服务器返回的内容和状态；\n 是换行
                         alert("数据: " + data + "\n 状态: " + status);
                     });
-                    // 刷新页面，让删除后的列表立即显示出来
+                    // 刷新当前页面，让删除后的列表重新从服务器加载；
+                    // 注意：$.get 是异步的，这行紧接着执行，刷新可能早于删除请求返回，
+                    // 更稳妥的做法是把刷新写进上面的回调函数里
                     window.location.reload()
                 });
             });
@@ -10870,50 +10907,81 @@ def del_focus(ret):
 > **第一步：编写 `templates/update.html`** 修改页面。页面中有两个占位符：`{%code%}`（股票代码）和 `{%note_info%}`（当前备注），点击“修改”按钮时，用 JS 把新备注拼进 URL，请求服务器保存：
 
 ```html
+<!-- 文档类型声明：告诉浏览器这是 HTML5 文档 -->
 <!DOCTYPE html>
+<!-- html 根元素；lang="zh-CN" 声明页面语言为简体中文 -->
 <html lang="zh-CN">
+<!-- head：页面头部，放不直接显示的信息 -->
 <head>
+    <!-- 声明文档使用 utf-8 编码，否则中文可能显示为乱码 -->
     <meta charset="utf-8">
+    <!-- 让 IE 浏览器使用最新的渲染引擎（edge 表示当前能用的最高版本） -->
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <!-- 移动端适配：宽度等于设备屏幕宽度，初始缩放比例为 1 -->
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- 浏览器标签页上显示的标题（这里沿用了首页的标题文字） -->
     <title>首页 - 个人选股系统 V5.87</title>
+    <!-- 引入 Bootstrap 的 CSS 样式文件；/css/... 是静态资源，由服务器从 static 目录返回；
+         rel="stylesheet" 表示这个链接指向的是样式表 -->
     <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 引入 jQuery 库：提供 $ 函数，用来选中元素、绑定事件、发送请求 -->
     <script src="/js/jquery-1.12.4.min.js"></script>
+    <!-- 引入 Bootstrap 的 JS 文件（如导航栏折叠）；它依赖 jQuery，所以必须放在 jQuery 之后 -->
     <script src="/js/bootstrap.min.js"></script>
     <script>
-        // 页面加载完成后执行
+        // 页面（DOM）加载完成后执行里面的函数
         $(document).ready(function(){
-            // 给 id 为 update 的“修改”按钮绑定点击事件
+            // #update：id 选择器，选中 id 为 update 的元素（下面的“修改”按钮），
+            // click(function) 给它绑定点击事件
             $("#update").click(function(){
-                // 读取 id 为 note_info 的输入框中的内容（新的备注）
+                // val()：读取表单控件的值，返回字符串；
+                // 这里读取 id 为 note_info 的输入框中的内容，即用户输入的新备注
                 var item = $("#note_info").val();
-                // 请求 /update/股票代码/新备注.html；{%code%} 在服务器端被替换成真实代码
+                // 向服务器发送异步 GET 请求，url 为 /update/股票代码/新备注.html；
+                // 其中股票代码处的占位符，在服务器端读取模板时被替换成真实代码，
+                // 浏览器收到的已经是具体代码；item 是上面读出的新备注；
+                // callback 的 data 是服务器返回的内容，status 是请求状态
                 $.get("/update/{%code%}/" + item + ".html",
                       function(data, status){
-                    // 弹窗显示服务器返回的结果
+                    // 弹出提示框，显示服务器返回的结果和状态；\n 是换行
                     alert("数据: " + data + "\n 状态: " + status);
-                    // 修改完成后，跳转回个人中心页面
+                    // self.location：当前窗口的地址，赋值即跳转；
+                    // 修改完成后回到个人中心页面
                     self.location = '/center.html';
                 });
             });
         });
     </script>
 </head>
+<!-- body：页面主体，里面的内容会显示在浏览器窗口中 -->
 <body>
     <!-- 导航栏 -->
+    <!-- navbar 系列是 Bootstrap 导航栏样式：navbar-inverse 为深色，
+         navbar-static-top 表示固定在页面顶部且随页面滚动 -->
     <div class="navbar navbar-inverse navbar-static-top ">
+        <!-- container：Bootstrap 的居中定宽容器 -->
         <div class="container">
+            <!-- navbar-header：导航栏的头部区域（品牌名和折叠按钮） -->
             <div class="navbar-header">
+                <!-- 折叠按钮：屏幕较窄时出现；navbar-toggle 是按钮样式；
+                     data-toggle="collapse" 表示点击时展开/折叠目标区域；
+                     data-target="#mymenu" 指定目标是 id 为 mymenu 的元素 -->
                 <button class="navbar-toggle" data-toggle="collapse"
                         data-target="#mymenu">
+                    <!-- 三条横线图标（icon-bar），每个 span 是一条线 -->
                     <span class="icon-bar"></span>
                     <span class="icon-bar"></span>
                     <span class="icon-bar"></span>
                 </button>
+                <!-- 品牌名称链接；href="#" 表示不跳转；navbar-brand 是品牌文字样式 -->
                 <a href="#" class="navbar-brand">选股系统</a>
             </div>
+            <!-- 可折叠的菜单区域：id 与上面按钮的 data-target 对应；
+                 collapse 表示默认折叠，navbar-collapse 是导航栏折叠区样式 -->
             <div class="collapse navbar-collapse" id="mymenu">
+                <!-- ul：无序列表，nav navbar-nav 是 Bootstrap 的导航菜单样式 -->
                 <ul class="nav navbar-nav">
+                    <!-- li：列表项；a 的 href 是点击后跳转的地址 -->
                     <li><a href="/index.html">股票信息</a></li>
                     <li><a href="/center.html">个人中心</a></li>
                 </ul>
@@ -10922,14 +10990,24 @@ def del_focus(ret):
     </div>
 
     <!-- 修改框：显示正在修改的股票代码，输入框里是当前备注 -->
+    <!-- container：居中定宽容器；container-fluid：宽度占满父容器 -->
     <div class="container">
         <div class="container-fluid">
+            <!-- input-group：Bootstrap 输入框组，把文字和输入框拼成一行 -->
             <div class="input-group">
+                <!-- input-group-addon：输入框组里的附加块，这里显示固定文字 -->
                 <span class="input-group-addon">正在修改：</span>
+                <!-- 占位符位置：服务器把它替换成股票代码，显示在这个附加块里 -->
                 <span class="input-group-addon">{%code%}</span>
+                <!-- input：文本输入框；id="note_info" 供 JS 选中并读取内容；
+                     type="text" 表示单行文本；form-control 是 Bootstrap 表单控件样式；
+                     aria-label：给读屏软件看的说明文字（无障碍属性，不显示在页面上）；
+                     value：输入框的初始内容，服务器把占位符替换成当前备注 -->
                 <input id="note_info" type="text" class="form-control"
                        aria-label="Amount (to the nearest dollar)"
                        value="{%note_info%}">
+                <!-- “修改”按钮：这里用 span 模拟按钮；id="update" 供 JS 绑定点击事件；
+                     style="cursor: pointer" 让鼠标移上去变成手形，提示可以点击 -->
                 <span id="update" class="input-group-addon"
                       style="cursor: pointer">修改</span>
             </div>
