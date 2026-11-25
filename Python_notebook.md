@@ -10019,7 +10019,7 @@ desc info;
 >
 > **做法**：`index` 函数中，先用 `pymysql` 把数据查出来（见**第十八章**：`connect` → `cursor` → `execute` → `fetchall` → 关闭），再用查询结果替换模板里的占位符。
 >
-> **前提**：先安装 `pymysql`（`pip install pymysql`），并保证 Python 能连上 MySQL（`host` 要换成你自己的 MySQL 所在主机的 IP，本机用 `127.0.0.1`，课程中 MySQL 在虚拟机里，IP 为 `192.168.0.111`）。
+> **前提**：先安装 `pymysql`（`pip install pymysql`），并保证 Python 能连上 MySQL（`host` 要换成 MySQL 所在主机的 IP，这里 MySQL 安装在本机，所以使用 `127.0.0.1`）。
 
 ```python
 # 以下是 dynamic/mini_frame.py 的修改
