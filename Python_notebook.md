@@ -10169,16 +10169,25 @@ def index():
     # 一行的 html 模板（str）：前 8 个 %s 对应 info 表的 8 列，
     # 最后一个单元格是“添加”按钮；三引号字符串可以直接换行
     # （此处 systemidvaule 是写死的 000007，下一小节改成动态）
-    tr_template = """<tr>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>
+    # 三引号字符串里不能写 Python 的 # 注释，所以前端部分用 HTML 注释
+    # <!-- ... -->：浏览器不会显示它，但会随页面一起发送（体积略增，不影响显示）
+    tr_template = """<tr>  <!-- tr（table row）：表格的一行，对应一只股票 -->
+        <!-- td（table data）：一个单元格，其中的占位符在拼接时被替换成该列的值 -->
+        <td>%s</td>  <!-- 第 1 列：id，主键 -->
+        <td>%s</td>  <!-- 第 2 列：code，股票代码 -->
+        <td>%s</td>  <!-- 第 3 列：short，股票简称 -->
+        <td>%s</td>  <!-- 第 4 列：chg，涨跌幅 -->
+        <td>%s</td>  <!-- 第 5 列：turnover，换手率 -->
+        <td>%s</td>  <!-- 第 6 列：price，价格 -->
+        <td>%s</td>  <!-- 第 7 列：highs，最高价 -->
+        <td>%s</td>  <!-- 第 8 列：time，日期 -->
+        <td>  <!-- 第 9 列：操作列，放“添加”按钮（不来自数据库） -->
+            <!-- input：输入控件；type="button" 表示普通按钮（点击不会提交表单）；
+                 value="添加"：按钮上显示的文字；
+                 id="toAdd"：元素的唯一标识（同一页面里 id 不应重复）；
+                 name="toAdd"：元素名称，后面的 JS 用它选中所有“添加”按钮；
+                 systemidvaule：自定义属性，保存这一行股票的代码，
+                 点击时由 JS 读取并随请求发给服务器 -->
             <input type="button" value="添加" id="toAdd" name="toAdd"
                    systemidvaule="000007">
         </td>
@@ -10244,23 +10253,37 @@ def center():
 
     # 一行 html 模板（str）：前 7 个 %s 对应 7 列，后面是“修改”链接和
     # “删除”按钮（此时 300268 是写死的，后面会改成动态）
+    # 三引号字符串里不能写 # 注释，前端部分同样用 HTML 注释 <!-- ... -->
     tr_template = """
-    <tr>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>
+    <tr>  <!-- tr：表格的一行，对应一只被关注的股票 -->
+        <td>%s</td>  <!-- 第 1 列：code，股票代码 -->
+        <td>%s</td>  <!-- 第 2 列：short，股票简称 -->
+        <td>%s</td>  <!-- 第 3 列：chg，涨跌幅 -->
+        <td>%s</td>  <!-- 第 4 列：turnover，换手率 -->
+        <td>%s</td>  <!-- 第 5 列：price，价格 -->
+        <td>%s</td>  <!-- 第 6 列：highs，最高价 -->
+        <td>%s</td>  <!-- 第 7 列：note_info，关注时的备注 -->
+        <td>  <!-- 第 8 列：操作列，放“修改”链接 -->
+            <!-- a：超链接；href 是点击后浏览器请求的地址，
+                 这里写死为 /update/300268.html（后面改成每行自己的代码）；
+                 type="button" 在 a 标签上没有实际功能，只是模板作者的写法；
+                 class="btn btn-default btn-xs"：Bootstrap 样式类，
+                 btn 是按钮基础样式，btn-default 是默认灰白配色，
+                 btn-xs 是超小尺寸 -->
             <a type="button" class="btn btn-default btn-xs"
                href="/update/300268.html">
+                <!-- span：行内容器，这里用来显示 Bootstrap 的图标；
+                     glyphicon glyphicon-star 是“星形”图标；
+                     aria-hidden="true"：告诉读屏软件忽略这个纯装饰图标 -->
                 <span class="glyphicon glyphicon-star"
-                      aria-hidden="true"></span> 修改
+                      aria-hidden="true"></span> 修改  <!-- 链接上显示的文字 -->
             </a>
         </td>
-        <td>
+        <td>  <!-- 第 9 列：操作列，放“删除”按钮 -->
+            <!-- input type="button"：普通按钮，value 是按钮文字；
+                 id、name="toDel"：JS 用 name 选中所有“删除”按钮；
+                 systemidvaule：自定义属性，保存这一行股票的代码，
+                 点击时由 JS 读取并随请求发给服务器 -->
             <input type="button" value="删除" id="toDel" name="toDel"
                    systemidvaule="300268">
         </td>
@@ -10385,16 +10408,23 @@ def index():
 
     # 一行 html 模板：现在有 9 个 %s，前 8 个对应 8 列，
     # 最后一个是“添加”按钮的 systemidvaule（该行股票的代码）
-    tr_template = """<tr>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>
+    # 三引号字符串里不能写 # 注释，前端部分用 HTML 注释 <!-- ... -->；
+    # 注意注释里不能出现占位符 %s，否则会多出一个占位符导致格式化报错
+    tr_template = """<tr>  <!-- tr：表格的一行，对应一只股票 -->
+        <td>%s</td>  <!-- 第 1 列：id，主键 -->
+        <td>%s</td>  <!-- 第 2 列：code，股票代码 -->
+        <td>%s</td>  <!-- 第 3 列：short，股票简称 -->
+        <td>%s</td>  <!-- 第 4 列：chg，涨跌幅 -->
+        <td>%s</td>  <!-- 第 5 列：turnover，换手率 -->
+        <td>%s</td>  <!-- 第 6 列：price，价格 -->
+        <td>%s</td>  <!-- 第 7 列：highs，最高价 -->
+        <td>%s</td>  <!-- 第 8 列：time，日期 -->
+        <td>  <!-- 第 9 列：操作列，放“添加”按钮 -->
+            <!-- 与 16.15.17 相比，只有 systemidvaule 变了：
+                 由写死的 000007 改成占位符，拼接时填入这一行自己的股票代码，
+                 JS 读取它后请求 /add/股票代码.html，服务器才知道关注哪一只；
+                 type="button" 为普通按钮；value 为按钮文字；
+                 name="toAdd" 供 JS 选中所有“添加”按钮 -->
             <input type="button" value="添加" id="toAdd" name="toAdd"
                    systemidvaule="%s">
         </td>
@@ -10704,23 +10734,36 @@ def center(ret):
     # 一行 html 模板（str）：现在共 9 个 %s：
     # 前 7 个是表格数据，第 8 个是“修改”链接里的代码，
     # 第 9 个是“删除”按钮的 systemidvaule（JS 点击时读取它）
+    # 三引号字符串里不能写 # 注释，前端部分用 HTML 注释 <!-- ... -->；
+    # 注意注释里不能出现占位符 %s，否则会多出一个占位符导致格式化报错
     tr_template = """
-    <tr>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>%s</td>
-        <td>
+    <tr>  <!-- tr：表格的一行，对应一只被关注的股票 -->
+        <td>%s</td>  <!-- 第 1 列：code，股票代码 -->
+        <td>%s</td>  <!-- 第 2 列：short，股票简称 -->
+        <td>%s</td>  <!-- 第 3 列：chg，涨跌幅 -->
+        <td>%s</td>  <!-- 第 4 列：turnover，换手率 -->
+        <td>%s</td>  <!-- 第 5 列：price，价格 -->
+        <td>%s</td>  <!-- 第 6 列：highs，最高价 -->
+        <td>%s</td>  <!-- 第 7 列：note_info，关注时的备注 -->
+        <td>  <!-- 第 8 列：操作列，放“修改”链接 -->
+            <!-- a：超链接；href 由写死的 /update/300268.html 改成占位符，
+                 拼接时填入这一行自己的股票代码，点击后浏览器请求
+                 /update/股票代码.html，进入该股票的修改页面；
+                 class 中 btn 是 Bootstrap 按钮基础样式，btn-default 是默认配色，
+                 btn-xs 是超小尺寸 -->
             <a type="button" class="btn btn-default btn-xs"
                href="/update/%s.html">
+                <!-- span：行内容器，glyphicon glyphicon-star 显示星形图标；
+                     aria-hidden="true" 让读屏软件忽略这个装饰图标 -->
                 <span class="glyphicon glyphicon-star"
-                      aria-hidden="true"></span> 修改
+                      aria-hidden="true"></span> 修改  <!-- 链接上显示的文字 -->
             </a>
         </td>
-        <td>
+        <td>  <!-- 第 9 列：操作列，放“删除”按钮 -->
+            <!-- systemidvaule 由写死的 300268 改成占位符，
+                 拼接时填入这一行自己的股票代码；JS 点击时读取它，
+                 请求 /del/股票代码.html，服务器据此取消关注；
+                 name="toDel" 供 JS 选中所有“删除”按钮 -->
             <input type="button" value="删除" id="toDel" name="toDel"
                    systemidvaule="%s">
         </td>
