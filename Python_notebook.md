@@ -10471,7 +10471,10 @@ def index():
     return content
 
 
-# center 函数同 16.15.17，只是路由改成 @route(r'/center.html')
+# center 函数与 16.15.17 完全相同，这里不再重复；
+# 路由写成 @route('/center.html') 或 @route(r'/center.html') 都可以，
+# 两者匹配的内容一样（该路径里没有反斜杠，加不加 r 都是同一个字符串），
+# 加 r 只是为了和后面的正则路由写法保持一致
 
 
 # 路由中使用正则表达式的原因：
