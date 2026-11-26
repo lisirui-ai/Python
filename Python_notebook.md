@@ -10729,11 +10729,10 @@ def application(env, start_response):
                     $.get("/del/" + code + ".html", function(data, status){
                         // 弹出提示框，显示服务器返回的内容和状态；\n 是换行
                         alert("数据: " + data + "\n 状态: " + status);
+                        // 刷新当前页面，让删除后的列表重新从服务器加载；
+                        // 写在回调函数里：只有服务器已返回删除结果，才会执行到这一行
+                        window.location.reload();
                     });
-                    // 刷新当前页面，让删除后的列表重新从服务器加载；
-                    // 注意：$.get 是异步的，这行紧接着执行，刷新可能早于删除请求返回，
-                    // 更稳妥的做法是把刷新写进上面的回调函数里
-                    window.location.reload()
                 });
             });
         });
