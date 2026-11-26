@@ -19,7 +19,7 @@ Python 是一门简洁、优雅的高级编程语言，由吉多·范·罗苏姆
 | 七   | 容器：字符串、列表、元组、字典、集合、公共操作（运算符/公共函数/sorted）、推导式 |
 | 八   | 函数：定义与调用、参数种类、变量作用域、高阶函数与 lambda、拆包、递归、闭包（`nonlocal`）、装饰器（带参数/多层/类装饰器/`wraps`） |
 | 九   | 迭代器与生成器：可迭代对象、iter/next、yield、生成器函数与生成器表达式 |
-| 十   | 面向对象：类与对象、封装、继承、多态（抽象类与接口）、装饰器、单例模式、魔法方法、多继承与 MRO、类属性与三种方法、property 属性、魔法属性、反射（hasattr/getattr/setattr/delattr）、面向对象设计（工厂模式） |
+| 十   | 面向对象：类与对象、封装、继承、多态（抽象类与接口：`abc`、接口类多继承、抽象类与接口类对比）、装饰器、单例模式、魔法方法、多继承与 MRO、类属性与三种方法、property 属性、魔法属性、反射（hasattr/getattr/setattr/delattr）、面向对象设计（工厂模式）、元类（`type` 动态创建类、自定义元类）、元类实现 ORM |
 | 十一  | 异常处理：try/except/else/finally、常见异常类型、主动抛出异常、自定义异常 |
 | 十二  | 模块与包：模块的导入方式与规范、`__name__`/`__file__`/`__all__`、包的结构与相对导入、搜索路径与 reload、多模块共享变量、动态导入（`__import__`/`getattr`） |
 | 十三  | 文件操作：文件分类与路径、打开与关闭、文件模式、读写操作、乱码问题、MD5 文件校验、with 与上下文管理器 |
@@ -2779,6 +2779,428 @@ print(c.area())
 ```
 
 
+#### 10.4.2 为什么需要接口类
+
+> **继承的两种用途**：
+>
+> 1. **代码重用**：继承基类的方法，并做出自己的改变或扩展（见 10.3）
+> 2. **声明兼容**：声明某个子类兼容于某基类——先定义一个**接口类**，里面只定义接口名（就是函数名），**不实现**功能；子类继承接口类，并**负责实现**这些功能
+>
+> **接口隔离原则**：使用多个专门的接口，而不使用单一的总接口。即客户端（调用者）不应该依赖那些它用不到的接口。
+>
+> **接口类**：基于同一个接口实现的一组类，刚好满足接口隔离原则这一面向对象设计思想，起到**规范**作用。
+>
+> - Python 没有 `interface` 这样的关键字，**原生不支持接口类**；即便不借助专门的模块，我们也应当有“接口”这个基本概念
+> - 下面通过“支付”的例子，看看为什么需要接口类
+
+**第一步：不同的支付方式，统一的支付函数**
+
+```python
+# 支付宝支付类
+class Alipay:
+    # 支付方法：参数 money 是支付金额（int 或 float）；无返回值
+    def pay(self, money):
+        # 输出支付信息
+        print('支付宝支付了', money)
+
+
+# 苹果支付类
+class ApplePay:
+    # 方法名与 Alipay 一致，都叫 pay
+    def pay(self, money):
+        # 输出支付信息
+        print('苹果支付了', money)
+
+
+# 微信支付类
+class WeChatPay:
+    # 方法名与 Alipay 一致，都叫 pay
+    def pay(self, money):
+        # 输出支付信息
+        print('微信支付了', money)
+
+
+# 统一的支付函数：总体负责支付
+# payment：支付对象（上面任意一个类的实例）；money：要支付的金额
+def pay(payment, money):
+    # 不管传入的是哪种支付对象，都统一调用它的 pay 方法（多态，见 10.4）
+    payment.pay(money)
+
+
+# 创建支付宝支付对象；类型：Alipay
+p = Alipay()
+# 调用统一支付函数；输出：支付宝支付了 200
+pay(p, 200)
+```
+
+> 这段代码通过一个统一的 `pay` 函数，实现了多种支付方式：不同的支付方式作为**对象**传入函数。但前提是：**每个类里的方法名必须一致**。
+
+**第二步：方法名写错了会怎样**
+
+> 开发中容易出问题：程序员一疏忽，某个类里的方法名与其他类不一致（如把 `pay` 写成 `paying`），**创建对象时不会报错**，直到**调用**时才会发现找不到方法。
+
+```python
+# 支付宝支付类：方法名误写成 paying，而不是统一的 pay
+class Alipay:
+    # 这里的方法名与其他类不一致
+    def paying(self, money):
+        # 输出支付信息
+        print('支付宝支付了', money)
+
+
+# 统一的支付函数：payment 是支付对象，money 是金额
+def pay(payment, money):
+    # 调用对象的 pay 方法；Alipay 没有 pay，运行到这里才会出错
+    payment.pay(money)
+
+
+# 创建对象：不报错（Python 不会在创建时检查方法名）
+p = Alipay()
+# try/except：捕获错误并输出，方便观察
+try:
+    # 调用时才报错
+    pay(p, 200)
+# 捕获 AttributeError（对象没有指定属性或方法），as e 把异常对象赋给 e
+except AttributeError as e:
+    # 输出：'Alipay' object has no attribute 'pay'
+    print(e)
+```
+
+**第三步：在基类里手动抛出异常**
+
+> 解决思路：先定义一个**规范类**（接口类）`Payment`，在其中写好统一的方法名 `pay`，方法体里**手动抛出异常** `NotImplementedError`（意为“该方法没有被实现”）；子类如果忘记重写 `pay`，调用时会走到父类的 `pay` 并报出明确的提示。
+
+```python
+# 规范类（接口类）：规定所有支付类都必须有 pay 方法
+class Payment:
+    # 接口方法：不实现功能，只负责报错提醒
+    def pay(self, money):
+        # raise 主动抛出异常（见 11.3）；NotImplementedError：该方法还没有被子类实现
+        raise NotImplementedError('子类缺少 pay 方法的实现')
+
+
+# 继承接口类，但把方法名误写成 paying
+class Alipay(Payment):
+    # 没有重写 pay
+    def paying(self, money):
+        # 输出支付信息
+        print('支付宝支付了', money)
+
+
+# 正确实现了接口的子类
+class WeChatPay(Payment):
+    # 重写（实现）父类的 pay
+    def pay(self, money):
+        # 输出支付信息
+        print('微信支付了', money)
+
+
+# 统一的支付函数
+def pay(payment, money):
+    # 调用对象的 pay 方法
+    payment.pay(money)
+
+
+# 创建 Alipay 对象：此时仍然不报错
+p = Alipay()
+# try/except：捕获错误并输出
+try:
+    # 调用时走到父类 Payment.pay，抛出 NotImplementedError
+    pay(p, 200)
+# 捕获 NotImplementedError，as e 把异常对象赋给 e
+except NotImplementedError as e:
+    # 输出：子类缺少 pay 方法的实现
+    print(e)
+# 正常实现的子类调用成功；输出：微信支付了 300
+pay(WeChatPay(), 300)
+```
+
+> 这种方式比之前的“找不到属性”提示更明确，但**仍然要等到调用时才报错**。如果代码很长，错误可能很晚才暴露。下一节的 `abc` 模块可以把报错**提前到创建对象时**。
+
+#### 10.4.3 用 abc 模块把错误提前到实例化时
+
+> **`abc`**（Abstract Base Classes，抽象基类）是标准库模块，用于在 Python 中规范地定义接口类和抽象类：
+>
+> - `ABCMeta`：抽象基类的**元类**（元类的概念见 10.12）。把它指定为类的 `metaclass`，这个类就成为抽象基类
+> - `abstractmethod`：装饰器，把方法标记为**抽象方法**。含有抽象方法的类**不能被实例化**，子类必须重写**所有**抽象方法才能被实例化
+> - `ABC`：`abc` 模块里提供的辅助类，等价于 `metaclass=ABCMeta`，继承它更简短（10.4.1 用的就是这种写法）
+
+```python
+# 导入 ABCMeta（抽象基类的元类）和 abstractmethod（抽象方法装饰器）
+from abc import ABCMeta, abstractmethod
+
+
+# 接口类：metaclass=ABCMeta 声明它是抽象基类
+class Payment(metaclass=ABCMeta):
+    # 抽象方法：把 pay 规范为所有支付类必须实现的统一接口
+    @abstractmethod
+    # 接口只规定方法名和参数，不写具体功能，所以用 pass 占位
+    def pay(self, money):
+        pass  # 空方法体，占位；子类实例化前必须重写 pay
+
+
+# 子类 Alipay：方法名误写成 paying，没有实现抽象方法 pay
+class Alipay(Payment):
+    # 与规范的 pay 不一致
+    def paying(self, money):
+        # 输出支付信息
+        print('支付宝支付了', money)
+
+
+# 子类 WeChatPay：正确实现了抽象方法 pay
+class WeChatPay(Payment):
+    # 实现接口规定的 pay 方法
+    def pay(self, money):
+        # 输出支付信息
+        print('微信支付了', money)
+
+
+# 统一的支付函数
+def pay(pay_obj, money):
+    # 调用支付对象的 pay 方法
+    pay_obj.pay(money)
+
+
+# try/except：捕获错误并输出
+try:
+    # 实例化 Alipay 时就报错，根本不会走到 pay 调用
+    p = Alipay()
+# 捕获 TypeError（类型/用法错误）
+except TypeError as e:
+    # 输出：Can't instantiate abstract class Alipay without an
+    # implementation for abstract method 'pay'（不同 Python 版本措辞略有差异）
+    print(e)
+# 正常实现的子类可以实例化；输出：微信支付了 300
+pay(WeChatPay(), 300)
+```
+
+> **总结**：用 `abc` 模块装饰后，**实例化时**就会报错（而不是调用时）。代码很长时，可以更早发现错误，所以遇到接口类这类问题，推荐使用 `abc` 模块。
+>
+> **归一化**：接口继承的实质是要求“做出一个良好的抽象，这个抽象规定了一个兼容接口，使得外部调用者无需关心具体细节，可一视同仁地处理实现了特定接口的所有对象”——这在程序设计上叫做**归一化**。上面的 `pay()` 函数不关心传入的是支付宝还是微信，一视同仁地调用 `pay` 方法，就是归一化。
+
+---
+
+三种“让子类遵守规范”的做法对比：
+
+| 做法 | 何时发现错误 | 提示是否明确 |
+|---|---|---|
+| 什么都不做（只靠约定） | 调用方法时 | 一般，提示 `object has no attribute` |
+| 基类方法里 `raise NotImplementedError` | 调用方法时 | 明确，可自定义提示文字 |
+| `abc` + `@abstractmethod` | **实例化对象时**（最早） | 明确，列出缺少的抽象方法 |
+
+---
+
+#### 10.4.4 接口类多继承
+
+> 按**接口隔离原则**，把不同的能力拆成多个小接口（会走、会游泳、会飞），每个动物按自己的能力**组合继承**需要的接口，而不是继承一个包含所有功能的“大接口”。
+>
+> - 老虎：会走、会游泳 → 继承 `WalkAnimal`、`SwimAnimal`
+> - 天鹅：会走、会游泳、会飞 → 继承 `WalkAnimal`、`SwimAnimal`、`FlyAnimal`
+> - 接口类可以放心多继承（见 10.4.6 的注意事项）
+
+```python
+# 导入 ABCMeta 和 abstractmethod
+from abc import ABCMeta, abstractmethod
+
+
+# 接口：会走路的动物
+class WalkAnimal(metaclass=ABCMeta):
+    # 抽象方法 walk：子类必须实现
+    @abstractmethod
+    def walk(self):  # 抽象方法：无参数（除 self），返回 None
+        pass  # 空方法体，只规定方法名，不实现功能
+
+
+# 接口：会游泳的动物
+class SwimAnimal(metaclass=ABCMeta):
+    # 抽象方法 swim：子类必须实现
+    @abstractmethod
+    def swim(self):  # 抽象方法：无参数（除 self），返回 None
+        pass  # 空方法体，占位
+
+
+# 接口：会飞的动物
+class FlyAnimal(metaclass=ABCMeta):
+    # 抽象方法 fly：子类必须实现
+    @abstractmethod
+    def fly(self):  # 抽象方法：无参数（除 self），返回 None
+        pass  # 空方法体，占位
+
+
+# 老虎：继承两个接口，必须实现 walk 和 swim
+class Tiger(WalkAnimal, SwimAnimal):
+    # 实现 walk
+    def walk(self):
+        # 输出老虎走路
+        print('老虎在走路')
+
+    # 实现 swim
+    def swim(self):
+        # 输出老虎游泳
+        print('老虎在游泳')
+
+
+# 天鹅：继承三个接口，必须实现 walk、swim、fly
+class Swan(WalkAnimal, SwimAnimal, FlyAnimal):
+    # 实现 walk
+    def walk(self):
+        # 输出天鹅走路
+        print('天鹅在走路')
+
+    # 实现 swim
+    def swim(self):
+        # 输出天鹅游泳
+        print('天鹅在游泳')
+
+    # 实现 fly
+    def fly(self):
+        # 输出天鹅飞行
+        print('天鹅在飞')
+
+
+# 创建老虎对象并调用方法；输出：老虎在走路
+Tiger().walk()
+# 创建天鹅对象并调用方法；输出：天鹅在飞
+Swan().fly()
+```
+
+> **注意**：只写 `class Tiger(WalkAnimal, SwimAnimal): pass` 能定义类，但**不能实例化**，因为抽象方法 `walk`、`swim` 还没被实现。多继承接口的好处是**把相同功能的名字规范起来**，具体实现仍由子类负责。
+
+#### 10.4.5 抽象类
+
+> **抽象类**：本质还是**类**。它描述的是**一组类的相似性**，既包括**数据属性**（如 `all_type`），也包括**函数属性**（如 `read`、`write`）；而接口只强调**函数属性**的相似性。
+>
+> - 抽象类是介于“类”和“接口”之间的概念，同时具备两者的部分特性，可以用来实现**归一化设计**
+> - **设计角度**：如果说类是从现实对象抽象而来的，那么抽象类就是在类的基础上再抽象一层
+> - **实现角度**：抽象类与普通类的区别是——抽象类中有抽象方法，**不能被实例化，只能被继承**，且子类必须实现抽象方法。这一点与接口类似，但两者并不相同
+> - 经典例子是“**一切皆文件**”：文本文件、硬盘、进程，对使用者来说都有 `read` 和 `write`
+
+```python
+# 导入 abc 模块，用它实现抽象类
+import abc
+
+
+# 抽象类：所有“文件”的共同抽象
+class AllFile(metaclass=abc.ABCMeta):
+    # 数据属性：所有文件类型共有的类属性（接口类里一般没有这种数据）
+    all_type = 'file'
+
+    # 抽象方法：读，无需实现功能，子类必须定义
+    @abc.abstractmethod
+    def read(self):  # 抽象方法 read：无参数（除 self），子类实现时通常返回读到的数据
+        """子类必须定义读功能"""
+        pass  # 空方法体，占位（文档字符串之后可以不写其他语句）
+
+    # 抽象方法：写，无需实现功能，子类必须定义
+    @abc.abstractmethod
+    def write(self):  # 抽象方法 write：无参数（除 self），子类实现时负责写入数据
+        """子类必须定义写功能"""
+        pass  # 空方法体，占位
+
+
+# 子类 Txt：继承抽象类，必须实现 read 和 write
+class Txt(AllFile):
+    # 实现读功能
+    def read(self):
+        # 输出读取说明
+        print('文本数据的读取方法')
+
+    # 实现写功能
+    def write(self):
+        # 输出写入说明
+        print('文本数据的写入方法')
+
+
+# 子类 Sata：硬盘
+class Sata(AllFile):
+    # 实现读功能
+    def read(self):
+        # 输出读取说明
+        print('硬盘数据的读取方法')
+
+    # 实现写功能
+    def write(self):
+        # 输出写入说明
+        print('硬盘数据的写入方法')
+
+
+# 子类 Process：进程
+class Process(AllFile):
+    # 实现读功能
+    def read(self):
+        # 输出读取说明
+        print('进程数据的读取方法')
+
+    # 实现写功能
+    def write(self):
+        # 输出写入说明
+        print('进程数据的写入方法')
+
+
+# 没有实现抽象方法的子类，实例化时会报错
+class BadFile(AllFile):
+    # 什么都不写
+    pass
+
+
+# try/except：演示实例化报错
+try:
+    # 实例化 BadFile：TypeError，因为没有定义 read 和 write
+    BadFile()
+# 捕获 TypeError
+except TypeError as e:
+    # 输出报错信息
+    print(e)
+
+# 创建三个不同类型的“文件”对象
+txt = Txt()
+# 硬盘文件对象
+sata = Sata()
+# 进程文件对象
+process = Process()
+
+# 大家都被“归一化”了：用同样的方式操作；输出：文本数据的读取方法
+txt.read()
+# 输出：硬盘数据的写入方法
+sata.write()
+# 输出：进程数据的读取方法
+process.read()
+# 抽象类中的数据属性可以被子类对象继承使用；输出：file
+print(txt.all_type)
+# 输出：file
+print(sata.all_type)
+# 输出：file
+print(process.all_type)
+```
+
+#### 10.4.6 接口类与抽象类对比
+
+> **共同点**：按面向对象的开发规范，接口类和抽象类**都不能实例化**。
+>
+> **注意事项**：
+>
+> 1. **多继承问题**：继承**抽象类**时，应尽量避免多继承（一般单继承能实现的功能都是相似的，父类里可以给出一些基础实现；多继承功能复杂，很难把相同功能的具体实现写在父类中）；继承**接口**时，反而**鼓励多继承**（见 10.4.4）
+> 2. **方法的实现**：**抽象类**中可以对一些抽象方法做出**基础实现**；**接口类**中任何方法都只是一种规范，具体功能全部由子类实现
+>
+> ---
+
+| 对比项 | 接口类 | 抽象类 |
+|---|---|---|
+| 关注点 | 只强调**函数属性**的相似性 | 同时包含**数据属性**和**函数属性** |
+| 方法实现 | 全部是规范，不实现 | 可对部分方法给出基础实现 |
+| 能否实例化 | 否 | 否 |
+| 继承方式 | 鼓励多继承 | 尽量单继承 |
+| Python 中的写法 | 用普通类 + `abc` 实现 | 用 `abc` 实现 |
+
+> ---
+>
+> **与 Java 的对比**：
+>
+> - **Java**：类的继承都是**单继承**，所以**抽象类**完美解决了单继承需求中的规范问题；而多继承需求由于语法不支持，就创建了 **接口（`interface`）** 这个概念来解决多继承的规范问题
+> - **Python**：**没有**专门的接口语法，因为 Python 自带多继承，所以直接用 `class` 实现接口类；**支持抽象类**，一般情况下是单继承，不能实例化，且可以写具体实现的代码
+>
+> 参考：[Python 中的抽象类与接口类](https://blog.csdn.net/zhangquan2015/article/details/82808399)
+
 
 ### 10.5 魔法方法
 
@@ -4338,6 +4760,841 @@ class WechatConf(object):  # 定义类 WechatConf，继承 object
 > - 修改影响其他状态的配置时（如 `token`、`appid`、`encoding_aes_key`），在 setter 中联动调用 `_update_crypto()` 保持一致性
 > - `access_token` 属性内部封装了“读缓存 → 判断是否临近过期（< 60 秒）→ 重新向服务器获取”的逻辑，**调用者只需 `conf.access_token`，无需关心细节**（property 的价值）
 > - 以单下划线开头的 `_check_token`、`_update_crypto` 等是内部辅助方法（受保护约定）
+
+### 10.12 元类（Metaclass）
+
+> **本节核心**：理解“**类也是对象**”，以及“**创建类的类**”——元类。
+>
+> - 日常开发几乎用不到元类，但它是理解 `ABCMeta`（见 10.4.3）、ORM（见 10.13）、Django 等框架底层原理的钥匙
+> - **学习顺序**：类也是对象 → 动态创建类（`type`）→ 什么是元类 → 指定元类 → 自定义元类
+
+#### 10.12.1 类也是对象
+
+> 在大多数编程语言中，类就是一组用来描述**如何生成一个对象**的代码段，Python 中这一点仍然成立。但 Python 的类还远不止如此：**类同样也是一种对象**。
+>
+> - 只要使用关键字 `class`，Python 解释器在执行时就会在内存中**创建一个对象**，对象的名字就是类名
+> - 这个对象（**类对象**）拥有创建对象（**实例对象**）的能力
+> - 但它的本质仍然是对象，所以可以对它做普通对象能做的事：**赋值给变量、拷贝、增加属性、作为函数参数传递**
+
+```python
+# 定义类：执行到这里，解释器就在内存中创建了一个名叫 ObjectCreator 的类对象
+class ObjectCreator(object):
+    # pass：空的类体，仅占位
+    pass
+
+
+# 用类创建实例对象；类型：ObjectCreator
+my_object = ObjectCreator()
+# 输出：<__main__.ObjectCreator object at 0x...>（0x 后面是内存地址，每次不同）
+print(my_object)
+
+# 1. 可以打印一个类，因为它其实也是一个对象；输出：<class '__main__.ObjectCreator'>
+print(ObjectCreator)
+
+
+# 2. 可以把类作为参数传给函数：参数 o 可以是任意对象，这里传入的是类
+def echo(o):
+    # 输出传入的对象
+    print(o)
+
+
+# 输出：<class '__main__.ObjectCreator'>
+echo(ObjectCreator)
+
+# 3. 可以为类增加属性；hasattr(对象, 属性名) 返回 bool；此时还没有，输出：False
+print(hasattr(ObjectCreator, 'new_attribute'))
+# 给类对象动态添加属性 new_attribute，值为 'foo'
+ObjectCreator.new_attribute = 'foo'
+# 现在有了；输出：True
+print(hasattr(ObjectCreator, 'new_attribute'))
+# 输出：foo
+print(ObjectCreator.new_attribute)
+
+# 4. 可以把类赋值给一个变量：两个变量名指向同一个类对象（一切皆引用，见 5.3）
+ObjectCreatorMirror = ObjectCreator
+# 通过新变量名一样能创建实例；输出：<__main__.ObjectCreator object at 0x...>
+print(ObjectCreatorMirror())
+```
+
+#### 10.12.2 动态地创建类
+
+> 因为类也是对象，所以可以在**运行时动态创建**，就像创建其他任何对象一样。最简单的办法是在函数中用 `class` 关键字，根据参数返回不同的类。
+>
+> - 注意函数**返回的是类**，不是类的实例；拿到类之后再加括号才得到实例
+> - 但这还不够动态：类的代码仍然要**自己一行行写好**
+
+```python
+# 根据 name 返回不同的类；参数 name：str；返回值：类对象（不是实例）
+def choose_class(name):
+    # 如果 name 是 'foo'
+    if name == 'foo':
+        # 在函数里定义类 Foo
+        class Foo(object):
+            # 空类体
+            pass
+        # 返回的是类，不是类的实例
+        return Foo
+    # 否则
+    else:
+        # 在函数里定义类 Bar
+        class Bar(object):
+            # 空类体
+            pass
+        # 返回类 Bar
+        return Bar
+
+
+# MyClass 保存的是类对象 Foo
+MyClass = choose_class('foo')
+# 函数返回的是类，不是实例；输出：<class '__main__.choose_class.<locals>.Foo'>
+print(MyClass)
+# 通过这个类创建实例对象；输出：<...Foo object at 0x...>
+print(MyClass())
+```
+
+> **类是由谁创建的？** 既然类是对象，就一定有“东西”创建它。使用 `class` 关键字时，解释器会**自动**创建这个类对象；而 Python 和大多数事情一样，也提供了**手动创建**的办法。
+>
+> 先回顾内建函数 `type()`：它能告诉我们对象的类型。
+
+```python
+# 数值的类型；输出：<class 'int'>
+print(type(1))
+# 字符串的类型；输出：<class 'str'>
+print(type("1"))
+
+
+# 定义一个类，用于演示
+class ObjectCreator(object):
+    # 空类体
+    pass
+
+
+# 实例对象的类型是创建它的类；输出：<class '__main__.ObjectCreator'>
+print(type(ObjectCreator()))
+# 类（对象）的类型；输出：<class 'type'>，也就是说，类是由 type 创建出来的
+print(type(ObjectCreator))
+```
+
+> 观察运行结果：对 `ObjectCreator` 这个**类**使用 `type`，答案是 `type`。这说明 `type` 与创建类有关。
+
+#### 10.12.3 使用 type 创建类
+
+> `type` 有一种与“查看类型”**完全不同**的功能：**动态创建类**。
+>
+> - 同一个函数根据传入参数个数的不同，具有两种完全不同的用法，这在设计上不太好，但在 Python 中是为了保持**向后兼容**
+> - 创建类的用法：`type(类名, 父类元组, 属性字典)`，返回一个**类**
+>
+> ---
+
+| 参数 | 类型 | 含义 |
+|---|---|---|
+| 第 1 个：`name` | `str` | 类的名字（会成为类的 `__name__`） |
+| 第 2 个：`bases` | `tuple` | 父类组成的**元组**（元素是类本身，不是字符串）；没有父类写 `()`；只有一个父类要写成 `(Foo,)`，逗号不能省 |
+| 第 3 个：`dict` | `dict` | 类的属性字典：键是属性名（`str`），值是属性值（变量、函数等） |
+
+> ---
+>
+> - **返回值**：新创建的类对象
+> - 用 `type` 创建的类，与用 `class` 语句创建的类**没有区别**：`class` 语句只是 Python 提供的语法糖，幕后做的就是调用元类（默认是 `type`）
+
+```python
+# 用 class 关键字定义一个 Test 类
+class Test:
+    # 空类体
+    pass
+
+
+# 创建 Test 的实例对象；输出：<__main__.Test object at 0x...>
+print(Test())
+
+# 用 type 手动创建一个类：类名 "Test2"，没有父类 ()，没有属性 {}
+# 返回的类对象保存在变量 Test2 中
+Test2 = type("Test2", (), {})
+# 创建 Test2 的实例对象；输出：<__main__.Test2 object at 0x...>
+print(Test2())
+
+# type 的第 1 个参数是“类的名字”，变量名只是指向类的引用，两者可以不同
+MyDogClass = type('MyDog', (), {})
+# 输出：<class '__main__.MyDog'>（显示的是类名 MyDog，不是变量名 MyDogClass）
+print(MyDogClass)
+
+# 用 help 查看两个类，会发现它们的结构完全相同
+# 输出 Help on class Test in module __main__: class Test(builtins.object) ...
+help(Test)
+# 输出 Help on class Test2 in module __main__: class Test2(builtins.object) ...
+help(Test2)
+```
+
+> `help` 的输出里都有 `__dict__`（保存实例属性的字典）和 `__weakref__`（弱引用列表）这两个数据描述符——两种方式创建出来的类完全一样。
+
+#### 10.12.4 使用 type 创建带有属性的类
+
+> `type` 的第 3 个参数是字典，用来定义**类的属性**，因此：
+>
+> ```python
+> Foo = type('Foo', (), {'bar': True})
+> ```
+>
+> 等价于：
+>
+> ```python
+> class Foo(object):
+>     bar = True
+> ```
+>
+> **注意**：
+>
+> - `type` 的**第 2 个参数**，元组中是**父类本身（类对象）**，而不是字符串形式的名字
+> - 通过字典添加的是**类属性**，不是实例属性（类属性、实例属性的区别见 10.7）
+
+```python
+# 用 type 创建带类属性 bar 的类 Foo，没有显式父类（默认继承 object）
+Foo = type('Foo', (), {'bar': True})
+# Foo 像普通类一样使用；输出：<class '__main__.Foo'>
+print(Foo)
+# 通过类名访问类属性；输出：True
+print(Foo.bar)
+# 创建实例对象
+f = Foo()
+# 输出：<__main__.Foo object at 0x...>
+print(f)
+# 通过实例访问类属性；输出：True
+print(f.bar)
+
+# 用 type 创建继承 Foo 的子类 FooChild：第 2 个参数是元组 (Foo,)，注意逗号
+# 等价于：class FooChild(Foo): pass
+FooChild = type('FooChild', (Foo,), {})
+# 输出：<class '__main__.FooChild'>
+print(FooChild)
+# bar 属性由父类 Foo 继承而来；输出：True
+print(FooChild.bar)
+```
+
+#### 10.12.5 使用 type 创建带有方法的类
+
+> 想为类增加方法，只需要**先定义一个签名恰当的普通函数**，然后把它作为**属性**放进字典即可：
+>
+> - **实例方法**：函数第一个参数是 `self`
+> - **静态方法**：函数用 `@staticmethod` 装饰（无 `self` / `cls`）
+> - **类方法**：函数用 `@classmethod` 装饰，第一个参数是 `cls`
+
+```python
+# 先创建一个带类属性的父类，供后面使用
+Foo = type('Foo', (), {'bar': True})
+
+
+# 定义一个普通函数，将来作为实例方法：第一个参数 self 代表调用它的实例
+def echo_bar(self):
+    # 输出实例（或类）上的 bar 属性
+    print(self.bar)
+
+
+# 定义静态方法对应的函数：没有 self / cls，用 @staticmethod 装饰
+@staticmethod
+def test_static():  # 函数名 test_static：无参数，返回 None；被 @staticmethod 装饰后变成静态方法
+    # 输出静态方法的提示
+    print("static method ....")
+
+
+# 定义类方法对应的函数：第一个参数 cls 是类本身，用 @classmethod 装饰
+@classmethod
+def test_class(cls):  # 函数名 test_class：参数 cls 是类本身（type），返回 None
+    # 通过 cls 访问类属性
+    print(cls.bar)
+
+
+# 创建子类：字典里 "echo_bar" 键对应函数 echo_bar，使它成为 FooChild 的实例方法
+FooChild = type('FooChild', (Foo,), {'echo_bar': echo_bar})
+# 判断父类 Foo 中是否有 echo_bar；输出：False（方法只加给了子类）
+print(hasattr(Foo, 'echo_bar'))
+# 判断 FooChild 中是否有 echo_bar；输出：True
+print(hasattr(FooChild, 'echo_bar'))
+# 创建 FooChild 的实例
+my_foo = FooChild()
+# 调用实例方法；输出：True
+my_foo.echo_bar()
+
+# 同时添加实例方法和静态方法
+Foochild = type('Foochild', (Foo,), {"echo_bar": echo_bar,
+                                     "test_static": test_static})  # 第二个键值对：静态方法，自动换行
+# 创建实例
+fooclid = Foochild()
+# 调用静态方法；输出：static method ....
+fooclid.test_static()
+# 调用实例方法；输出：True
+fooclid.echo_bar()
+
+# 再添加类方法
+Foochild = type('Foochild', (Foo,), {"echo_bar": echo_bar,
+                                     "test_static": test_static,  # 第二个键值对：静态方法
+                                     "test_class": test_class})  # 第三个键值对：类方法；这一行是 type 调用的结尾括号所在行
+# 创建实例
+fooclid = Foochild()
+# 调用类方法；输出：True
+fooclid.test_class()
+```
+
+> 可以看到，在 Python 中类是对象，可以动态创建。这就是使用 `class` 关键字时 Python 在**幕后**做的事情，而它是通过**元类**实现的。
+
+**较为完整的 `type` 创建类示例**（对照 `class A` 与 `type` 创建的 `B`）：
+
+```python
+# 父类 A：普通 class 定义
+class A(object):
+    # 类属性 num，值 100
+    num = 100
+
+
+# 实例方法函数：self 是实例，输出 num 属性
+def print_b(self):
+    # 通过实例访问 num（来自父类 A）
+    print(self.num)
+
+
+# 静态方法函数
+@staticmethod
+def print_static():  # 函数 print_static：无参数，返回 None；被装饰后成为静态方法
+    # 输出静态方法的提示
+    print("----haha-----")
+
+
+# 类方法函数
+@classmethod
+def print_class(cls):  # 函数 print_class：参数 cls 是类本身，返回 None；被装饰后成为类方法
+    # 通过类访问 num
+    print(cls.num)
+
+
+# 用 type 创建类 B：继承 A，并把三个函数作为方法放入属性字典
+B = type("B", (A,), {"print_b": print_b, "print_static": print_static,
+                     "print_class": print_class})  # 第三个键值对：类方法 print_class，括号结束 type 调用
+
+# 创建 B 的实例
+b = B()
+# 调用实例方法；输出：100
+b.print_b()
+# 调用静态方法；输出：----haha-----
+b.print_static()
+# 调用类方法；输出：100
+b.print_class()
+```
+
+#### 10.12.6 到底什么是元类
+
+> **元类**：用来创建类的“东西”。
+>
+> - 创建类是为了创建类的实例对象；而类本身也是对象，所以需要有“东西”来创建这些类（对象）
+> - **元类就是类的类**，可以这样理解：
+>
+> ```python
+> MyClass = MetaClass()   # 使用元类创建出一个对象，这个对象称为“类”
+> my_object = MyClass()   # 使用“类”创建出实例对象
+> ```
+>
+> - 前面已经看到 `MyClass = type('MyClass', (), {})`，这是因为 **`type` 实际上就是一个元类**：它是 Python 在背后用来创建**所有**类的元类
+> - **为什么叫 `type` 而不是 `Type`**：为了和 `str`（创建字符串对象的类）、`int`（创建整数对象的类）保持命名一致；`type` 就是**创建类对象的类**
+> - 可以通过 `__class__` 属性验证：Python 中**所有东西**——整数、字符串、函数、类——都是对象，它们都是从某个类创建出来的，而最终创建类的就是 `type`
+
+```python
+# 整数 35 是 int 类的实例
+age = 35
+# 查看创建 age 的类；输出：<class 'int'>
+print(age.__class__)
+
+# 字符串对象
+name = 'bob'
+# 输出：<class 'str'>
+print(name.__class__)
+
+
+# 函数也是对象
+def foo():
+    # 空函数体
+    pass
+
+
+# 输出：<class 'function'>
+print(foo.__class__)
+
+
+# 定义一个类，用于演示
+class Bar(object):
+    # 空类体
+    pass
+
+
+# 创建实例
+b = Bar()
+# 实例的类是 Bar；输出：<class '__main__.Bar'>
+print(b.__class__)
+
+# 再往上一层：“类的类”是谁？都是 type
+# 输出：<class 'type'>
+print(age.__class__.__class__)
+# 输出：<class 'type'>
+print(foo.__class__.__class__)
+# 输出：<class 'type'>
+print(b.__class__.__class__)
+# type 自己也是 type 创建的（自己创建自己）；输出：<class 'type'>
+print(type.__class__)
+```
+
+> 因此，**元类就是创建“类”这种对象的东西**；`type` 是 Python 的**内建元类**，你也可以创建自己的元类。
+>
+> ---
+>
+> **对象、类、元类的关系**（箭头表示“由……创建”）：
+>
+> ```text
+> 实例对象 b  ──由 Bar 创建──>  类 Bar  ──由 type 创建──>  元类 type  ──自己创建自己
+> ```
+
+#### 10.12.7 指定元类：metaclass
+
+> 定义类时可以指定用哪个元类来创建它。
+>
+> - **Python 3 写法**：在类定义的继承列表里写 `metaclass=元类`，如 `class Foo(object, metaclass=MyMeta)`
+> - **Python 2 写法**：在类体里写 `__metaclass__ = 元类`。**Python 3 中这种写法已经无效**（只是个普通类属性，不会再被当作元类），后面的内容都使用 Python 3 写法
+>
+> **Python 3 中解释器创建类 `Foo` 时的步骤**：写下 `class Foo(Bar): pass` 时，类 `Foo` 此时还**没有**在内存中创建，解释器会这样确定用哪个元类：
+>
+> 1. 类定义中显式写了 `metaclass=xxx` 吗？有，就用它来创建 `Foo`
+> 2. 没写的话，看父类 `Bar` 是由哪个元类创建的（即 `type(Bar)`），沿用父类的元类（所以**元类会被继承**）
+> 3. 都没有特别指定，就用内置的 `type` 来创建这个类对象
+>
+> 补充：PDF 原文描述的是 Python 2 的查找顺序——依次在当前类、父类、**模块层次**中找 `__metaclass__`，都找不到才用 `type`。Python 3 取消了“模块级别 `__metaclass__`”这种方式。
+>
+> **`metaclass=` 后面可以放什么**：任何**可调用对象**，只要它接收 `(类名, 父类元组, 属性字典)` 三个参数并**返回一个类**即可。可以放 `type`、`type` 的子类，也可以是**普通函数**（见 10.12.8）。
+
+#### 10.12.8 自定义元类
+
+> **元类的主要目的**：在**创建类时自动地改变类**。
+>
+> 假想一个“很傻”的需求：让模块里所有类的**属性名都变成大写**。办法是让元类拦截类的创建，把属性字典里的名字改成大写，再交给 `type` 创建类。
+>
+> - 元类的参数 `class_name`、`class_parents`、`class_attr` 正是 `type(name, bases, dict)` 的那三个参数
+> - 属性字典里除了你写的属性，还有解释器自动放入的 `__module__`、`__qualname__` 等**以双下划线开头**的名字，不能改，所以要用 `startswith("__")` 过滤
+
+**方式一：用函数当元类**
+
+```python
+# 元类函数：参数 class_name：str 类名；class_parents：tuple 父类元组；
+# class_attr：dict 属性字典；返回值：创建好的类对象
+def upper_attr(class_name, class_parents, class_attr):
+    # 新建一个空字典，存放改名后的属性
+    new_attr = {}
+    # 遍历属性字典；name 是属性名，value 是属性值
+    for name, value in class_attr.items():
+        # 不是以 __ 开头的属性（即用户自己定义的属性）才改成大写
+        if not name.startswith("__"):
+            # 属性名转大写作为新键，值保持不变
+            new_attr[name.upper()] = value
+        # 以 __ 开头的是系统属性，原样保留
+        else:
+            # 保持原来的名字
+            new_attr[name] = value
+    # 调用 type 创建类并返回；这里返回的类就是最终的 Foo
+    return type(class_name, class_parents, new_attr)
+
+
+# metaclass=upper_attr：让 Python 用上面的函数来创建 Foo
+class Foo(object, metaclass=upper_attr):
+    # 类属性 bar，创建类时会被改成 BAR
+    bar = 'bip'
+
+
+# 小写的 bar 已经不存在；输出：False
+print(hasattr(Foo, 'bar'))
+# 大写的 BAR 存在；输出：True
+print(hasattr(Foo, 'BAR'))
+# 创建实例
+f = Foo()
+# 通过大写属性名访问；输出：bip
+print(f.BAR)
+```
+
+**方式二：用真正的类当元类（继承 `type`）**
+
+> - 自定义元类必须**继承 `type`**
+> - `__new__(cls, class_name, class_parents, class_attr)`：**创建**类对象并返回；这里的 `cls` 是**元类自己**（不是被创建的类），所以参数里多了一个
+> - `__new__` 与 `__init__` 的区别：`__new__` 负责**创建对象并返回**，`__init__` 只负责把参数**初始化**给已创建好的对象。很少需要写 `__new__`，除非想**控制对象的创建**；这里创建的对象是**类**，要自定义它，所以改写 `__new__`
+> - 更高级的用法还会改写 `__call__`（控制“类被调用创建实例”的过程），这里不涉及
+
+```python
+# 自定义元类：必须继承 type
+class UpperAttrMetaClass(type):
+    # __new__ 在 __init__ 之前被调用，用来创建类对象
+    # cls：元类自己；class_name：str；class_parents：tuple；class_attr：dict
+    def __new__(cls, class_name, class_parents, class_attr):
+        # 新建空字典，存放改名后的属性
+        new_attr = {}
+        # 遍历原属性字典
+        for name, value in class_attr.items():
+            # 不是 __ 开头的属性才改成大写
+            if not name.startswith("__"):
+                # 大写属性名作为新键
+                new_attr[name.upper()] = value
+            # 系统属性原样保留
+            else:
+                # 保持原名
+                new_attr[name] = value
+        # 方法 1：直接调用 type 创建类对象
+        return type(class_name, class_parents, new_attr)
+        # 方法 2（等价，推荐）：复用 type.__new__，这就是基本的 OOP，没有魔法
+        # return type.__new__(cls, class_name, class_parents, new_attr)
+
+
+# Python 3 写法：metaclass=UpperAttrMetaClass
+class Foo(object, metaclass=UpperAttrMetaClass):
+    # 类属性 bar，创建类时会被改成 BAR
+    bar = 'bip'
+
+
+# 输出：False
+print(hasattr(Foo, 'bar'))
+# 输出：True
+print(hasattr(Foo, 'BAR'))
+# 创建实例
+f = Foo()
+# 输出：bip
+print(f.BAR)
+# 验证：Foo 的类型（即它的元类）是我们自定义的元类；输出：<class '__main__.UpperAttrMetaClass'>
+print(type(Foo))
+```
+
+> **元类做的事其实很简单**：
+>
+> 1. **拦截**类的创建
+> 2. **修改**类
+> 3. **返回**修改之后的类
+>
+> **时机提醒**：元类的 `__new__` 在**定义类的那一刻**就执行（执行到 `class Foo ...` 这一行时），而不是创建实例时执行；而且每个类只执行一次。
+
+#### 10.12.9 究竟为什么要使用元类
+
+> 元类是一种容易出错且晦涩的特性，一般来说**根本用不上**。Python 界的领袖 **Tim Peters** 说过：
+>
+> > “元类就是深度的魔法，99% 的用户应该根本不必为此操心。如果你想搞清楚究竟是否需要用到元类，那么你就不需要它。那些实际用到元类的人都非常清楚地知道他们需要做什么，而且根本不需要解释为什么要用元类。”
+>
+> **元类的典型用途**（都是“创建类时自动处理”）：
+>
+> - **ORM**：根据类属性自动生成数据库表字段映射（见 10.13）
+> - **抽象基类**：`abc.ABCMeta` 在创建类时收集抽象方法，实例化时检查（见 10.4.3）
+> - 自动注册子类、强制类遵守某种命名/接口规范、实现单例等
+>
+> 多数需求用**装饰器**、**继承**、**`__new__`** 就能解决，优先用更简单的方案。
+
+### 10.13 元类实现 ORM
+
+#### 10.13.1 ORM 是什么
+
+> **ORM**：Object Relational Mapping，即**对象-关系映射**。它是 Python 后端 Web 框架 **Django** 的核心思想（Java 等语言也有 ORM 框架）。
+>
+> **一句话理解**：创建一个**实例对象**，用创建它的**类名**当数据表名，用类的**属性**对应数据表的**字段**；当对这个实例对象操作时，能够自动对应到 MySQL 语句。
+>
+> - **对应关系**：类 ↔ 表；类属性 ↔ 字段；实例对象 ↔ 一行记录；对象方法 ↔ SQL 操作
+> - **初衷**：让开发者操作数据库时，能像操作对象（`xxx.属性 = yyy`）一样简单，不必手写 SQL
+> - ORM 的完整实现很复杂，Django 已经实现了；本节通过完成一个类似 `insert` 的简单 ORM，理解其中的道理即可（SQL 基础见 [MySQL 笔记](https://github.com/lisirui-ai/Database/blob/main/MySQL_notebook.md)，Python 操作数据库见十八章）
+
+```python
+# 期望达到的效果（伪代码，下面几节会一步步实现）
+class User(父类省略):
+    # 每个类属性是一个元组：(字段名, 字段类型)
+    uid = ('uid', "int unsigned")
+    name = ('username', "varchar(30)")  # 属性 name：字段名 username，类型 varchar(30)
+    email = ('email', "varchar(30)")  # 属性 email：字段名 email，类型 varchar(30)
+    password = ('password', "varchar(30)")  # 属性 password：字段名 password，类型 varchar(30)
+
+
+# 创建对象，传入各字段的值
+u = User(uid=12345, name='Michael', email='test@orm.org', password='my-pwd')
+# 保存：自动执行对应的 SQL
+u.save()
+# 对应如下 SQL 语句：
+# insert into User (username,email,password,uid)
+# values ('Michael','test@orm.org','my-pwd',12345)
+```
+
+#### 10.13.2 通过元类简单实现 insert 功能
+
+> **实现思路**：
+>
+> 1. 用元类 `ModelMetaclass` 在**创建 `User` 类时**，把形如 `('字段名', '类型')` 的类属性**挑出来**，放进字典 `__mappings__`（属性名 → 字段信息），并从类属性里删除它们
+> 2. 额外保存表名 `__table__`（假设表名和类名一致）
+> 3. `__init__(self, **kwargs)`：用 `setattr` 把传入的关键字参数设为实例属性（`**kwargs` 见 8.2）
+> 4. `save()`：遍历 `__mappings__`，收集字段名和对应的值，拼出 `insert` 语句并输出
+> - **为什么判断里要排除 `__` 开头的属性**：解释器会往属性字典里放 `__module__`、`__qualname__` 等系统属性；Python 3.13+ 还会放入值为空元组的 `__static_attributes__`，它们不是字段，必须排除，否则会被误当成字段
+> - **为什么要把类属性删掉**：类属性 `name = ('username', ...)` 描述的是**字段定义**；而实例属性 `u.name = 'Michael'` 才是**字段的值**。如果不删，实例上没设置的字段会读到类里的元组，造成混淆
+
+```python
+# 元类：继承 type，负责在创建类时收集字段映射
+class ModelMetaclass(type):
+    # cls：元类自己；name：被创建的类名（str）；bases：父类元组；attrs：属性字典（dict）
+    def __new__(cls, name, bases, attrs):
+        # mappings：保存“属性名 -> (字段名, 字段类型)”的映射；类型 dict
+        mappings = dict()
+        # 遍历类的所有属性；k 是属性名，v 是属性值
+        for k, v in attrs.items():
+            # 简化判断：值是元组、且不是 __ 开头的系统属性，就认为是需要保存到数据库的字段
+            # （Python 3.13+ 会自动给类加 __static_attributes__ = () 元组，必须排除）
+            if isinstance(v, tuple) and not k.startswith('__'):
+                # 输出发现的映射，便于观察元类何时执行
+                print('Found mapping: %s ==> %s' % (k, v))
+                # 保存到映射字典
+                mappings[k] = v
+        # 删除这些已经存进 mappings 的类属性（遍历 mappings 的键，而不是 attrs，所以修改 attrs 是安全的）
+        for k in mappings.keys():
+            # 从属性字典中弹出该属性
+            attrs.pop(k)
+        # 保存属性和列的映射关系
+        attrs['__mappings__'] = mappings
+        # 保存表名，假设表名和类名一致
+        attrs['__table__'] = name
+        # 用 type.__new__ 真正创建类并返回
+        return type.__new__(cls, name, bases, attrs)
+
+
+# 指定元类：创建 User 时会调用 ModelMetaclass.__new__
+class User(metaclass=ModelMetaclass):
+    # 指定元类后，以下类属性不再保留在类中，而是存到 __mappings__ 字典里
+    uid = ('uid', "int unsigned")
+    name = ('username', "varchar(30)")  # 属性 name：字段名 username
+    email = ('email', "varchar(30)")  # 属性 email：字段名 email
+    password = ('password', "varchar(30)")  # 属性 password：字段名 password
+    # 等价于元类给 User 加上了：
+    # __mappings__ = {
+    #     "uid": ('uid', "int unsigned"),
+    #     "name": ('username', "varchar(30)"),
+    #     "email": ('email', "varchar(30)"),
+    #     "password": ('password', "varchar(30)"),
+    # }
+    # __table__ = "User"
+
+    # 构造方法：**kwargs 接收任意个关键字参数，类型 dict
+    def __init__(self, **kwargs):
+        # 遍历传入的参数；name 是参数名，value 是参数值
+        for name, value in kwargs.items():
+            # 动态设置实例属性：相当于 self.name = value
+            setattr(self, name, value)
+
+    # 保存方法：拼接并输出 insert 语句
+    def save(self):
+        # fields：保存所有字段名（对应数据表的列）
+        fields = []
+        # args：保存所有字段的值
+        args = []
+        # 遍历映射字典；k 是属性名，v 是 (字段名, 字段类型) 元组
+        for k, v in self.__mappings__.items():
+            # v[0] 是数据库中的字段名
+            fields.append(v[0])
+            # getattr(对象, 属性名, 默认值)：取实例上该属性的值，没有则为 None
+            args.append(getattr(self, k, None))
+        # 拼接 SQL：表名、字段列表（逗号分隔）、值列表（先转成 str 再逗号分隔）
+        sql = 'insert into %s (%s) values (%s)' % (
+            self.__table__, ','.join(fields), ','.join([str(i) for i in args]))  # %s 依次被表名、字段名串、值串替换；join 用逗号把列表拼成一个 str
+        # 输出生成的 SQL
+        print('SQL: %s' % sql)
+
+
+# 创建对象：关键字参数的名字要与类属性名对应
+u = User(uid=12345, name='Michael', email='test@orm.org', password='my-pwd')
+# 查看实例属性字典（可选）：print(u.__dict__)
+# 保存
+u.save()
+```
+
+> **运行效果**（类创建时已经打印 `Found mapping`，说明**元类在定义 `User` 类时就执行了**；顺序与类中属性定义顺序一致，Python 3.7+ 字典保持插入顺序）：
+>
+> ```text
+> Found mapping: uid ==> ('uid', 'int unsigned')
+> Found mapping: name ==> ('username', 'varchar(30)')
+> Found mapping: email ==> ('email', 'varchar(30)')
+> Found mapping: password ==> ('password', 'varchar(30)')
+> SQL: insert into User (uid,username,email,password) values (12345,Michael,test@orm.org,my-pwd)
+> ```
+>
+> 注意：此时 SQL 里字符串值**没有引号**（`Michael`），这样的 SQL 在 MySQL 中无法执行。下一节解决。
+
+#### 10.13.3 完善对数据类型的检测
+
+> 给不同类型的值生成不同的 SQL 字面量：**数字**不加引号，**字符串**要加单引号。
+>
+> - 用 `isinstance(值, int)`、`isinstance(值, str)` 判断
+> - 本节只改 `save` 方法，元类和其他部分不变，所以只展示**变化的部分**
+
+```python
+# 元类 ModelMetaclass 与上一节完全相同（此处省略），只修改 User.save
+class User(metaclass=ModelMetaclass):
+    # 字段定义：(字段名, 字段类型)
+    uid = ('uid', "int unsigned")
+    name = ('username', "varchar(30)")  # 属性 name：字段名 username
+    email = ('email', "varchar(30)")  # 属性 email：字段名 email
+    password = ('password', "varchar(30)")  # 属性 password：字段名 password
+
+    # 构造方法：与上一节相同
+    def __init__(self, **kwargs):
+        # 遍历关键字参数并设置为实例属性
+        for name, value in kwargs.items():
+            # 动态设置属性
+            setattr(self, name, value)
+
+    # 保存方法：增加类型判断
+    def save(self):
+        # 字段名列表
+        fields = []
+        # 字段值列表
+        args = []
+        # 遍历映射字典
+        for k, v in self.__mappings__.items():
+            # 收集字段名
+            fields.append(v[0])
+            # 收集字段值
+            args.append(getattr(self, k, None))
+        # args_temp：保存转换成 SQL 字面量之后的值
+        args_temp = list()
+        # 遍历每个值
+        for temp in args:
+            # 如果是整数：直接转成字符串，不加引号
+            if isinstance(temp, int):
+                # 数字原样转 str
+                args_temp.append(str(temp))
+            # 如果是字符串：两侧加上单引号
+            elif isinstance(temp, str):
+                # 字符串加单引号
+                args_temp.append("'%s'" % temp)
+        # 拼接 SQL
+        sql = 'insert into %s (%s) values (%s)' % (
+            self.__table__, ','.join(fields), ','.join(args_temp))  # 三个 %s 依次对应：表名、逗号拼接的字段名、逗号拼接的值（str 列表）
+        # 输出生成的 SQL
+        print('SQL: %s' % sql)
+
+
+# 创建对象
+u = User(uid=12345, name='Michael', email='test@orm.org', password='my-pwd')
+# 保存
+u.save()
+```
+
+> **运行效果**：
+>
+> ```text
+> Found mapping: uid ==> ('uid', 'int unsigned')
+> Found mapping: name ==> ('username', 'varchar(30)')
+> Found mapping: email ==> ('email', 'varchar(30)')
+> Found mapping: password ==> ('password', 'varchar(30)')
+> SQL: insert into User (uid,username,email,password) values (12345,'Michael','test@orm.org','my-pwd')
+> ```
+
+#### 10.13.4 抽取到基类中
+
+> 上面每新增一张表（如 `Goods`、`Order`），都要重复写 `__init__` 和 `save`，不合理。把通用的 `__init__`、`save` 放进**基类 `Model`**，并让 `Model` 使用元类；这样所有继承 `Model` 的子类**自动使用同一个元类**（元类会被继承，见 10.12.7），子类只需声明字段。
+>
+> - 这就是 Django 中 `class User(models.Model)` 的原理
+> - 注意：`Model` 本身也会经过元类，但它没有字段，`__mappings__` 为空字典
+
+```python
+# 元类：与前面完全相同，负责收集字段映射
+class ModelMetaclass(type):
+    # 创建类时调用：cls 元类自己；name 类名；bases 父类元组；attrs 属性字典
+    def __new__(cls, name, bases, attrs):
+        # 存放字段映射
+        mappings = dict()
+        # 遍历属性
+        for k, v in attrs.items():
+            # 值是元组、且不是 __ 开头的系统属性，视为字段
+            if isinstance(v, tuple) and not k.startswith('__'):
+                # 输出发现的映射
+                print('Found mapping: %s ==> %s' % (k, v))
+                # 保存映射
+                mappings[k] = v
+        # 从类属性中删除字段定义
+        for k in mappings.keys():
+            # 弹出属性
+            attrs.pop(k)
+        # 保存属性与列的映射关系
+        attrs['__mappings__'] = mappings
+        # 保存表名（与类名一致）
+        attrs['__table__'] = name
+        # 创建并返回类
+        return type.__new__(cls, name, bases, attrs)
+
+
+# 基类 Model：指定元类，并提供所有模型共用的 __init__ 和 save
+class Model(object, metaclass=ModelMetaclass):
+    # 构造方法：接收关键字参数并设置为实例属性
+    def __init__(self, **kwargs):
+        # 遍历关键字参数
+        for name, value in kwargs.items():
+            # 动态设置属性
+            setattr(self, name, value)
+
+    # 保存方法：生成 insert 语句
+    def save(self):
+        # 字段名列表
+        fields = []
+        # 字段值列表
+        args = []
+        # 遍历映射字典；self.__mappings__ 来自子类（由元类添加）
+        for k, v in self.__mappings__.items():
+            # 收集字段名
+            fields.append(v[0])
+            # 收集字段值
+            args.append(getattr(self, k, None))
+        # 保存转换后的值
+        args_temp = list()
+        # 遍历值
+        for temp in args:
+            # 整数不加引号
+            if isinstance(temp, int):
+                # 转成字符串
+                args_temp.append(str(temp))
+            # 字符串加单引号
+            elif isinstance(temp, str):
+                # 加引号
+                args_temp.append("'%s'" % temp)
+        # 拼接 SQL
+        sql = 'insert into %s (%s) values (%s)' % (
+            self.__table__, ','.join(fields), ','.join(args_temp))  # 三个 %s 依次对应：表名、逗号拼接的字段名、逗号拼接的值（str 列表）
+        # 输出 SQL
+        print('SQL: %s' % sql)
+
+
+# User 模型：只需继承 Model 并声明字段
+class User(Model):
+    # 字段定义
+    uid = ('uid', "int unsigned")
+    name = ('username', "varchar(30)")  # 属性 name：字段名 username
+    email = ('email', "varchar(30)")  # 属性 email：字段名 email
+    password = ('password', "varchar(30)")  # 属性 password：字段名 password
+
+
+# 再定义一张表：不用重复写 __init__ 和 save
+class Goods(Model):
+    # 商品名字段
+    name = ('name', "varchar(40)")
+    # 价格字段（这里用整数演示）
+    price = ('price', "int unsigned")
+
+
+# 创建 User 对象并保存
+u = User(uid=12345, name='Michael', email='test@orm.org', password='my-pwd')
+# 输出：SQL: insert into User (uid,username,email,password) values (12345,'Michael','test@orm.org','my-pwd')
+u.save()
+# 创建 Goods 对象并保存；输出：SQL: insert into Goods (name,price) values ('iPhone',5000)
+Goods(name='iPhone', price=5000).save()
+```
+
+> **ORM 流程总结**：
+>
+> 1. **定义类时**（只执行一次）：元类 `ModelMetaclass.__new__` 扫描字段，生成 `__mappings__` 与 `__table__`
+> 2. **创建对象时**：`__init__` 把传入的值保存为实例属性
+> 3. **调用 `save()` 时**：根据 `__mappings__` 取字段名和实例上的值，拼接出 SQL
+>
+> **这个简易 ORM 的局限**（真实的 Django ORM 都已解决）：
+>
+> - 用字符串拼接 SQL，存在 **SQL 注入**风险，实际应使用参数化查询（见 18.5）
+> - 只支持 `int`、`str` 两种类型，其他类型（如 `None`、`float`）会被**丢失**；字段类型只是元组里的一段文字，没有真正校验
+> - 只实现了 `insert`，没有查询、修改、删除，也没有真正连接数据库（可在 `save` 里用 18.2 的 `pymysql` 执行 SQL）
 
 ---
 
