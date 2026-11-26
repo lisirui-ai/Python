@@ -2784,7 +2784,7 @@ print(c.area())
 > **继承的两种用途**：
 >
 > 1. **代码重用**：继承基类的方法，并做出自己的改变或扩展（见 10.3）
-> 2. **声明兼容**：声明某个子类兼容于某基类——先定义一个**接口类**，里面只定义接口名（就是函数名），**不实现**功能；子类继承接口类，并**负责实现**这些功能
+> 2. **声明兼容**：声明某个子类兼容于某基类——先定义一个**接口类**，里面只定义接口名（即函数名），**不实现**功能；子类继承接口类，并**负责实现**这些功能
 >
 > **接口隔离原则**：使用多个专门的接口，而不使用单一的总接口。即客户端（调用者）不应该依赖那些它用不到的接口。
 >
@@ -2868,7 +2868,7 @@ except AttributeError as e:
 
 **第三步：在基类里手动抛出异常**
 
-> 解决思路：先定义一个**规范类**（接口类）`Payment`，在其中写好统一的方法名 `pay`，方法体里**手动抛出异常** `NotImplementedError`（意为“该方法没有被实现”）；子类如果忘记重写 `pay`，调用时会走到父类的 `pay` 并报出明确的提示。
+> 解决思路：先定义一个**规范类**（接口类）`Payment`，在其中定义统一的方法名 `pay`，方法体里**手动抛出异常** `NotImplementedError`（意为“该方法没有被实现”）；子类如果忘记重写 `pay`，调用时会走到父类的 `pay` 并报出明确的提示。
 
 ```python
 # 规范类（接口类）：规定所有支付类都必须有 pay 方法
@@ -2963,7 +2963,7 @@ def pay(pay_obj, money):
 
 # try/except：捕获错误并输出
 try:
-    # 实例化 Alipay 时就报错，根本不会走到 pay 调用
+    # 实例化 Alipay 时即报错，不会执行到 pay 调用
     p = Alipay()
 # 捕获 TypeError（类型/用法错误）
 except TypeError as e:
@@ -3159,7 +3159,7 @@ sata = Sata()
 # 进程文件对象
 process = Process()
 
-# 大家都被“归一化”了：用同样的方式操作；输出：文本数据的读取方法
+# 各类文件已被“归一化”：以相同的方式操作；输出：文本数据的读取方法
 txt.read()
 # 输出：硬盘数据的写入方法
 sata.write()
@@ -4315,7 +4315,7 @@ my_object = ObjectCreator()
 # 输出：<__main__.ObjectCreator object at 0x...>（0x 后面是内存地址，每次不同）
 print(my_object)
 
-# 1. 可以打印一个类，因为它其实也是一个对象；输出：<class '__main__.ObjectCreator'>
+# 1. 可以打印一个类，因为它本身也是对象；输出：<class '__main__.ObjectCreator'>
 print(ObjectCreator)
 
 
@@ -4347,7 +4347,7 @@ print(ObjectCreatorMirror())
 
 > 因为类也是对象，所以可以在**运行时动态创建**，就像创建其他任何对象一样。最直接的方式是在函数中使用 `class` 关键字，根据参数返回不同的类。
 >
-> - 注意函数**返回的是类**，不是类的实例；拿到类之后再加括号才得到实例
+> - 注意函数**返回的是类**，不是类的实例；获得类之后再加括号才得到实例
 > - 但这还不够动态：类的代码仍然需要**逐行手写**
 
 ```python
@@ -4381,7 +4381,7 @@ print(MyClass())
 
 > **类是由谁创建的？** 既然类是对象，就一定存在创建它的机制。使用 `class` 关键字时，解释器会**自动**创建这个类对象；Python 同时也提供了**手动创建**的方式。
 >
-> 先回顾内建函数 `type()`：它能告诉我们对象的类型。
+> 先回顾内建函数 `type()`：它用于获取对象的类型。
 
 ```python
 # 数值的类型；输出：<class 'int'>
@@ -4543,7 +4543,7 @@ my_foo.echo_bar()
 
 # 同时添加实例方法和静态方法
 Foochild = type('Foochild', (Foo,), {"echo_bar": echo_bar,
-                                     "test_static": test_static})  # 第二个键值对：静态方法，自动换行
+                                     "test_static": test_static})  # 第二个键值对：静态方法 test_static，换行续写
 # 创建实例
 fooclid = Foochild()
 # 调用静态方法；输出：static method ....
@@ -4554,7 +4554,7 @@ fooclid.echo_bar()
 # 再添加类方法
 Foochild = type('Foochild', (Foo,), {"echo_bar": echo_bar,
                                      "test_static": test_static,  # 第二个键值对：静态方法
-                                     "test_class": test_class})  # 第三个键值对：类方法；这一行是 type 调用的结尾括号所在行
+                                     "test_class": test_class})  # 第三个键值对：类方法 test_class；末尾括号结束 type 调用
 # 创建实例
 fooclid = Foochild()
 # 调用类方法；输出：True
@@ -4618,7 +4618,7 @@ b.print_class()
 > my_object = MyClass()   # 使用“类”创建出实例对象
 > ```
 >
-> - 前面已经看到 `MyClass = type('MyClass', (), {})`，这是因为 **`type` 实际上就是一个元类**：它是 Python 在背后用来创建**所有**类的元类
+> - 前面已经看到 `MyClass = type('MyClass', (), {})`，这是因为 **`type` 实际上就是一个元类**：它是 Python 在底层用来创建**所有**类的元类
 > - **为什么叫 `type` 而不是 `Type`**：为了和 `str`（创建字符串对象的类）、`int`（创建整数对象的类）保持命名一致；`type` 就是**创建类对象的类**
 > - 可以通过 `__class__` 属性验证：Python 中**所有事物**——整数、字符串、函数、类——都是对象，它们都是从某个类创建出来的，而最终创建类的就是 `type`
 
@@ -4655,7 +4655,7 @@ b = Bar()
 # 实例的类是 Bar；输出：<class '__main__.Bar'>
 print(b.__class__)
 
-# 再往上一层：“类的类”是谁？都是 type
+# 再向上一层：上述对象所属类的类，均为 type
 # 输出：<class 'type'>
 print(age.__class__.__class__)
 # 输出：<class 'type'>
@@ -4689,7 +4689,7 @@ print(type.__class__)
 > 2. 未显式指定：取父类 `Bar` 的元类（即 `type(Bar)`），沿用父类的元类（所以**元类会被继承**）
 > 3. 以上均未指定：使用内置的 `type` 创建这个类对象
 >
-> 说明：Python 2 的查找顺序为——依次在当前类、父类、**模块层次**中找 `__metaclass__`，都找不到才用 `type`。Python 3 取消了“模块级别 `__metaclass__`”这种方式。
+> 说明：Python 2 的查找顺序为——依次在当前类、父类、**模块层次**中查找 `__metaclass__`，均未找到才使用 `type`。Python 3 取消了“模块级别 `__metaclass__`”这种方式。
 >
 > **`metaclass=` 后面可以放什么**：任何**可调用对象**，只要它接收 `(类名, 父类元组, 属性字典)` 三个参数并**返回一个类**即可。可以放 `type`、`type` 的子类，也可以是**普通函数**（见 10.12.8）。
 
@@ -4724,7 +4724,7 @@ def upper_attr(class_name, class_parents, class_attr):
     return type(class_name, class_parents, new_attr)
 
 
-# metaclass=upper_attr：让 Python 用上面的函数来创建 Foo
+# metaclass=upper_attr：指定使用上面的函数创建 Foo
 class Foo(object, metaclass=upper_attr):
     # 类属性 bar，创建类时会被改成 BAR
     bar = 'bip'
@@ -4785,7 +4785,7 @@ print(hasattr(Foo, 'BAR'))
 f = Foo()
 # 输出：bip
 print(f.BAR)
-# 验证：Foo 的类型（即它的元类）是我们自定义的元类；输出：<class '__main__.UpperAttrMetaClass'>
+# 验证：Foo 的类型（即它的元类）是自定义的元类；输出：<class '__main__.UpperAttrMetaClass'>
 print(type(Foo))
 ```
 
@@ -4820,7 +4820,7 @@ print(type(Foo))
 > **核心含义**：创建一个**实例对象**，以创建它的**类名**作为数据表名，以类的**属性**对应数据表的**字段**；当对这个实例对象操作时，能够自动对应到 MySQL 语句。
 >
 > - **对应关系**：类 ↔ 表；类属性 ↔ 字段；实例对象 ↔ 一行记录；对象方法 ↔ SQL 操作
-> - **初衷**：让开发者操作数据库时，能像操作对象（`xxx.属性 = yyy`）一样简单，不必手写 SQL
+> - **初衷**：让开发者操作数据库时，能像操作对象（`xxx.属性 = yyy`）一样简单，无需手写 SQL
 > - ORM 的完整实现较为复杂，Django 已提供完整实现；本节通过实现一个类似 `insert` 的简单 ORM，理解其原理即可（SQL 基础见 [MySQL 笔记](https://github.com/lisirui-ai/Database/blob/main/MySQL_notebook.md)，Python 操作数据库见十八章）
 
 ```python
@@ -4862,7 +4862,7 @@ class ModelMetaclass(type):
         mappings = dict()
         # 遍历类的所有属性；k 是属性名，v 是属性值
         for k, v in attrs.items():
-            # 简化判断：值是元组、且不是 __ 开头的系统属性，就认为是需要保存到数据库的字段
+            # 简化判断：值是元组、且不是 __ 开头的系统属性，则视为需要保存到数据库的字段
             # （Python 3.13+ 会自动给类加 __static_attributes__ = () 元组，必须排除）
             if isinstance(v, tuple) and not k.startswith('__'):
                 # 输出发现的映射，便于观察元类何时执行
@@ -5095,7 +5095,7 @@ class User(Model):
     password = ('password', "varchar(30)")  # 属性 password：字段名 password
 
 
-# 再定义一张表：不用重复写 __init__ 和 save
+# 再定义一张表：无需重复编写 __init__ 和 save
 class Goods(Model):
     # 商品名字段
     name = ('name', "varchar(40)")
