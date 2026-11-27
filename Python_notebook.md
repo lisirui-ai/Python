@@ -4558,21 +4558,19 @@ my_foo.echo_bar()
 # 同时添加实例方法和静态方法
 Foochild = type('Foochild', (Foo,), {"echo_bar": echo_bar,
                                      "test_static": test_static})  # 第二个键值对：静态方法 test_static，换行续写
+# 静态方法不依赖实例，规范做法是通过类名调用；输出：static method ....
+Foochild.test_static()
 # 创建实例
 fooclid = Foochild()
-# 调用静态方法；输出：static method ....
-fooclid.test_static()
-# 调用实例方法；输出：True
+# 实例方法必须通过实例调用；输出：True
 fooclid.echo_bar()
 
 # 再添加类方法
 Foochild = type('Foochild', (Foo,), {"echo_bar": echo_bar,
                                      "test_static": test_static,  # 第二个键值对：静态方法
                                      "test_class": test_class})  # 第三个键值对：类方法 test_class；末尾括号结束 type 调用
-# 创建实例
-fooclid = Foochild()
-# 调用类方法；输出：True
-fooclid.test_class()
+# 类方法绑定的是类本身（cls），规范做法是通过类名调用；输出：True
+Foochild.test_class()
 ```
 
 > 可以看到，在 Python 中类是对象，可以动态创建。这就是使用 `class` 关键字时 Python 在**底层**做的事情，而它是通过**元类**实现的。
