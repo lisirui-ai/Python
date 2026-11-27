@@ -4657,6 +4657,46 @@ print(type.__class__)
 >
 > **`metaclass=` 后面可以放什么**：任何**可调用对象**，只要它接收 `(类名, 父类元组, 属性字典)` 三个参数并**返回一个类**即可。可以放 `type`、`type` 的子类，也可以是**普通函数**（见 10.12.8）。
 
+```python
+# 自定义元类：继承 type，作用是在创建类时输出提示
+class MyMeta(type):
+    # __new__ 在创建类时调用；参数 cls：元类本身；name：str 类名；
+    # bases：tuple 父类元组；attrs：dict 属性字典；返回值：新创建的类对象
+    def __new__(cls, name, bases, attrs):
+        # 输出正在创建的类名，便于观察元类何时被调用
+        print("MyMeta 正在创建类：", name)
+        # 交给 type 完成真正的创建，并返回创建好的类
+        return super().__new__(cls, name, bases, attrs)
+
+
+# 情况 1：显式指定 metaclass=MyMeta；输出：MyMeta 正在创建类： Bar
+class Bar(metaclass=MyMeta):
+    # 空类体
+    pass
+
+
+# 情况 2：未显式指定，沿用父类 Bar 的元类；输出：MyMeta 正在创建类： Foo
+class Foo(Bar):
+    # 空类体
+    pass
+
+
+# 情况 3：既未指定，父类也没有自定义元类，使用默认的 type
+class Plain:
+    # 空类体
+    pass
+
+
+# Bar 由 MyMeta 创建；输出：<class '__main__.MyMeta'>
+print(type(Bar))
+# Foo 继承了父类的元类，也由 MyMeta 创建；输出：<class '__main__.MyMeta'>
+print(type(Foo))
+# Plain 由默认的 type 创建；输出：<class 'type'>
+print(type(Plain))
+```
+
+> 三种情况分别对应上面的三个步骤：显式指定、继承父类的元类、使用默认的 `type`。注意 `Foo` 的定义里没有写 `metaclass=`，但仍然触发了 `MyMeta`，说明**元类会被继承**。
+
 #### 10.12.8 自定义元类
 
 > **元类的主要目的**：在**创建类时自动地改变类**。
