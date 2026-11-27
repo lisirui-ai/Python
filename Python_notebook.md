@@ -4852,7 +4852,7 @@ print(type(Foo))
 > 2. **调用元类**：相当于执行 `UpperAttrMetaClass("Foo", (object,), 属性字典)`；元类本身是 `type` 的子类，所以这次调用先进入 `type.__call__`
 > 3. **执行元类的 `__new__`**：`type.__call__` 调用我们自己写的 `UpperAttrMetaClass.__new__(cls, "Foo", (object,), 属性字典)`，其中 `cls` 就是 `UpperAttrMetaClass`
 > 4. **在 `UpperAttrMetaClass.__new__` 内部处理**：遍历属性字典，把 `bar` 改成 `BAR`，生成 `new_attr`；再调用**父类** `type.__new__(cls, class_name, class_parents, new_attr)` **真正创建**类对象并返回
-> 5. **执行元类的 `__init__`**：`UpperAttrMetaClass.__new__` 返回的对象是 `UpperAttrMetaClass` 的实例，因此 `type.__call__` 接着调用 `__init__` 做初始化（这里没有重写，使用 `type.__init__` 的默认实现）
+> 5. **执行元类的 `__init__`**：`UpperAttrMetaClass.__new__` 返回的对象（即类 `Foo`）是 `UpperAttrMetaClass` 的“实例”（类本身也是对象，元类的“实例”就是类），因此 `type.__call__` 接着调用 `__init__` 做初始化（这里没有重写，使用 `type.__init__` 的默认实现）
 > 6. **绑定名字**：返回的类对象赋给 `Foo`，此时 `Foo` 中只有 `BAR`，没有 `bar`
 >
 > ```text
@@ -4866,7 +4866,7 @@ print(type(Foo))
 > - `Foo.__new__`：`Foo` 自己的（默认继承自 `object`），创建的是**实例**，在 `Foo()` 时执行，与元类的流程无关
 >
 > - 与方式一对比：方式一的函数直接**返回** `type(...)` 创建的类；方式二把逻辑放进 `__new__`，且用 `type.__new__(cls, ...)` 创建，所以 `Foo` 的元类是 `UpperAttrMetaClass`
-> - 如果在 `__new__` 里直接返回 `type(...)` 创建的类，其类型是 `type`，不是 `cls` 的实例，`__init__` 也就不会被调用
+> - 如果在 `__new__` 里直接返回 `type(...)` 创建的类，其类型是 `type`，不是 `cls`（元类）的“实例”，`__init__` 也就不会被调用
 
 > **元类的工作流程**：
 >
