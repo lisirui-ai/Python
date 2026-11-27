@@ -4807,7 +4807,7 @@ print(f.BAR)
 > - `__new__` 与 `__init__` 的区别：`__new__` 负责**创建对象并返回**，`__init__` 只负责把参数**初始化**给已创建好的对象。通常无需重写 `__new__`，只有需要**控制对象的创建**时才重写；这里创建的对象是**类**，要自定义它，所以改写 `__new__`
 > - 更高级的用法还会改写 `__call__`（控制“类被调用创建实例”的过程），这里不涉及
 
-> **方式二的调用链**：以 `class Foo(object, metaclass=UpperAttrMetaClass): bar = 'bip'` 为例，从执行 `class` 语句到得到 `Foo`，依次发生：
+> **使用类作为元类的调用链**：以 `class Foo(object, metaclass=UpperAttrMetaClass): bar = 'bip'` 为例，从执行 `class` 语句到得到 `Foo`，依次发生：
 >
 > 1. **收集信息**：解释器运行类体，得到属性字典 `{'__module__': ..., 'bar': 'bip', ...}`，并记下类名 `"Foo"`、父类 `(object,)`
 > 2. **调用元类**：相当于执行 `UpperAttrMetaClass("Foo", (object,), 属性字典)`；元类本身是 `type` 的子类，所以这次调用先进入 `type.__call__`
@@ -4826,9 +4826,9 @@ print(f.BAR)
 > - `type.__new__`：元类的父类 `type` 提供的，由上面的 `__new__` 通过 `type.__new__(cls, ...)` 调用，负责真正生成类对象
 > - `Foo.__new__`：`Foo` 自己的（默认继承自 `object`），创建的是**实例**，在 `Foo()` 时执行，与元类的流程无关
 >
-> **与方式一对比**：
+> **与使用函数作为元类对比**：
 >
-> - 方式一的函数直接**返回** `type(...)` 创建的类；方式二把逻辑放进 `__new__`，且用 `type.__new__(cls, ...)` 创建，所以 `Foo` 的元类是 `UpperAttrMetaClass`
+> - 使用函数作为元类时，函数直接**返回** `type(...)` 创建的类；使用类作为元类时，把逻辑放进 `__new__`，且用 `type.__new__(cls, ...)` 创建，所以 `Foo` 的元类是 `UpperAttrMetaClass`
 > - 如果在 `__new__` 里直接返回 `type(...)` 创建的类，其类型是 `type`，不是 `cls`（元类）的“实例”，`__init__` 也就不会被调用
 
 ```python
