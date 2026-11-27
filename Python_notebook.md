@@ -4853,6 +4853,20 @@ class UpperAttrMetaClass(type):
         return type.__new__(cls, class_name, class_parents, new_attr)
         # 注意：若直接写 return type(class_name, class_parents, new_attr)，
         # 属性虽然也会变大写，但创建出的类的元类会变成 type，而不是 UpperAttrMetaClass
+        # 规则：一个类的元类，就是创建它时传给 type.__new__ 的第一个参数 cls
+        #   - type.__new__(cls, ...)：新类的元类 = cls（这里就是 UpperAttrMetaClass）
+        #   - type(...)：等价于 type.__new__(type, ...)，新类的元类 = type
+        # 原因分析：type(class_name, class_parents, new_attr) 相当于用 type 重新创建一个全新的类，
+        #   传入的“元类”是 type 而不是 cls，所以新类与自定义元类不再有关联，
+        #   自定义元类的 __new__ 只是“路过”，只改了属性字典，没有成为新类的元类
+        # 后果（在 __new__ 里直接 return type(class_name, class_parents, new_attr)，
+        #       即没有把 cls 传给 type.__new__，导致新类的元类是 type 而不是 UpperAttrMetaClass）：
+        #   1. 子类不再受自定义元类约束
+        #      规则：子类沿用父类的元类；Foo 的元类是 type，所以子类 Sub(Foo) 的元类也是 type，
+        #      自定义元类不会被调用，Sub 的属性不会被改成大写，“元类会被继承”失效
+        #   2. 元类的 __init__ 不会被调用
+        #      规则：type.__call__ 调用 __new__ 后，只有返回的对象是 cls 的“实例”时才继续调用 __init__；
+        #      这里返回的类是 type 的“实例”，不是 UpperAttrMetaClass 的“实例”，所以 __init__ 被跳过
 
 
 # Python 3 写法：metaclass=UpperAttrMetaClass
