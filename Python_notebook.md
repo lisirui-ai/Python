@@ -4577,49 +4577,6 @@ fooclid.test_class()
 
 > 可以看到，在 Python 中类是对象，可以动态创建。这就是使用 `class` 关键字时 Python 在**底层**做的事情，而它是通过**元类**实现的。
 
-**较为完整的 `type` 创建类示例**（对照 `class A` 与 `type` 创建的 `B`）：
-
-```python
-# 父类 A：普通 class 定义
-class A(object):
-    # 类属性 num，值 100
-    num = 100
-
-
-# 实例方法函数：self 是实例，输出 num 属性
-def print_b(self):
-    # 通过实例访问 num（来自父类 A）
-    print(self.num)
-
-
-# 静态方法函数
-@staticmethod
-def print_static():  # 函数 print_static：无参数，返回 None；被装饰后成为静态方法
-    # 输出静态方法的提示
-    print("----haha-----")
-
-
-# 类方法函数
-@classmethod
-def print_class(cls):  # 函数 print_class：参数 cls 是类本身，返回 None；被装饰后成为类方法
-    # 通过类访问 num
-    print(cls.num)
-
-
-# 用 type 创建类 B：继承 A，并把三个函数作为方法放入属性字典
-B = type("B", (A,), {"print_b": print_b, "print_static": print_static,
-                     "print_class": print_class})  # 第三个键值对：类方法 print_class，括号结束 type 调用
-
-# 创建 B 的实例
-b = B()
-# 调用实例方法；输出：100
-b.print_b()
-# 调用静态方法；输出：----haha-----
-b.print_static()
-# 调用类方法；输出：100
-b.print_class()
-```
-
 #### 10.12.6 元类的定义
 
 > **元类**：用来创建类的类。
