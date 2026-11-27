@@ -4583,8 +4583,8 @@ Foochild.test_class()
 > - **元类就是类的类**，可以这样理解：
 >
 > ```python
-> MyClass = MetaClass()   # 使用元类创建出一个对象，这个对象称为“类”
-> my_object = MyClass()   # 使用“类”创建出实例对象
+> MyClass = type('MyClass', (), {})   # 使用元类 type 创建出一个对象，这个对象称为“类”
+> my_object = MyClass()               # 使用“类”创建出实例对象
 > ```
 >
 > - 前面已经看到 `MyClass = type('MyClass', (), {})`，这是因为 **`type` 实际上就是一个元类**：它是 Python 在底层用来创建**所有**类的元类
