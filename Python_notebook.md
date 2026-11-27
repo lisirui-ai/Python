@@ -4647,16 +4647,13 @@ print(type.__class__)
 
 > 定义类时可以指定用哪个元类来创建它。
 >
-> - **Python 3 写法**：在类定义的继承列表里写 `metaclass=元类`，如 `class Foo(object, metaclass=MyMeta)`
-> - **Python 2 写法**：在类体里写 `__metaclass__ = 元类`。**Python 3 中这种写法已经无效**（只是个普通类属性，不会再被当作元类），后面的内容都使用 Python 3 写法
+> - **写法**：在类定义的继承列表里写 `metaclass=元类`，如 `class Foo(object, metaclass=MyMeta)`
 >
-> **Python 3 中解释器创建类 `Foo` 时的步骤**：写下 `class Foo(Bar): pass` 时，类 `Foo` 此时还**没有**在内存中创建，解释器会这样确定用哪个元类：
+> **解释器创建类 `Foo` 时的步骤**：写下 `class Foo(Bar): pass` 时，类 `Foo` 此时还**没有**在内存中创建，解释器会这样确定用哪个元类：
 >
 > 1. 类定义中显式指定了 `metaclass=xxx`：使用它来创建 `Foo`
 > 2. 未显式指定：取父类 `Bar` 的元类（即 `type(Bar)`），沿用父类的元类（所以**元类会被继承**）
 > 3. 以上均未指定：使用内置的 `type` 创建这个类对象
->
-> 说明：Python 2 的查找顺序为——依次在当前类、父类、**模块层次**中查找 `__metaclass__`，均未找到才使用 `type`。Python 3 取消了“模块级别 `__metaclass__`”这种方式。
 >
 > **`metaclass=` 后面可以放什么**：任何**可调用对象**，只要它接收 `(类名, 父类元组, 属性字典)` 三个参数并**返回一个类**即可。可以放 `type`、`type` 的子类，也可以是**普通函数**（见 10.12.8）。
 
