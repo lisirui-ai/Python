@@ -4445,6 +4445,18 @@ MyDogClass = type('MyDog', (), {})
 # 输出：<class '__main__.MyDog'>（显示的是类名 MyDog，不是变量名 MyDogClass）
 print(MyDogClass)
 
+# 用 type 查看两个类自身的类型；输出：<class 'type'>
+# 说明 class 语句定义的类，其类型就是 type（type 是默认的元类）
+print(type(Test))
+# 输出：<class 'type'>，type 手动创建的类，类型同样是 type
+print(type(Test2))
+# 两者的类型完全相同；输出：True
+print(type(Test) is type(Test2))
+# 两个类的实例的类型分别是各自的类；输出：<class '__main__.Test'>
+print(type(Test()))
+# 输出：<class '__main__.Test2'>
+print(type(Test2()))
+
 # 用 help 查看两个类，会发现它们的结构完全相同
 # 输出 Help on class Test in module __main__: class Test(builtins.object) ...
 help(Test)
@@ -4452,6 +4464,8 @@ help(Test)
 help(Test2)
 ```
 
+> `type(Test)` 与 `type(Test2)` 的结果都是 `<class 'type'>`：无论用 `class` 语句还是 `type(...)` 创建，类本身都是 `type` 的实例。
+>
 > `help` 的输出里都有 `__dict__`（保存实例属性的字典）和 `__weakref__`（弱引用列表）这两个数据描述符——两种方式创建出来的类完全一样。
 
 #### 10.12.4 使用 type 创建带有属性的类
