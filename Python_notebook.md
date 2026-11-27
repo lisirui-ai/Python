@@ -4822,10 +4822,10 @@ class UpperAttrMetaClass(type):
             else:
                 # 保持原名
                 new_attr[name] = value
-        # 方法 1：直接调用 type 创建类对象
-        return type(class_name, class_parents, new_attr)
-        # 方法 2（等价，推荐）：复用 type.__new__，这是普通的面向对象写法
-        # return type.__new__(cls, class_name, class_parents, new_attr)
+        # 复用 type.__new__ 创建类对象（推荐）：cls 是元类自己，所以创建出的类的元类是 UpperAttrMetaClass
+        return type.__new__(cls, class_name, class_parents, new_attr)
+        # 注意：若直接写 return type(class_name, class_parents, new_attr)，
+        # 属性虽然也会变大写，但创建出的类的元类会变成 type，而不是 UpperAttrMetaClass
 
 
 # Python 3 写法：metaclass=UpperAttrMetaClass
@@ -4845,6 +4845,24 @@ print(f.BAR)
 # 验证：Foo 的类型（即它的元类）是自定义的元类；输出：<class '__main__.UpperAttrMetaClass'>
 print(type(Foo))
 ```
+
+> **方式二的调用链**：以 `class Foo(object, metaclass=UpperAttrMetaClass): bar = 'bip'` 为例，从执行 `class` 语句到得到 `Foo`，依次发生：
+>
+> 1. **收集信息**：解释器运行类体，得到属性字典 `{'__module__': ..., 'bar': 'bip', ...}`，并记下类名 `"Foo"`、父类 `(object,)`
+> 2. **调用元类**：相当于执行 `UpperAttrMetaClass("Foo", (object,), 属性字典)`；元类本身是 `type` 的子类，所以这次调用先进入 `type.__call__`
+> 3. **执行 `__new__`**：`type.__call__` 调用 `UpperAttrMetaClass.__new__(cls, "Foo", (object,), 属性字典)`，其中 `cls` 就是 `UpperAttrMetaClass`
+> 4. **在 `__new__` 内部处理**：遍历属性字典，把 `bar` 改成 `BAR`，生成 `new_attr`；再调用 `type.__new__(cls, class_name, class_parents, new_attr)` **真正创建**类对象并返回
+> 5. **执行 `__init__`**：`__new__` 返回的对象是 `UpperAttrMetaClass` 的实例，因此 `type.__call__` 接着调用 `__init__` 做初始化（这里没有重写，使用 `type` 的默认实现）
+> 6. **绑定名字**：返回的类对象赋给 `Foo`，此时 `Foo` 中只有 `BAR`，没有 `bar`
+>
+> ```text
+> class 语句 ──> UpperAttrMetaClass(...) ──> type.__call__ ──> __new__（改属性、创建类）──> __init__ ──> 得到 Foo
+> ```
+>
+> ---
+>
+> - 与方式一对比：方式一的函数直接**返回** `type(...)` 创建的类；方式二把逻辑放进 `__new__`，且用 `type.__new__(cls, ...)` 创建，所以 `Foo` 的元类是 `UpperAttrMetaClass`
+> - 如果在 `__new__` 里直接返回 `type(...)` 创建的类，其类型是 `type`，不是 `cls` 的实例，`__init__` 也就不会被调用
 
 > **元类的工作流程**：
 >
