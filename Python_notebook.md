@@ -4973,6 +4973,12 @@ class ModelMetaclass(type):
                 print('Found mapping: %s ==> %s' % (k, v))
                 # 以属性名为键、(字段名, 字段类型) 元组为值，存入映射字典
                 mappings[k] = v
+        # 为什么要从 attrs 中删除这些字段定义：
+        # 1. 区分“字段定义”和“字段的值”：类属性 name = ('username', ...) 是字段定义（库里的列名、类型）
+        #    而实例属性 u.name = 'Michael' 才是字段的值；同名共存会混淆
+        #    若不删，实例没传 name 时，getattr(self, 'name', None) 会读到类里的元组而不是 None，导致 SQL 出错
+        # 2. 信息已转存：字段定义已保存进 mappings（即 __mappings__），类里无需再留一份
+        # 删除的只是类属性，不影响 mappings 中的备份
         # 遍历 mappings 的键（不是 attrs），所以下面修改 attrs 不会触发“遍历时修改字典”的错误
         for k in mappings.keys():
             # dict.pop(键)：删除该键并返回其值（此处不使用返回值）；删除后类里不再有该类属性
@@ -4984,6 +4990,8 @@ class ModelMetaclass(type):
         # 因为以双下划线结尾，所以不会触发名称改写（name mangling，只作用于 __x 形式）
         attrs['__mappings__'] = mappings
         # 保存表名，类型 str；这里约定表名与类名一致
+        # __table__ 与 __mappings__ 同理：不是内置魔法属性，只是自定义名字，改成 _table 也能运行
+        # 之后 save 中通过 self.__table__ 取出表名拼接 SQL
         attrs['__table__'] = name
         # type.__new__(元类, 类名, 父类元组, 属性字典)：真正创建类对象并返回
         return type.__new__(cls, name, bases, attrs)
@@ -5159,6 +5167,12 @@ class ModelMetaclass(type):
                 print('Found mapping: %s ==> %s' % (k, v))
                 # 以属性名为键、(字段名, 字段类型) 元组为值，存入映射字典
                 mappings[k] = v
+        # 为什么要从 attrs 中删除这些字段定义：
+        # 1. 区分“字段定义”和“字段的值”：类属性 name = ('username', ...) 是字段定义（库里的列名、类型）
+        #    而实例属性 u.name = 'Michael' 才是字段的值；同名共存会混淆
+        #    若不删，实例没传 name 时，getattr(self, 'name', None) 会读到类里的元组而不是 None，导致 SQL 出错
+        # 2. 信息已转存：字段定义已保存进 mappings（即 __mappings__），类里无需再留一份
+        # 删除的只是类属性，不影响 mappings 中的备份
         # 遍历 mappings 的键（不是 attrs），所以下面修改 attrs 不会触发“遍历时修改字典”的错误
         for k in mappings.keys():
             # dict.pop(键)：删除该键并返回其值（此处不使用返回值）；删除后类里不再有该类属性
@@ -5170,6 +5184,8 @@ class ModelMetaclass(type):
         # 因为以双下划线结尾，所以不会触发名称改写（name mangling，只作用于 __x 形式）
         attrs['__mappings__'] = mappings
         # 保存表名，类型 str；这里约定表名与类名一致
+        # __table__ 与 __mappings__ 同理：不是内置魔法属性，只是自定义名字，改成 _table 也能运行
+        # 之后 save 中通过 self.__table__ 取出表名拼接 SQL
         attrs['__table__'] = name
         # type.__new__(元类, 类名, 父类元组, 属性字典)：真正创建类对象并返回
         return type.__new__(cls, name, bases, attrs)
