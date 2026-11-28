@@ -2934,92 +2934,56 @@ class AllFile(metaclass=abc.ABCMeta):
     # 数据属性：所有文件类型共有的类属性（接口类里一般没有这种数据）
     all_type = 'file'
 
-    # 抽象方法：读，无需实现功能，子类必须定义
+    # 抽象方法：读；除 self 外无参数，子类实现后负责读取数据
     @abc.abstractmethod
-    def read(self):  # 抽象方法 read：无参数（除 self），子类实现时通常返回读到的数据
-        """子类必须定义读功能"""
-        pass  # 空方法体，占位（文档字符串之后可以不写其他语句）
+    def read(self):
+        pass  # 空方法体，占位
 
-    # 抽象方法：写，无需实现功能，子类必须定义
+    # 抽象方法：写；除 self 外无参数，子类实现后负责写入数据
     @abc.abstractmethod
-    def write(self):  # 抽象方法 write：无参数（除 self），子类实现时负责写入数据
-        """子类必须定义写功能"""
+    def write(self):
         pass  # 空方法体，占位
 
 
-# 子类 Txt：继承抽象类，必须实现 read 和 write
+# 子类 Txt（文本文件）：实现 read 和 write，才能被实例化
 class Txt(AllFile):
     # 实现读功能
     def read(self):
-        # 输出读取说明
         print('文本数据的读取方法')
 
     # 实现写功能
     def write(self):
-        # 输出写入说明
         print('文本数据的写入方法')
 
 
-# 子类 Sata：硬盘
+# 子类 Sata（硬盘）：同样实现 read 和 write
 class Sata(AllFile):
     # 实现读功能
     def read(self):
-        # 输出读取说明
         print('硬盘数据的读取方法')
 
     # 实现写功能
     def write(self):
-        # 输出写入说明
         print('硬盘数据的写入方法')
 
 
-# 子类 Process：进程
-class Process(AllFile):
-    # 实现读功能
-    def read(self):
-        # 输出读取说明
-        print('进程数据的读取方法')
-
-    # 实现写功能
-    def write(self):
-        # 输出写入说明
-        print('进程数据的写入方法')
-
-
-# 没有实现抽象方法的子类，实例化时会报错
+# 没有实现抽象方法的子类：实例化时报错
 class BadFile(AllFile):
-    # 什么都不写
     pass
 
 
-# try/except：演示实例化报错
+# try/except：捕获并输出实例化 BadFile 时的 TypeError（没有定义 read 和 write）
 try:
-    # 实例化 BadFile：TypeError，因为没有定义 read 和 write
     BadFile()
-# 捕获 TypeError
 except TypeError as e:
-    # 输出报错信息
     print(e)
 
-# 创建三个不同类型的“文件”对象
-txt = Txt()
-# 硬盘文件对象
-sata = Sata()
-# 进程文件对象
-process = Process()
-
-# 各类文件已被“归一化”：以相同的方式操作；输出：文本数据的读取方法
-txt.read()
+# 不同类型的文件以相同的方式操作（归一化）；输出：文本数据的读取方法
+Txt().read()
 # 输出：硬盘数据的写入方法
-sata.write()
-# 输出：进程数据的读取方法
-process.read()
+Sata().write()
 # 抽象类中的数据属性可以被子类对象继承使用；输出：file
-print(txt.all_type)
-# 输出：file
-print(sata.all_type)
-# 输出：file
-print(process.all_type)
+print(Txt().all_type)
 ```
 
 #### 10.4.5 接口类与抽象类对比
