@@ -4978,6 +4978,10 @@ class ModelMetaclass(type):
             # dict.pop(键)：删除该键并返回其值（此处不使用返回值）；删除后类里不再有该类属性
             attrs.pop(k)
         # 把映射字典保存为类属性 __mappings__，之后实例可通过 self.__mappings__ 访问
+        # 注意：__mappings__ 不是 Python 内置的魔法属性，只是自定义名字，解释器不会特殊处理
+        # 双下划线首尾（dunder）只是命名约定：表示框架内部属性，避免与用户字段名冲突
+        # 改成 _mappings 也能运行，只要元类与 save 中的名字一致；__table__ 同理
+        # 因为以双下划线结尾，所以不会触发名称改写（name mangling，只作用于 __x 形式）
         attrs['__mappings__'] = mappings
         # 保存表名，类型 str；这里约定表名与类名一致
         attrs['__table__'] = name
@@ -5160,6 +5164,10 @@ class ModelMetaclass(type):
             # dict.pop(键)：删除该键并返回其值（此处不使用返回值）；删除后类里不再有该类属性
             attrs.pop(k)
         # 把映射字典保存为类属性 __mappings__，之后实例可通过 self.__mappings__ 访问
+        # 注意：__mappings__ 不是 Python 内置的魔法属性，只是自定义名字，解释器不会特殊处理
+        # 双下划线首尾（dunder）只是命名约定：表示框架内部属性，避免与用户字段名冲突
+        # 改成 _mappings 也能运行，只要元类与 save 中的名字一致；__table__ 同理
+        # 因为以双下划线结尾，所以不会触发名称改写（name mangling，只作用于 __x 形式）
         attrs['__mappings__'] = mappings
         # 保存表名，类型 str；这里约定表名与类名一致
         attrs['__table__'] = name
