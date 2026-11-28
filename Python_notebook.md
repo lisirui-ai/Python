@@ -2816,7 +2816,7 @@ print(c.area())
 ```
 
 
-#### 10.4.2 为什么需要接口类
+#### 10.4.2 接口类
 
 > **继承的两种用途**：
 >
@@ -2828,84 +2828,10 @@ print(c.area())
 > **接口类**：基于同一个接口实现的一组类，刚好满足接口隔离原则这一面向对象设计思想，起到**规范**作用。
 >
 > - Python 没有 `interface` 这样的关键字，**原生不支持接口类**；即便不借助专门的模块，编程时也应当具备“接口”这一基本概念
-> - 下面通过“支付”的例子，说明接口类的必要性
 
-**第一步：不同的支付方式，统一的支付函数**
-
-```python
-# 支付宝支付类
-class Alipay:
-    # 支付方法：参数 money 是支付金额（int 或 float）；无返回值
-    def pay(self, money):
-        # 输出支付信息
-        print('支付宝支付了', money)
-
-
-# 苹果支付类
-class ApplePay:
-    # 方法名与 Alipay 一致，都叫 pay
-    def pay(self, money):
-        # 输出支付信息
-        print('苹果支付了', money)
-
-
-# 微信支付类
-class WeChatPay:
-    # 方法名与 Alipay 一致，都叫 pay
-    def pay(self, money):
-        # 输出支付信息
-        print('微信支付了', money)
-
-
-# 统一的支付函数：总体负责支付
-# payment：支付对象（上面任意一个类的实例）；money：要支付的金额
-def pay(payment, money):
-    # 不管传入的是哪种支付对象，都统一调用它的 pay 方法（多态，见 10.4）
-    payment.pay(money)
-
-
-# 创建支付宝支付对象；类型：Alipay
-p = Alipay()
-# 调用统一支付函数；输出：支付宝支付了 200
-pay(p, 200)
-```
-
-> 这段代码通过一个统一的 `pay` 函数，实现了多种支付方式：不同的支付方式作为**对象**传入函数。但前提是：**每个类里的方法名必须一致**。
-
-**第二步：方法名不一致时的后果**
-
-> 开发中的常见问题：某个类中的方法名与其他类不一致（如把 `pay` 写成 `paying`），**创建对象时不会报错**，直到**调用**时才会发现找不到方法。
-
-```python
-# 支付宝支付类：方法名误写成 paying，而不是统一的 pay
-class Alipay:
-    # 这里的方法名与其他类不一致
-    def paying(self, money):
-        # 输出支付信息
-        print('支付宝支付了', money)
-
-
-# 统一的支付函数：payment 是支付对象，money 是金额
-def pay(payment, money):
-    # 调用对象的 pay 方法；Alipay 没有 pay，运行到这里才会出错
-    payment.pay(money)
-
-
-# 创建对象：不报错（Python 不会在创建时检查方法名）
-p = Alipay()
-# try/except：捕获错误并输出，方便观察
-try:
-    # 调用时才报错
-    pay(p, 200)
-# 捕获 AttributeError（对象没有指定属性或方法），as e 把异常对象赋给 e
-except AttributeError as e:
-    # 输出：'Alipay' object has no attribute 'pay'
-    print(e)
-```
-
-**第三步：在基类里手动抛出异常**
-
-> 解决思路：先定义一个**规范类**（接口类）`Payment`，在其中定义统一的方法名 `pay`，方法体里**手动抛出异常** `NotImplementedError`（意为“该方法没有被实现”）；子类如果忘记重写 `pay`，调用时会走到父类的 `pay` 并报出明确的提示。
+> **为什么需要接口类**：多态依赖“各个类的方法名必须一致”（如支付宝、微信、苹果支付都有 `pay` 方法，统一的 `pay(payment, money)` 函数才能调用）。但 Python **不会检查**子类是否真的写了这个方法：某个类把 `pay` 误写成 `paying`，**创建对象时不会报错**，直到**调用**时才抛出 `AttributeError`（找不到方法）。
+>
+> **解决思路**：定义一个**规范类**（接口类）`Payment`，在其中定义统一的方法名 `pay`，方法体里**手动抛出异常** `NotImplementedError`（意为“该方法没有被实现”）；子类如果忘记重写 `pay`，调用时会走到父类的 `pay`，并报出明确的提示。
 
 ```python
 # 规范类（接口类）：规定所有支付类都必须有 pay 方法
