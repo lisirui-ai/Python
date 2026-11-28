@@ -4947,7 +4947,7 @@ u.save()
 > 1. 用元类 `ModelMetaclass` 在**创建 `User` 类时**，把形如 `('字段名', '类型')` 的类属性**筛选出来**，放进字典 `__mappings__`（属性名 → 字段信息），并从类属性里删除它们
 > 2. 额外保存表名 `__table__`（假设表名和类名一致）
 > 3. `__init__(self, **kwargs)`：用 `setattr` 把传入的关键字参数设为实例属性（`**kwargs` 见 8.2）
-> 4. `save()`：遍历 `__mappings__`，收集字段名和对应的值，拼出 `insert` 语句并输出
+> 4. `save()`：遍历 `__mappings__`，收集字段名和对应的值，拼出 `insert` 语句并输出（字符串值加单引号，数字不加）
 > - **为什么判断里要排除 `__` 开头的属性**：解释器会往属性字典里放 `__module__`、`__qualname__` 等系统属性；Python 3.13+ 还会放入值为空元组的 `__static_attributes__`，它们不是字段，必须排除，否则会被误当成字段
 > - **为什么要把类属性删掉**：类属性 `name = ('username', ...)` 描述的是**字段定义**；而实例属性 `u.name = 'Michael'` 才是**字段的值**。如果不删，实例上没设置的字段会读到类里的元组，造成混淆
 
@@ -5037,9 +5037,13 @@ class User(metaclass=ModelMetaclass):
             args.append(getattr(self, k, None))
         # 拼接 SQL，结果类型 str
         # 三个 %s 依次对应：表名、逗号拼接的字段名串、逗号拼接的值串
-        # str(i)：把每个值转成字符串；此阶段字符串值没有引号，所以生成的 SQL 还不能执行
+        # 列表推导式 [A if 条件 else B for i in args]：逐个处理 args 中的值 i，结果是 list[str]
+        # isinstance(i, str)：返回 bool，字符串值要在两侧加单引号，如 Michael -> 'Michael'（SQL 字符串字面量）
+        # 否则（如整数）用 str(i) 转成 Python 字符串，如 12345 -> "12345"，不加引号；拼进 SQL 后就是数字 12345
+        # 必须转成 str 是因为 ','.join() 只能拼接字符串，混入整数会抛出 TypeError
         sql = 'insert into %s (%s) values (%s)' % (
-            self.__table__, ','.join(fields), ','.join([str(i) for i in args]))
+            self.__table__, ','.join(fields),
+            ','.join(["'" + i + "'" if isinstance(i, str) else str(i) for i in args]))
         # 输出生成的 SQL
         print('SQL: %s' % sql)
 
@@ -5059,86 +5063,12 @@ u.save()
 > Found mapping: name ==> ('username', 'varchar(30)')
 > Found mapping: email ==> ('email', 'varchar(30)')
 > Found mapping: password ==> ('password', 'varchar(30)')
-> SQL: insert into User (uid,username,email,password) values (12345,Michael,test@orm.org,my-pwd)
-> ```
->
-> 注意：此时 SQL 里字符串值**没有引号**（`Michael`），这样的 SQL 在 MySQL 中无法执行。下一节对此进行处理。
-
-#### 10.13.3 完善对数据类型的检测
-
-> 给不同类型的值生成不同的 SQL 字面量：**数字**不加引号，**字符串**要加单引号。
->
-> - 用 `isinstance(值, int)`、`isinstance(值, str)` 判断
-> - 本节只改 `save` 方法，元类和其他部分不变，所以只展示**变化的部分**
-
-```python
-# 元类 ModelMetaclass 与上一节完全相同（此处省略），只修改 User.save
-class User(metaclass=ModelMetaclass):
-    # 字段定义：每个元组为 (字段名 str, 字段类型 str)
-    uid = ('uid', "int unsigned")
-    name = ('username', "varchar(30)")  # 属性名 name，对应数据库字段名 username
-    email = ('email', "varchar(30)")  # 属性名 email，对应数据库字段名 email
-    password = ('password', "varchar(30)")  # 属性名 password，对应数据库字段名 password
-
-    # 构造方法：创建对象时自动调用
-    # 参数 self：当前实例；参数 **kwargs：把所有关键字参数收集成 dict，键 str 是参数名，值是参数值
-    # 无返回值（None）
-    def __init__(self, **kwargs):
-        # kwargs.items()：返回键值对视图；name 是参数名（str），value 是参数值
-        for name, value in kwargs.items():
-            # setattr(对象, 属性名 str, 属性值)：动态设置实例属性，等价于 self.name = value；返回 None
-            setattr(self, name, value)
-
-    # 保存方法：相比上一节增加了“按值的类型加引号”的处理；无返回值（None）
-    def save(self):
-        # fields：保存所有字段名（对应数据表的列），类型 list[str]
-        fields = []
-        # args：保存所有字段的值，类型 list，元素类型随用户传入的值而定（int、str、None 等）
-        args = []
-        # self.__mappings__ 是 dict；k 是属性名（str），v 是 (字段名, 字段类型) 元组
-        for k, v in self.__mappings__.items():
-            # v[0] 是元组第 0 项，即数据库中的字段名（str）
-            fields.append(v[0])
-            # getattr(对象, 属性名, 默认值)：取实例上该属性的值；未设置该属性时返回默认值 None
-            args.append(getattr(self, k, None))
-        # args_temp：保存转换成 SQL 字面量后的值，类型 list[str]（元素全部是字符串）
-        args_temp = list()
-        # temp 是 args 中的每个值（int、str 等）
-        for temp in args:
-            # isinstance(temp, int)：返回 bool，判断是否为整数；数字在 SQL 中不加引号
-            if isinstance(temp, int):
-                # str(temp)：把整数转成字符串，如 12345 -> '12345'
-                args_temp.append(str(temp))
-            # isinstance(temp, str)：返回 bool，判断是否为字符串；字符串在 SQL 中需要单引号
-            elif isinstance(temp, str):
-                # "'%s'" % temp：在值两侧加单引号，如 Michael -> 'Michael'
-                args_temp.append("'%s'" % temp)
-        # 拼接 SQL，结果类型 str
-        # 三个 %s 依次对应：表名、逗号拼接的字段名串、逗号拼接的值串
-        # ','.join(列表)：用逗号把 list[str] 拼成一个 str，如 ['a', 'b'] -> 'a,b'
-        sql = 'insert into %s (%s) values (%s)' % (
-            self.__table__, ','.join(fields), ','.join(args_temp))
-        # 输出生成的 SQL（实际项目中应交给数据库驱动执行）
-        print('SQL: %s' % sql)
-
-
-# 创建对象：关键字参数名与类属性名对应
-u = User(uid=12345, name='Michael', email='test@orm.org', password='my-pwd')
-# 调用 save：此时字符串值带单引号，SQL 合法
-u.save()
-```
-
-> **运行效果**：
->
-> ```text
-> Found mapping: uid ==> ('uid', 'int unsigned')
-> Found mapping: name ==> ('username', 'varchar(30)')
-> Found mapping: email ==> ('email', 'varchar(30)')
-> Found mapping: password ==> ('password', 'varchar(30)')
 > SQL: insert into User (uid,username,email,password) values (12345,'Michael','test@orm.org','my-pwd')
 > ```
+>
+> 注意：SQL 中**数字**不加引号，**字符串**必须加单引号，否则在 MySQL 中无法执行；所以拼接值时用 `isinstance(i, str)` 判断类型，字符串加单引号，其余用 `str(i)` 转换。
 
-#### 10.13.4 抽取到基类中
+#### 10.13.3 抽取到基类中
 
 > 上面每新增一张表（如 `Goods`、`Order`），都要重复编写 `__init__` 和 `save`，存在大量重复代码。把通用的 `__init__`、`save` 放进**基类 `Model`**，并让 `Model` 使用元类；这样所有继承 `Model` 的子类**自动使用同一个元类**（元类会被继承，见 10.12.7），子类只需声明字段。
 >
@@ -5215,23 +5145,15 @@ class Model(object, metaclass=ModelMetaclass):
             fields.append(v[0])
             # getattr(对象, 属性名, 默认值)：取实例上该属性的值；未设置该属性时返回默认值 None
             args.append(getattr(self, k, None))
-        # args_temp：保存转换成 SQL 字面量后的值，类型 list[str]（元素全部是字符串）
-        args_temp = list()
-        # temp 是 args 中的每个值（int、str 等）
-        for temp in args:
-            # isinstance(temp, int)：返回 bool，判断是否为整数；数字在 SQL 中不加引号
-            if isinstance(temp, int):
-                # str(temp)：把整数转成字符串，如 12345 -> '12345'
-                args_temp.append(str(temp))
-            # isinstance(temp, str)：返回 bool，判断是否为字符串；字符串在 SQL 中需要单引号
-            elif isinstance(temp, str):
-                # "'%s'" % temp：在值两侧加单引号，如 Michael -> 'Michael'
-                args_temp.append("'%s'" % temp)
         # 拼接 SQL，结果类型 str
         # 三个 %s 依次对应：表名、逗号拼接的字段名串、逗号拼接的值串
-        # ','.join(列表)：用逗号把 list[str] 拼成一个 str，如 ['a', 'b'] -> 'a,b'
+        # 列表推导式 [A if 条件 else B for i in args]：逐个处理 args 中的值 i，结果是 list[str]
+        # isinstance(i, str)：返回 bool，字符串值要在两侧加单引号，如 Michael -> 'Michael'（SQL 字符串字面量）
+        # 否则（如整数）用 str(i) 转成 Python 字符串，如 12345 -> "12345"，不加引号；拼进 SQL 后就是数字 12345
+        # 必须转成 str 是因为 ','.join() 只能拼接字符串，混入整数会抛出 TypeError
         sql = 'insert into %s (%s) values (%s)' % (
-            self.__table__, ','.join(fields), ','.join(args_temp))
+            self.__table__, ','.join(fields),
+            ','.join(["'" + i + "'" if isinstance(i, str) else str(i) for i in args]))
         # 输出生成的 SQL（实际项目中应交给数据库驱动执行）
         print('SQL: %s' % sql)
 
@@ -5270,7 +5192,7 @@ Goods(name='iPhone', price=5000).save()
 > **这个简易 ORM 的局限**（真实的 Django ORM 都已解决）：
 >
 > - 用字符串拼接 SQL，存在 **SQL 注入**风险，实际应使用参数化查询（见 18.5）
-> - 只支持 `int`、`str` 两种类型，其他类型（如 `None`、`float`）会被**忽略**（导致字段数与值的数量不一致）；字段类型只是元组里的一段文字，没有真正校验
+> - 只区分 `str`（加单引号）和其他类型（直接 `str(i)`），`None` 会变成字符串 `None` 而不是 SQL 的 `NULL`，值里含单引号时也会出错；字段类型只是元组里的一段文字，没有真正校验
 > - 只实现了 `insert`，没有查询、修改、删除，也没有真正连接数据库（可在 `save` 里用 18.2 的 `pymysql` 执行 SQL）
 
 ---
