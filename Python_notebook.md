@@ -2767,54 +2767,6 @@ animal_sound(Duck())
 > - Python 没有 `interface` 关键字，通常用“只含抽象方法的抽象类”表示接口
 > - 抽象类是实现**多态**（见 10.4）的一种规范手段：保证所有子类都有相同的方法名，调用者可以统一调用
 
-> **示例说明**：下面的例子中，`Shape` 是抽象类，规定必须有 `area`（面积）和 `perimeter`（周长）两个方法；`Circle` 实现了它们，所以可以实例化
-
-```python
-# 抽象方法：用 @abstractmethod 修饰、通常方法体是空实现（pass）的方法
-# 抽象类：含有抽象方法的类；子类中必须实现抽象类中的各种抽象方法
-# 接口：仅包含抽象方法（无具体方法）的类，本质是"纯抽象类"
-
-# Python 中通过 abc 模块实现标准抽象类：ABC 是抽象基类，abstractmethod 是抽象方法装饰器
-from abc import ABC, abstractmethod
-
-# 继承 ABC 标记为抽象类；含有未实现抽象方法的抽象类不能被实例化
-class Shape(ABC):
-    # 抽象方法：用 @abstractmethod 修饰，子类必须重写
-    @abstractmethod
-    def area(self):
-        # 抽象方法只定义接口，无需实现
-        pass
-
-    # 第二个抽象方法：周长
-    @abstractmethod
-    def perimeter(self):
-        pass
-
-# 具体子类：实现了全部抽象方法，才能被实例化
-class Circle(Shape):
-    # 构造方法：接收半径 r（int 或 float）
-    def __init__(self, r):
-        # 保存半径
-        self.r = r
-
-    # 必须实现所有抽象方法，否则实例化时报错
-    def area(self):
-        # 返回圆面积（float）：π * r²
-        return 3.14 * self.r ** 2
-
-    # 实现周长抽象方法
-    def perimeter(self):
-        # 返回圆周长（float）：2 * π * r
-        return 2 * 3.14 * self.r
-
-# 直接实例化含抽象方法的抽象类会报错：TypeError: Can't instantiate abstract class
-# Shape()
-# 创建半径为 5 的圆
-c = Circle(5)
-# 调用 area 方法，输出 78.5
-print(c.area())
-```
-
 
 #### 10.4.2 接口类
 
@@ -2835,7 +2787,7 @@ print(c.area())
 >
 > - `ABCMeta`：抽象基类的**元类**（元类的概念见 10.12）。把它指定为类的 `metaclass`，这个类就成为抽象基类
 > - `abstractmethod`：装饰器，把方法标记为**抽象方法**。含有抽象方法的类**不能被实例化**，子类必须重写**所有**抽象方法才能被实例化
-> - `ABC`：`abc` 模块里提供的辅助类，等价于 `metaclass=ABCMeta`，继承它更简短（10.4.1 用的就是这种写法）
+> - `ABC`：`abc` 模块里提供的辅助类，等价于 `metaclass=ABCMeta`，继承它更简短（如 `class Shape(ABC)`）
 
 ```python
 # 导入 ABCMeta（抽象基类的元类）和 abstractmethod（抽象方法装饰器）
