@@ -4952,40 +4952,47 @@ u.save()
 > - **为什么要把类属性删掉**：类属性 `name = ('username', ...)` 描述的是**字段定义**；而实例属性 `u.name = 'Michael'` 才是**字段的值**。如果不删，实例上没设置的字段会读到类里的元组，造成混淆
 
 ```python
-# 元类：继承 type，负责在创建类时收集字段映射
+# 元类：继承 type，负责在“创建类”时收集字段映射（元类是“类的类”）
 class ModelMetaclass(type):
-    # cls：元类自己；name：被创建的类名（str）；bases：父类元组；attrs：属性字典（dict）
+    # __new__ 在定义类（执行 class 语句）时自动调用，而不是在创建实例时调用
+    # 参数 cls：元类自身（ModelMetaclass），类型 type 的子类
+    # 参数 name：被创建的类名，类型 str，如 'User'
+    # 参数 bases：被创建类的父类元组，类型 tuple，如 (object,)；无显式父类时为空元组
+    # 参数 attrs：类体中定义的所有属性/方法，类型 dict，键 str 是属性名，值是属性值
+    # 返回值：新创建的类对象，类型 type（即元类的实例）
     def __new__(cls, name, bases, attrs):
-        # mappings：保存“属性名 -> (字段名, 字段类型)”的映射；类型 dict
+        # mappings：保存“属性名 -> (字段名, 字段类型)”的映射，类型 dict，初始为空
         mappings = dict()
-        # 遍历类的所有属性；k 是属性名，v 是属性值
+        # attrs.items() 返回键值对视图；k 是属性名（str），v 是属性值（任意类型）
         for k, v in attrs.items():
-            # 简化判断：值是元组、且不是 __ 开头的系统属性，则视为需要保存到数据库的字段
-            # （Python 3.13+ 会自动给类加 __static_attributes__ = () 元组，必须排除）
+            # isinstance(v, tuple)：返回 bool，判断值是否为元组；元组形如 ('字段名', '字段类型')
+            # k.startswith('__')：返回 bool，判断属性名是否以双下划线开头，用于排除系统属性
+            # 如 __module__、__qualname__；Python 3.13+ 还会有 __static_attributes__ = ()
             if isinstance(v, tuple) and not k.startswith('__'):
-                # 输出发现的映射，便于观察元类何时执行
+                # %s 依次被属性名 k 和元组 v 替换；便于观察元类在何时执行
                 print('Found mapping: %s ==> %s' % (k, v))
-                # 保存到映射字典
+                # 以属性名为键、(字段名, 字段类型) 元组为值，存入映射字典
                 mappings[k] = v
-        # 删除这些已经存进 mappings 的类属性（遍历 mappings 的键，而不是 attrs，所以修改 attrs 是安全的）
+        # 遍历 mappings 的键（不是 attrs），所以下面修改 attrs 不会触发“遍历时修改字典”的错误
         for k in mappings.keys():
-            # 从属性字典中弹出该属性
+            # dict.pop(键)：删除该键并返回其值（此处不使用返回值）；删除后类里不再有该类属性
             attrs.pop(k)
-        # 保存属性和列的映射关系
+        # 把映射字典保存为类属性 __mappings__，之后实例可通过 self.__mappings__ 访问
         attrs['__mappings__'] = mappings
-        # 保存表名，假设表名和类名一致
+        # 保存表名，类型 str；这里约定表名与类名一致
         attrs['__table__'] = name
-        # 用 type.__new__ 真正创建类并返回
+        # type.__new__(元类, 类名, 父类元组, 属性字典)：真正创建类对象并返回
         return type.__new__(cls, name, bases, attrs)
 
 
-# 指定元类：创建 User 时会调用 ModelMetaclass.__new__
+# metaclass=ModelMetaclass：指定元类，创建 User 类时会调用 ModelMetaclass.__new__
 class User(metaclass=ModelMetaclass):
-    # 指定元类后，以下类属性不再保留在类中，而是存到 __mappings__ 字典里
+    # 以下 4 个类属性都是元组：(字段名 str, 字段类型 str)；指定元类后它们不再保留在类中
+    # 而是被元类收集到 __mappings__ 字典里
     uid = ('uid', "int unsigned")
-    name = ('username', "varchar(30)")  # 属性 name：字段名 username
-    email = ('email', "varchar(30)")  # 属性 email：字段名 email
-    password = ('password', "varchar(30)")  # 属性 password：字段名 password
+    name = ('username', "varchar(30)")  # 属性名 name，对应数据库字段名 username，类型 varchar(30)
+    email = ('email', "varchar(30)")  # 属性名 email，对应数据库字段名 email，类型 varchar(30)
+    password = ('password', "varchar(30)")  # 属性名 password，对应字段名 password，类型 varchar(30)
     # 等价于元类给 User 加上了：
     # __mappings__ = {
     #     "uid": ('uid', "int unsigned"),
@@ -4995,36 +5002,41 @@ class User(metaclass=ModelMetaclass):
     # }
     # __table__ = "User"
 
-    # 构造方法：**kwargs 接收任意个关键字参数，类型 dict
+    # 构造方法：创建对象时自动调用
+    # 参数 self：当前实例；参数 **kwargs：把所有关键字参数收集成 dict，键 str 是参数名，值是参数值
+    # 无返回值（None）
     def __init__(self, **kwargs):
-        # 遍历传入的参数；name 是参数名，value 是参数值
+        # kwargs.items()：返回键值对视图；name 是参数名（str），value 是参数值
         for name, value in kwargs.items():
-            # 动态设置实例属性：相当于 self.name = value
+            # setattr(对象, 属性名 str, 属性值)：动态设置实例属性，等价于 self.name = value；返回 None
             setattr(self, name, value)
 
-    # 保存方法：拼接并输出 insert 语句
+    # 保存方法：拼接并输出 insert 语句；参数 self 是当前实例；无返回值（None）
     def save(self):
-        # fields：保存所有字段名（对应数据表的列）
+        # fields：保存所有字段名（对应数据表的列），类型 list[str]
         fields = []
-        # args：保存所有字段的值
+        # args：保存所有字段的值，类型 list，元素类型随用户传入的值而定（int、str、None 等）
         args = []
-        # 遍历映射字典；k 是属性名，v 是 (字段名, 字段类型) 元组
+        # self.__mappings__ 是 dict；k 是属性名（str），v 是 (字段名, 字段类型) 元组
         for k, v in self.__mappings__.items():
-            # v[0] 是数据库中的字段名
+            # v[0] 是元组第 0 项，即数据库中的字段名（str）
             fields.append(v[0])
-            # getattr(对象, 属性名, 默认值)：取实例上该属性的值，没有则为 None
+            # getattr(对象, 属性名, 默认值)：取实例上该属性的值；未设置该属性时返回默认值 None
             args.append(getattr(self, k, None))
-        # 拼接 SQL：表名、字段列表（逗号分隔）、值列表（先转成 str 再逗号分隔）
+        # 拼接 SQL，结果类型 str
+        # 三个 %s 依次对应：表名、逗号拼接的字段名串、逗号拼接的值串
+        # str(i)：把每个值转成字符串；此阶段字符串值没有引号，所以生成的 SQL 还不能执行
         sql = 'insert into %s (%s) values (%s)' % (
-            self.__table__, ','.join(fields), ','.join([str(i) for i in args]))  # %s 依次被表名、字段名串、值串替换；join 用逗号把列表拼成一个 str
+            self.__table__, ','.join(fields), ','.join([str(i) for i in args]))
         # 输出生成的 SQL
         print('SQL: %s' % sql)
 
 
-# 创建对象：关键字参数的名字要与类属性名对应
+# 创建对象：关键字参数名必须与类属性名（uid、name、email、password）对应
 u = User(uid=12345, name='Michael', email='test@orm.org', password='my-pwd')
-# 查看实例属性字典（可选）：print(u.__dict__)
-# 保存
+# u.__dict__ 是实例属性字典，类型 dict；此处为 {'uid': 12345, 'name': 'Michael', ...}（可选查看）
+# print(u.__dict__)
+# 调用 save：拼接并输出 insert 语句
 u.save()
 ```
 
@@ -5050,53 +5062,57 @@ u.save()
 ```python
 # 元类 ModelMetaclass 与上一节完全相同（此处省略），只修改 User.save
 class User(metaclass=ModelMetaclass):
-    # 字段定义：(字段名, 字段类型)
+    # 字段定义：每个元组为 (字段名 str, 字段类型 str)
     uid = ('uid', "int unsigned")
-    name = ('username', "varchar(30)")  # 属性 name：字段名 username
-    email = ('email', "varchar(30)")  # 属性 email：字段名 email
-    password = ('password', "varchar(30)")  # 属性 password：字段名 password
+    name = ('username', "varchar(30)")  # 属性名 name，对应数据库字段名 username
+    email = ('email', "varchar(30)")  # 属性名 email，对应数据库字段名 email
+    password = ('password', "varchar(30)")  # 属性名 password，对应数据库字段名 password
 
-    # 构造方法：与上一节相同
+    # 构造方法：创建对象时自动调用
+    # 参数 self：当前实例；参数 **kwargs：把所有关键字参数收集成 dict，键 str 是参数名，值是参数值
+    # 无返回值（None）
     def __init__(self, **kwargs):
-        # 遍历关键字参数并设置为实例属性
+        # kwargs.items()：返回键值对视图；name 是参数名（str），value 是参数值
         for name, value in kwargs.items():
-            # 动态设置属性
+            # setattr(对象, 属性名 str, 属性值)：动态设置实例属性，等价于 self.name = value；返回 None
             setattr(self, name, value)
 
-    # 保存方法：增加类型判断
+    # 保存方法：相比上一节增加了“按值的类型加引号”的处理；无返回值（None）
     def save(self):
-        # 字段名列表
+        # fields：保存所有字段名（对应数据表的列），类型 list[str]
         fields = []
-        # 字段值列表
+        # args：保存所有字段的值，类型 list，元素类型随用户传入的值而定（int、str、None 等）
         args = []
-        # 遍历映射字典
+        # self.__mappings__ 是 dict；k 是属性名（str），v 是 (字段名, 字段类型) 元组
         for k, v in self.__mappings__.items():
-            # 收集字段名
+            # v[0] 是元组第 0 项，即数据库中的字段名（str）
             fields.append(v[0])
-            # 收集字段值
+            # getattr(对象, 属性名, 默认值)：取实例上该属性的值；未设置该属性时返回默认值 None
             args.append(getattr(self, k, None))
-        # args_temp：保存转换成 SQL 字面量之后的值
+        # args_temp：保存转换成 SQL 字面量后的值，类型 list[str]（元素全部是字符串）
         args_temp = list()
-        # 遍历每个值
+        # temp 是 args 中的每个值（int、str 等）
         for temp in args:
-            # 如果是整数：直接转成字符串，不加引号
+            # isinstance(temp, int)：返回 bool，判断是否为整数；数字在 SQL 中不加引号
             if isinstance(temp, int):
-                # 数字原样转 str
+                # str(temp)：把整数转成字符串，如 12345 -> '12345'
                 args_temp.append(str(temp))
-            # 如果是字符串：两侧加上单引号
+            # isinstance(temp, str)：返回 bool，判断是否为字符串；字符串在 SQL 中需要单引号
             elif isinstance(temp, str):
-                # 字符串加单引号
+                # "'%s'" % temp：在值两侧加单引号，如 Michael -> 'Michael'
                 args_temp.append("'%s'" % temp)
-        # 拼接 SQL
+        # 拼接 SQL，结果类型 str
+        # 三个 %s 依次对应：表名、逗号拼接的字段名串、逗号拼接的值串
+        # ','.join(列表)：用逗号把 list[str] 拼成一个 str，如 ['a', 'b'] -> 'a,b'
         sql = 'insert into %s (%s) values (%s)' % (
-            self.__table__, ','.join(fields), ','.join(args_temp))  # 三个 %s 依次对应：表名、逗号拼接的字段名、逗号拼接的值（str 列表）
-        # 输出生成的 SQL
+            self.__table__, ','.join(fields), ','.join(args_temp))
+        # 输出生成的 SQL（实际项目中应交给数据库驱动执行）
         print('SQL: %s' % sql)
 
 
-# 创建对象
+# 创建对象：关键字参数名与类属性名对应
 u = User(uid=12345, name='Michael', email='test@orm.org', password='my-pwd')
-# 保存
+# 调用 save：此时字符串值带单引号，SQL 合法
 u.save()
 ```
 
@@ -5118,94 +5134,106 @@ u.save()
 > - 注意：`Model` 本身也会经过元类，但它没有字段，`__mappings__` 为空字典
 
 ```python
-# 元类：与前面完全相同，负责收集字段映射
+# 元类：与前面完全相同，负责在创建类时收集字段映射
 class ModelMetaclass(type):
-    # 创建类时调用：cls 元类自己；name 类名；bases 父类元组；attrs 属性字典
+    # __new__ 在定义类（执行 class 语句）时自动调用，而不是在创建实例时调用
+    # 参数 cls：元类自身（ModelMetaclass），类型 type 的子类
+    # 参数 name：被创建的类名，类型 str，如 'User'
+    # 参数 bases：被创建类的父类元组，类型 tuple，如 (object,)；无显式父类时为空元组
+    # 参数 attrs：类体中定义的所有属性/方法，类型 dict，键 str 是属性名，值是属性值
+    # 返回值：新创建的类对象，类型 type（即元类的实例）
     def __new__(cls, name, bases, attrs):
-        # 存放字段映射
+        # mappings：保存“属性名 -> (字段名, 字段类型)”的映射，类型 dict，初始为空
         mappings = dict()
-        # 遍历属性
+        # attrs.items() 返回键值对视图；k 是属性名（str），v 是属性值（任意类型）
         for k, v in attrs.items():
-            # 值是元组、且不是 __ 开头的系统属性，视为字段
+            # isinstance(v, tuple)：返回 bool，判断值是否为元组；元组形如 ('字段名', '字段类型')
+            # k.startswith('__')：返回 bool，判断属性名是否以双下划线开头，用于排除系统属性
+            # 如 __module__、__qualname__；Python 3.13+ 还会有 __static_attributes__ = ()
             if isinstance(v, tuple) and not k.startswith('__'):
-                # 输出发现的映射
+                # %s 依次被属性名 k 和元组 v 替换；便于观察元类在何时执行
                 print('Found mapping: %s ==> %s' % (k, v))
-                # 保存映射
+                # 以属性名为键、(字段名, 字段类型) 元组为值，存入映射字典
                 mappings[k] = v
-        # 从类属性中删除字段定义
+        # 遍历 mappings 的键（不是 attrs），所以下面修改 attrs 不会触发“遍历时修改字典”的错误
         for k in mappings.keys():
-            # 弹出属性
+            # dict.pop(键)：删除该键并返回其值（此处不使用返回值）；删除后类里不再有该类属性
             attrs.pop(k)
-        # 保存属性与列的映射关系
+        # 把映射字典保存为类属性 __mappings__，之后实例可通过 self.__mappings__ 访问
         attrs['__mappings__'] = mappings
-        # 保存表名（与类名一致）
+        # 保存表名，类型 str；这里约定表名与类名一致
         attrs['__table__'] = name
-        # 创建并返回类
+        # type.__new__(元类, 类名, 父类元组, 属性字典)：真正创建类对象并返回
         return type.__new__(cls, name, bases, attrs)
 
 
 # 基类 Model：指定元类，并提供所有模型共用的 __init__ 和 save
+# 子类继承 Model 后会自动使用 ModelMetaclass 创建（元类会被继承）
 class Model(object, metaclass=ModelMetaclass):
-    # 构造方法：接收关键字参数并设置为实例属性
+    # 构造方法：创建对象时自动调用
+    # 参数 self：当前实例；参数 **kwargs：把所有关键字参数收集成 dict，键 str 是参数名，值是参数值
+    # 无返回值（None）
     def __init__(self, **kwargs):
-        # 遍历关键字参数
+        # kwargs.items()：返回键值对视图；name 是参数名（str），value 是参数值
         for name, value in kwargs.items():
-            # 动态设置属性
+            # setattr(对象, 属性名 str, 属性值)：动态设置实例属性，等价于 self.name = value；返回 None
             setattr(self, name, value)
 
-    # 保存方法：生成 insert 语句
+    # 保存方法：生成 insert 语句；self.__mappings__ 与 self.__table__ 由子类的元类添加；无返回值（None）
     def save(self):
-        # 字段名列表
+        # fields：保存所有字段名（对应数据表的列），类型 list[str]
         fields = []
-        # 字段值列表
+        # args：保存所有字段的值，类型 list，元素类型随用户传入的值而定（int、str、None 等）
         args = []
-        # 遍历映射字典；self.__mappings__ 来自子类（由元类添加）
+        # self.__mappings__ 是 dict；k 是属性名（str），v 是 (字段名, 字段类型) 元组
         for k, v in self.__mappings__.items():
-            # 收集字段名
+            # v[0] 是元组第 0 项，即数据库中的字段名（str）
             fields.append(v[0])
-            # 收集字段值
+            # getattr(对象, 属性名, 默认值)：取实例上该属性的值；未设置该属性时返回默认值 None
             args.append(getattr(self, k, None))
-        # 保存转换后的值
+        # args_temp：保存转换成 SQL 字面量后的值，类型 list[str]（元素全部是字符串）
         args_temp = list()
-        # 遍历值
+        # temp 是 args 中的每个值（int、str 等）
         for temp in args:
-            # 整数不加引号
+            # isinstance(temp, int)：返回 bool，判断是否为整数；数字在 SQL 中不加引号
             if isinstance(temp, int):
-                # 转成字符串
+                # str(temp)：把整数转成字符串，如 12345 -> '12345'
                 args_temp.append(str(temp))
-            # 字符串加单引号
+            # isinstance(temp, str)：返回 bool，判断是否为字符串；字符串在 SQL 中需要单引号
             elif isinstance(temp, str):
-                # 加引号
+                # "'%s'" % temp：在值两侧加单引号，如 Michael -> 'Michael'
                 args_temp.append("'%s'" % temp)
-        # 拼接 SQL
+        # 拼接 SQL，结果类型 str
+        # 三个 %s 依次对应：表名、逗号拼接的字段名串、逗号拼接的值串
+        # ','.join(列表)：用逗号把 list[str] 拼成一个 str，如 ['a', 'b'] -> 'a,b'
         sql = 'insert into %s (%s) values (%s)' % (
-            self.__table__, ','.join(fields), ','.join(args_temp))  # 三个 %s 依次对应：表名、逗号拼接的字段名、逗号拼接的值（str 列表）
-        # 输出 SQL
+            self.__table__, ','.join(fields), ','.join(args_temp))
+        # 输出生成的 SQL（实际项目中应交给数据库驱动执行）
         print('SQL: %s' % sql)
 
 
-# User 模型：只需继承 Model 并声明字段
+# User 模型：只需继承 Model 并声明字段，无需重复编写 __init__ 和 save
 class User(Model):
-    # 字段定义
+    # 字段定义：每个元组为 (字段名 str, 字段类型 str)
     uid = ('uid', "int unsigned")
-    name = ('username', "varchar(30)")  # 属性 name：字段名 username
-    email = ('email', "varchar(30)")  # 属性 email：字段名 email
-    password = ('password', "varchar(30)")  # 属性 password：字段名 password
+    name = ('username', "varchar(30)")  # 属性名 name，对应数据库字段名 username
+    email = ('email', "varchar(30)")  # 属性名 email，对应数据库字段名 email
+    password = ('password', "varchar(30)")  # 属性名 password，对应数据库字段名 password
 
 
-# 再定义一张表：无需重复编写 __init__ 和 save
+# 再定义一张表：同样继承 Model，复用 __init__ 和 save
 class Goods(Model):
-    # 商品名字段
+    # 商品名字段：字段名 name，类型 varchar(40)
     name = ('name', "varchar(40)")
-    # 价格字段（这里用整数演示）
+    # 价格字段：字段名 price，类型无符号整数（这里用整数演示）
     price = ('price', "int unsigned")
 
 
-# 创建 User 对象并保存
+# 创建 User 对象，关键字参数名与类属性名对应
 u = User(uid=12345, name='Michael', email='test@orm.org', password='my-pwd')
-# 输出：SQL: insert into User (uid,username,email,password) values (12345,'Michael','test@orm.org','my-pwd')
+# 保存；输出：SQL: insert into User (uid,username,email,password) values (12345,'Michael','test@orm.org','my-pwd')
 u.save()
-# 创建 Goods 对象并保存；输出：SQL: insert into Goods (name,price) values ('iPhone',5000)
+# 创建 Goods 对象并立即保存；输出：SQL: insert into Goods (name,price) values ('iPhone',5000)
 Goods(name='iPhone', price=5000).save()
 ```
 
